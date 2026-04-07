@@ -20,6 +20,12 @@ arrow_datasets/
 arrow_datasets_nemotron/
 core-sentinel-guardrail/config/kb_cache.yaml
 
+# Large / downloadable datasets (fetch or unzip locally; README + licenses stay in repo)
+core-sentinel-guardrail/data/**/*.jsonl
+core-sentinel-guardrail/data/ai4privacy_kaggle/**/*.zip
+core-sentinel-guardrail/data/ai4privacy_kaggle/**/*.csv
+core-sentinel-guardrail/data/ai4privacy_kaggle/**/*.png
+
 # IDE / OS
 .idea/
 .vscode/
