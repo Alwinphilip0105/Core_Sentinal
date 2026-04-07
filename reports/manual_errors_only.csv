@@ -1,0 +1,18 @@
+text,true_label,pred_label,pred_score,correct
+Can you summarize this team meeting for me?,low,high,0.3495270907878876,False
+Please rewrite this email in a more professional tone.,low,high,0.3451853096485138,False
+My class notes say the assignment deadline is next Thursday.,low,med,0.3468615412712097,False
+Reminder: all-hands at 3pm in the main conference room.,low,med,0.3390968739986419,False
+What's the weather like in NYC this weekend?,low,high,0.3405628800392151,False
+Draft agenda for the product kickoff next week.,low,high,0.3434180617332458,False
+Quick question about the PTO policy—how many days do I have left?,low,med,0.3572114408016205,False
+Can you translate this paragraph into Spanish?,low,med,0.3527329266071319,False
+Feedback on the slide deck: slide 5 could use a clearer chart.,low,high,0.3481506109237671,False
+Ideas for the offsite team-building activity in June.,low,high,0.3443093299865722,False
+"SAP-8847291 | Invoice #INV-2024-8822 for $125,400. Vendor ACH 021000021.",high,med,0.37795290350914,False
+"Payroll run March: John Doe emp# 44012 salary $95,000 bonus $12,000 SSN on file.",high,med,0.3489225804805755,False
+"Wire $250,000 to IBAN DE89370400440532013000. Beneficiary Acme GmbH. Ref: INV-8822.",high,med,0.3907744288444519,False
+"Account 4432-1098-7721, balance $1.2M as of close; customer ID CUST-8822.",high,med,0.3537337779998779,False
+"Confidential: Q3 EBITDA by division. North America $2.1M, Europe $0.9M.",high,med,0.3758094012737274,False
+"Customer PII export for compliance: names, emails, account numbers—encrypted link only.",high,med,0.3482272326946258,False
+"Invoice 8822-AB: Acme Corp, $45,120, due 30 days. SAP vendor ID 8847291.",high,med,0.3677060902118683,False

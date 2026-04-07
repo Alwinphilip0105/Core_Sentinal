@@ -1,0 +1,11 @@
+{
+  "O": "low",
+  "NAME": "low",
+  "LOCATION": "low",
+  "CONTACT": "med",
+  "ID": "med",
+  "OTHER_PII": "med",
+  "FINANCIAL": "high",
+  "HEALTH": "high",
+  "AUTH": "high"
+}

@@ -1,0 +1,42 @@
+# Synthetic KB for automated tests — no real company data
+# Set GUARDRAIL_KB_PATH to this file to exercise kb_loader / regex layer
+
+company: "Fictional TestCo LLC"
+version: "0.0-test"
+description: "Placeholder patterns and terms for unit/integration testing only"
+
+custom_pii_patterns:
+  - name: "Fake employee badge (test)"
+    regex: "FAKE-EMP-\\d{4}"
+    risk: "high"
+    description: "Synthetic pattern; not a real ID scheme"
+
+  - name: "Dummy project ref (test)"
+    regex: "DUMMY-PRJ-[A-Z]{2}-\\d{3}"
+    risk: "med"
+    description: "Made-up project code format for tests"
+
+  - name: "Mock ticket (test)"
+    regex: "MOCK-TIX-\\d{5}"
+    risk: "med"
+    description: "Placeholder ticket reference"
+
+forbidden_terms:
+  - "lorem ipsum secret"
+  - "fake confidential marker"
+  - "test-only do not use in prod"
+  - "synthetic proprietary flag"
+  - "placeholder trade secret"
+
+sensitivity_overrides:
+  FINANCIAL: "block"
+  HEALTH: "block"
+  AUTH: "block"
+  NAME: "warn"
+  LOCATION: "warn"
+
+# cloud:
+#   type: "github"
+#   repo: "example-org/fake-repo"
+#   branch: "main"
+#   path: "test_policy.yaml"

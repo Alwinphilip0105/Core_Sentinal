@@ -1,0 +1,24 @@
+datasets
+transformers
+# Windows DLL fix: use torch 2.4 + numpy<2 if 2.6+ fails (see ../WINDOWS_SETUP.md)
+torch>=2.6
+torchvision>=0.19
+accelerate
+pyperclip
+keyboard
+PyQt6
+pywin32
+pywinauto
+faker
+scikit-learn
+evaluate
+pandas
+openpyxl
+pyyaml
+
+# torch>=2.6 required for CVE-2025-32434; torchvision must match (e.g. 0.20 for torch 2.10)
+# For CUDA (GPU), after uninstalling any CPU build:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+# (cu121/cu124 work too; match https://pytorch.org/get-started/locally/ — driver only needs to be new enough.)
+# Note: tkinter is part of the Python standard library and is not installed via pip.
+# On Windows/macOS it is usually included with Python. On Linux you may need: sudo apt install python3-tk

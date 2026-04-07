@@ -1,0 +1,161 @@
+text,source,risk,sap_id
+"Q3 revenue was $2.1M. Key accounts: Acme Corp, Beta Inc.",patronus,med,patronus-0
+Internal team lunch next Tuesday at noon.,patronus,low,patronus-1
+Customer SSN 555-12-3456 and routing 021000021 on file.,patronus,high,patronus-2
+Public blog post: our product launch announcement.,patronus,low,patronus-3
+M&A target list and EBITDA multiples—board eyes only.,patronus,high,patronus-4
+"Meeting notes: John (PM), Sarah (eng). Timeline TBD.",patronus,low,patronus-5
+"Biweekly payroll batch 2024-W14: 312 employees, total net 1.24M; SSN last-4 in export.",business_real,high,business-0
+"P.O. 445566: remit to Wells Fargo 121000248, acct ********7890; amount 78,300.",business_real,high,business-1
+"Client file: Robert Chen, DOB 1982-07-22, SSN ***-**-9012, annual comp 185K.",business_real,high,business-2
+"SAP-7712345678 | ACH batch approved; 23 vendors, total 412K; routing on attachment.",business_real,high,business-3
+"Comp review—restricted: Sarah M. base 98K, merit 4%, stock 2K units vesting 2025.",business_real,high,business-4
+"Wire: 134,000 GBP to Barclays GB29NWBK60161331926819; ref contract C-8821.",business_real,high,business-5
+"Q1 payroll summary: gross 2.1M, tax withholdings 420K, 401k deferrals 89K—confidential.",business_real,high,business-6
+"Invoice INV-9912: 56,700 CAD; remit to Scotiabank transit 002, institution 010.",business_real,high,business-7
+"Customer 44021: name, billing address, card last 4 (8891), CVV on secure vault only.",business_real,high,business-8
+"SAP-9988776655 | Vendor 8821 ACH: routing 026009593, account ********3344.",business_real,high,business-9
+HR—confidential: layoff list and severance amounts; effective dates in spreadsheet.,business_real,high,business-10
+"Disbursement account: Chase 322271627, ****9012; single-transaction limit 50K.",business_real,high,business-11
+"Contract appendix: wire instructions, beneficiary tax ID 94-1234567, bank details.",business_real,high,business-12
+"Employee 3301: termination 04/15; final paycheck 4,200; PTO payout 1,100—do not circulate.",business_real,high,business-13
+"Customer credit file: EIN 20-9876543, D&B score 72, SSN of guarantor on file.",business_real,high,business-14
+"Payroll audit trail: 89 names, net pay, direct-deposit account last 4—restricted.",business_real,high,business-15
+SAP-1122334455 | PO 5544; wire 45K to IBAN FR7630006000011234567890189.,business_real,high,business-16
+"Revenue leakage report—board only: by segment, margin %, and customer PII appendix.",business_real,high,business-17
+HR: disability claim #4412; employee ID 7721; medical documentation on file.,business_real,high,business-18
+"Vendor 9922 remittance: ABA 111000614, acct ********5566; amount 22,100 USD.",business_real,high,business-19
+"Customer onboarding: signed W-9, bank verification, SSN/TIN stored in CRM—confidential.",business_real,high,business-20
+SAP-5544332211 | Quarter-end accruals; salary and bonus figures by department.,business_real,high,business-21
+"Invoice 3344 backup: vendor EIN, remit-to address, ACH enrollment form with account/routing.",business_real,high,business-22
+"Executive comp—eyes only: CEO base 450K, bonus pool 1.2M; CFO, CTO in annex.",business_real,high,business-23
+"Wire confirmation: 89,500 EUR to BIC DEUTDEDB, IBAN on file; beneficiary invoice 6677.",business_real,high,business-24
+Customer 8812: balance 12.4K; payment method on file (last 4); SSN verified 2023.,business_real,high,business-25
+"SAP-6677889900 | Payroll journal: gross, deductions, net by employee ID—restricted.",business_real,high,business-26
+Contract 7722: payment schedule; bank details for wire; tax forms attached—NDA.,business_real,high,business-27
+HR benefits: 401k match by employee; SSN for plan admin; salary data for match calc.,business_real,high,business-28
+AP run: 34 invoices; total 156K; vendor bank info in batch file—do not email.,business_real,high,business-29
+"Customer master: Acme LLC, EIN 12-3456789, DUNS 00-123-4567; signatory SSN on file.",business_real,high,business-30
+SAP-2233445566 | Confidential: draft P&L with unit economics and customer-level margin.,business_real,high,business-31
+"Payroll adjustment: employee 4422; back pay 3,200; new salary 92K effective 05/01.",business_real,high,business-32
+"Invoice 8899: 23,400; remit to account ********2233 routing 021000021; ref PO 3344.",business_real,high,business-33
+"Background check results—HR only: SSN trace, address history, prior employer verification.",business_real,high,business-34
+Vendor payment run: 12 wires; total 67K; IBANs and references in secure sheet.,business_real,high,business-35
+"Customer 5522: credit limit 75K; guarantor name, DOB, income docs in dossier.",business_real,high,business-36
+SAP-8899001122 | ACH file for payroll; 201 employees; account numbers in encrypted export.,business_real,high,business-37
+"Board comp committee: base salaries, bonus targets, RSU grants by named executive—confidential.",business_real,high,business-38
+Wire log: 5 transactions; amounts and beneficiary account details; compliance hold on 2.,business_real,high,business-39
+Customer payment on file: card ************4567 exp 12/26; ACH account ****7890.,business_real,high,business-40
+"SAP-3344556677 | Vendor 1122: remit 18,900 to routing 031100209, account on file.",business_real,high,business-41
+Internal planning: Q4 cost targets by cost center; no external share.,business_real,med,business-42
+Draft: product roadmap for next two quarters—leadership review only.,business_real,med,business-43
+Ops summary: support ticket volume up 15%; escalation list; no customer names.,business_real,med,business-44
+Meeting notes: eng and PM alignment on scope; timeline TBD; internal distribution.,business_real,med,business-45
+Preliminary capacity plan: headcount assumptions by team; not for board yet.,business_real,med,business-46
+Draft pricing memo: tier structure and discount bands—confidential until finalized.,business_real,med,business-47
+Internal: competitive win/loss themes; no deal identifiers or revenue figures.,business_real,med,business-48
+Project status: phase 2 delayed; mitigation options; for steering committee only.,business_real,med,business-49
+Planning doc: regional rollout sequence and go-live criteria—do not share externally.,business_real,med,business-50
+Rough draft: org design options for reorg; names redacted; internal review.,business_real,med,business-51
+Operational metrics: SLA performance by tier; internal use; no client names.,business_real,med,business-52
+Pre-read for leadership: strategic priorities and trade-offs; not for distribution.,business_real,med,business-53
+Draft RACI for initiative Gamma; roles TBD; internal alignment only.,business_real,med,business-54
+Internal update: partnership pipeline; 3 in discussion; no terms or names.,business_real,med,business-55
+Planning: budget scenarios for next FY; assumptions only; not approved.,business_real,med,business-56
+Meeting recap: design feedback and next steps; attendees only.,business_real,med,business-57
+Draft narrative for all-hands; tone and key messages; not final.,business_real,med,business-58
+Internal only: feature prioritization and backlog themes; no customer data.,business_real,med,business-59
+Preliminary risk register: categories and mitigations; for audit committee prep.,business_real,med,business-60
+Draft: channel strategy and coverage gaps; internal discussion only.,business_real,med,business-61
+Planning note: hiring plan by department; numbers preliminary; HR and finance only.,business_real,med,business-62
+Reminder: team standup tomorrow 9am in conf room B.,business_real,low,business-63
+Can you rewrite this paragraph to be more concise?,business_real,low,business-64
+"Class notes from Tuesday: intro to supply chain, ch 3–4.",business_real,low,business-65
+Summary: the report covers Q2 themes and next steps.,business_real,low,business-66
+FYI lunch with vendors moved to Thursday noon.,business_real,low,business-67
+Please summarize the last section in 2–3 sentences.,business_real,low,business-68
+Meeting moved to 2pm. Calendar invite sent.,business_real,low,business-69
+"Draft agenda: intro, updates, action items, close.",business_real,low,business-70
+Notes: discussed timeline and who owns the deck.,business_real,low,business-71
+Friendly reminder to submit timesheets by EOD Friday.,business_real,low,business-72
+Neutral summary of the article: key points and conclusion.,business_real,low,business-73
+Can someone paste the link to the shared drive folder?,business_real,low,business-74
+Office closed Monday for holiday. Back Tuesday.,business_real,low,business-75
+Rewrite request: make the tone more formal for exec review.,business_real,low,business-76
+"Study group Thursday 5pm in the library, room 204.",business_real,low,business-77
+Quick recap: three options on the table; decision next week.,business_real,low,business-78
+Reminder: new policy doc in the wiki under HR > Policies.,business_real,low,business-79
+Please shorten this to fit one slide for the board deck.,business_real,low,business-80
+Lecture notes: demand forecasting methods and limitations.,business_real,low,business-81
+All-hands next Tuesday 10am. Optional Q&A after.,business_real,low,business-82
+"Summary of the call: alignment on scope, PM to send RACI.",business_real,low,business-83
+Can you expand bullet 3 with one more example?,business_real,low,business-84
+Parking lot for next meeting: vendor pricing and SLAs.,business_real,low,business-85
+Reminder: update your out-of-office if you’re away next week.,business_real,low,business-86
+"Neutral one-pager: problem, approach, and recommendation.",business_real,low,business-87
+Draft intro paragraph for the quarterly newsletter.,business_real,low,business-88
+Notes: Sarah to own design; John to own backend by Friday.,business_real,low,business-89
+Please paraphrase the second paragraph for the exec summary.,business_real,low,business-90
+Recap: we’re targeting go-live in March pending QA sign-off.,business_real,low,business-91
+Reminder: submit feedback for the annual survey by month end.,business_real,low,business-92
+Internal planning: target 15% cost reduction in ops by Q4.,business_real,med,business-93
+Draft roadmap—confidential: phase 1 scope and milestones.,business_real,med,business-94
+Internal only: current NPS 42; target 50 by year end.,business_real,med,business-95
+Project status: 2 weeks behind; considering scope cut on feature B.,business_real,med,business-96
+Planning note: headcount ask for next FY is +3 in eng.,business_real,med,business-97
+Internal draft—do not share: revised pricing model assumptions.,business_real,med,business-98
+Confidential: M&A pipeline update; 2 targets in due diligence.,business_real,med,business-99
+Internal metrics: churn 2.1% this month; target under 2%.,business_real,med,business-100
+Draft org chart for reorg—internal review only.,business_real,med,business-101
+Project Alpha: delay on vendor integration; mitigation plan in progress.,business_real,med,business-102
+"Internal planning: budget reforecast; marketing -10%, eng flat.",business_real,med,business-103
+Status: contract renewal with Acme in negotiation; legal involved.,business_real,med,business-104
+Confidential draft: new product positioning and tier structure.,business_real,med,business-105
+Internal only: pipeline coverage at 1.2x; need 1.5x for board.,business_real,med,business-106
+Planning note: pilot in region EU; go/no-go by end of month.,business_real,med,business-107
+Draft RACI for initiative X—internal distribution only.,business_real,med,business-108
+Internal update: attrition at 8%; retention plan in progress.,business_real,med,business-109
+Project status: POC with Beta Corp; technical review next week.,business_real,med,business-110
+Confidential: competitive win/loss summary and takeaways.,business_real,med,business-111
+Internal metrics: CAC up 12% MoM; reviewing channel mix.,business_real,med,business-112
+Draft timeline for launch—internal alignment before external.,business_real,med,business-113
+Planning: hiring freeze except for backfill and L1 support.,business_real,med,business-114
+Status: escalation with vendor on SLA breach; resolution EOW.,business_real,med,business-115
+Internal only: proposed price increase 5% for tier 2 and 3.,business_real,med,business-116
+Draft board narrative—confidential until approved.,business_real,med,business-117
+Internal planning: consolidation of region APAC under one lead.,business_real,med,business-118
+Project Beta: resource conflict with Alpha; PM to resolve.,business_real,med,business-119
+Confidential draft: FY goals and OKRs for leadership review.,business_real,med,business-120
+Internal update: customer reference program; 3 case studies in progress.,business_real,med,business-121
+Payroll run for period 03: total gross 847K; net 612K after deductions.,business_real,high,business-122
+"Invoice #INV-2024-8821: amount 45,200 USD; wire to account 021000021, routing 123456789.",business_real,high,business-123
+"Customer record: Jane Doe, SSN 555-12-3456, DOB 03/15/1985, address on file.",business_real,high,business-124
+SAP-8847291032 | PO 9928473 approved; vendor ACH details attached.,business_real,high,business-125
+"Confidential: employee John Smith, salary 125K, bonus 15%, equity grant 5K RSUs.",business_real,high,business-126
+"Wire instructions: beneficiary Acme Corp, IBAN DE89370400440532013000, ref INV-7721.",business_real,high,business-127
+HR: performance review and compensation data for Q1—confidential.,business_real,high,business-128
+"Bank account for disbursements: ********4521, routing 021000021, Chase.",business_real,high,business-129
+"Customer PII on file: name, email, phone, last 4 of card; do not share externally.",business_real,high,business-130
+"SAP-5529103847 | Payment 28,400 EUR to vendor; confirmation required.",business_real,high,business-131
+Payroll: direct deposit details for 47 employees; ACH file generated.,business_real,high,business-132
+"Invoice details: P.O. 8821, amount 12,500, due 30 days; account # on file.",business_real,high,business-133
+Confidential HR: termination checklist and final pay for employee ID 8821.,business_real,high,business-134
+Customer account 77482: balance 45.2K; SSN and routing on file for ACH.,business_real,high,business-135
+Vendor payment: wire 89K to IBAN GB82WEST12345698765432; ref PO-9921.,business_real,high,business-136
+SAP-9928473610 | Confidential finance: EBITDA adjustment and one-time items.,business_real,high,business-137
+"Employee data: Maria L., employee ID 4421, salary band 4, start date 01/2022.",business_real,high,business-138
+Invoice #7721: line items and pricing—customer NDA; do not forward.,business_real,high,business-139
+"Bank routing 021000021, account ****4521; use for wire only with dual approval.",business_real,high,business-140
+"Payroll export: names, SSN (last 4), gross, net, deductions—restricted.",business_real,high,business-141
+"Customer record: Acme Inc, EIN 12-3456789, payment terms Net 45, credit limit 100K.",business_real,high,business-142
+SAP-3382910475 | Wire 156K to beneficiary; routing and account in secure doc.,business_real,high,business-143
+HR confidential: promotion and salary increase for employee 5521; effective 04/01.,business_real,high,business-144
+"Invoice backup: P.O. 4421, vendor tax ID, bank details for ACH.",business_real,high,business-145
+"Customer PII: name, address, phone, SSN (for verification)—restricted access.",business_real,high,business-146
+Payroll run 04: 52 employees; total net 398K; direct deposit file ready.,business_real,high,business-147
+"Wire: 67,200 USD to account ending 4521, routing 021000021, ref INV-8821.",business_real,high,business-148
+SAP-7748291032 | Confidential: draft financials and management adjustments.,business_real,high,business-149
+HR: medical leave and disability claim details for employee—confidential.,business_real,high,business-150
+"Vendor ACH: account ********1234, routing 021000021; one-time payment 22K.",business_real,high,business-151
+"Customer credit application: SSN, DOB, income—store in secure system only.",business_real,high,business-152
+"Invoice 5521: amount 33,500; payment to IBAN on file; do not email full details.",business_real,high,business-153

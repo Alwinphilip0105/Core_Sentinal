@@ -1,0 +1,10 @@
+{
+  "epochs": 5,
+  "learning_rate": 3e-5,
+  "batch_size": 16,
+  "warmup_ratio": 0.1,
+  "weight_decay": 0.01,
+  "max_grad_norm": 1.0,
+  "classifier_dropout": 0.1,
+  "use_class_weights": true
+}

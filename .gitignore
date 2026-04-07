@@ -1,0 +1,27 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# Generated / large ML artifacts (regenerate locally)
+core-sentinel-guardrail/models/
+core-sentinel-guardrail/arrow_datasets/
+arrow_datasets/
+arrow_datasets_nemotron/
+core-sentinel-guardrail/config/kb_cache.yaml
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

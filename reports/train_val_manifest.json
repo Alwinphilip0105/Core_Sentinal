@@ -1,0 +1,15 @@
+{
+  "real_labeled_count": 160,
+  "synthetic_count": 320,
+  "train_count": 408,
+  "val_count": 72,
+  "train_per_source": {
+    "synthetic": 273,
+    "patronus": 6,
+    "business_real": 129
+  },
+  "val_per_source": {
+    "business_real": 25,
+    "synthetic": 47
+  }
+}

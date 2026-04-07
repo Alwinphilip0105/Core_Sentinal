@@ -1,0 +1,16 @@
+company: "Acme Corp"
+version: "1.0"
+custom_pii_patterns:
+  - name: "Employee ID"
+    regex: "EMP-\\d{6}"
+    risk: "high"
+  - name: "Project code"
+    regex: "PRJ-[A-Z]{3}-\\d{4}"
+    risk: "med"
+forbidden_terms:
+  - "confidential"
+  - "internal only"
+  - "do not distribute"
+sensitivity_overrides:
+  FINANCIAL: "block"
+  NAME: "warn"

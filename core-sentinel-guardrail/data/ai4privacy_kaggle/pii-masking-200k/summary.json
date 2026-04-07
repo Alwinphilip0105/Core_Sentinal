@@ -1,0 +1,37 @@
+[
+    {
+        "filename": "english",
+        "total_lines": 43501,
+        "privacy_tokens_count": 137093,
+        "total_unmasked_text_count": 7518538,
+        "total_tokenised_text_count": 2012465
+    },
+    {
+        "filename": "french",
+        "total_lines": 61958,
+        "privacy_tokens_count": 191266,
+        "total_unmasked_text_count": 12275688,
+        "total_tokenised_text_count": 4220701
+    },
+    {
+        "filename": "german",
+        "total_lines": 52817,
+        "privacy_tokens_count": 163844,
+        "total_unmasked_text_count": 10214606,
+        "total_tokenised_text_count": 3833957
+    },
+    {
+        "filename": "italian",
+        "total_lines": 50985,
+        "privacy_tokens_count": 157259,
+        "total_unmasked_text_count": 9739572,
+        "total_tokenised_text_count": 3522973
+    },
+    {
+        "filename": "total",
+        "total_lines": 209261,
+        "privacy_tokens_count": 649462,
+        "total_unmasked_text_count": 39748404,
+        "total_tokenised_text_count": 13590096
+    }
+]

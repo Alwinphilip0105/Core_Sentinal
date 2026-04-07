@@ -1,0 +1,12 @@
+{
+  "high": {
+    "default_decision": "block",
+    "allow_warn_instead": true
+  },
+  "med": {
+    "default_decision": "warn"
+  },
+  "low": {
+    "default_decision": "allow"
+  }
+}

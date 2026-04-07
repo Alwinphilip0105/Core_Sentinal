@@ -1,0 +1,31 @@
+text,true_label,pred_label,pred_score,correct
+Can you summarize this team meeting for me?,low,high,0.3495270907878876,False
+Please rewrite this email in a more professional tone.,low,high,0.3451853096485138,False
+My class notes say the assignment deadline is next Thursday.,low,med,0.3468615412712097,False
+Reminder: all-hands at 3pm in the main conference room.,low,med,0.33909687399864197,False
+What's the weather like in NYC this weekend?,low,high,0.3405628800392151,False
+Draft agenda for the product kickoff next week.,low,high,0.34341806173324585,False
+Quick question about the PTO policy—how many days do I have left?,low,med,0.3572114408016205,False
+Can you translate this paragraph into Spanish?,low,med,0.35273292660713196,False
+Feedback on the slide deck: slide 5 could use a clearer chart.,low,high,0.3481506109237671,False
+Ideas for the offsite team-building activity in June.,low,high,0.34430932998657227,False
+Q2 planning notes: focus on EMEA expansion and partner pipeline.,med,med,0.35910436511039734,True
+Internal draft: revenue projection for next quarter is 5–7% growth.,med,med,0.35096409916877747,True
+"Draft performance review for Sarah—confidential, manager eyes only.",med,med,0.3598790168762207,True
+Competitive intel: Acme Corp is launching a similar product in Q3.,med,med,0.3410378098487854,True
+Board deck draft: strategic priorities and capex request for FY25.,med,med,0.3693462014198303,True
+Internal metrics: NPS down 3 points in region West; root cause TBD.,med,med,0.359535813331604,True
+M&A target shortlist and preliminary valuation range—confidential.,med,med,0.35496705770492554,True
+Draft press release for the partnership announcement; embargo until Tuesday.,med,med,0.35309502482414246,True
+"Budget reforecast: engineering headcount +2, marketing -1 for H2.",med,med,0.3792852461338043,True
+Customer escalation: Enterprise Co. threatening churn; account notes attached.,med,med,0.3518384099006653,True
+"SAP-8847291 | Invoice #INV-2024-8822 for $125,400. Vendor ACH 021000021.",high,med,0.37795290350914,False
+"Payroll run March: John Doe emp# 44012 salary $95,000 bonus $12,000 SSN on file.",high,med,0.34892258048057556,False
+Customer SSN 555-12-3456 and bank routing 021000021 are listed in the attachment.,high,high,0.37628233432769775,True
+"Wire $250,000 to IBAN DE89370400440532013000. Beneficiary Acme GmbH. Ref: INV-8822.",high,med,0.3907744288444519,False
+"Account 4432-1098-7721, balance $1.2M as of close; customer ID CUST-8822.",high,med,0.35373377799987793,False
+Vendor SAP-7722001 approved for $50k. PO 8822. ACH details in secure folder.,high,high,0.3792395293712616,True
+"Confidential: Q3 EBITDA by division. North America $2.1M, Europe $0.9M.",high,med,0.3758094012737274,False
+"Customer PII export for compliance: names, emails, account numbers—encrypted link only.",high,med,0.34822723269462585,False
+"Invoice 8822-AB: Acme Corp, $45,120, due 30 days. SAP vendor ID 8847291.",high,med,0.3677060902118683,False
+"Payroll audit: employee 44012 SSN, salary, and direct-deposit routing on sheet 2.",high,high,0.3582235276699066,True

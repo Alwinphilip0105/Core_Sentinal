@@ -1,0 +1,50 @@
+# Company guardrail knowledge base
+# Fill in your company details and deploy to GitHub
+# Set GUARDRAIL_KB_PATH=path/to/this/file to activate
+
+company: "Your Company Name"
+version: "1.0"
+description: "Custom PII rules for clipboard guardrail"
+
+# Add custom patterns specific to your company
+custom_pii_patterns:
+  - name: "Employee ID"
+    regex: "EMP-\\d{6}"
+    risk: "high"
+    description: "Internal employee identifier"
+    
+  - name: "Project code"  
+    regex: "PRJ-[A-Z]{3}-\\d{4}"
+    risk: "med"
+    description: "Internal project reference"
+
+  - name: "Internal ticket"
+    regex: "JIRA-\\d{4,6}"
+    risk: "med"
+    description: "Issue tracker reference"
+
+# Terms that should always trigger a warning
+# regardless of model confidence
+forbidden_terms:
+  - "confidential"
+  - "internal only"
+  - "do not distribute"
+  - "proprietary"
+  - "trade secret"
+
+# Override default sensitivity levels per PII class
+# Options: "block", "warn", "silent"
+sensitivity_overrides:
+  FINANCIAL: "block"
+  HEALTH: "block"
+  AUTH: "block"
+  NAME: "warn"
+  LOCATION: "warn"
+
+# Cloud hosting (optional)
+# Uncomment and fill in to fetch this file remotely
+# cloud:
+#   type: "github"
+#   repo: "your-org/guardrail-policy"
+#   branch: "main"
+#   path: "policy.yaml"

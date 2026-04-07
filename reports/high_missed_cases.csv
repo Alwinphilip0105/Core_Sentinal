@@ -1,0 +1,8 @@
+text,true_label,pred_label,pred_score,correct
+"SAP-8847291 | Invoice #INV-2024-8822 for $125,400. Vendor ACH 021000021.",high,med,0.37795290350914,False
+"Payroll run March: John Doe emp# 44012 salary $95,000 bonus $12,000 SSN on file.",high,med,0.3489225804805755,False
+"Wire $250,000 to IBAN DE89370400440532013000. Beneficiary Acme GmbH. Ref: INV-8822.",high,med,0.3907744288444519,False
+"Account 4432-1098-7721, balance $1.2M as of close; customer ID CUST-8822.",high,med,0.3537337779998779,False
+"Confidential: Q3 EBITDA by division. North America $2.1M, Europe $0.9M.",high,med,0.3758094012737274,False
+"Customer PII export for compliance: names, emails, account numbers—encrypted link only.",high,med,0.3482272326946258,False
+"Invoice 8822-AB: Acme Corp, $45,120, due 30 days. SAP vendor ID 8847291.",high,med,0.3677060902118683,False
