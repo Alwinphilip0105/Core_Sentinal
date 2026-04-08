@@ -1493,6 +1493,25 @@ def build_and_save(
                     "source": "financial_pii_xlsx",
                 }
             )
+        uf_list: list = []
+        try:
+            from feedback_store import load_user_feedback_export_rows
+
+            uf_list = load_user_feedback_export_rows()
+        except Exception as ex:
+            print(f"[user_feedback] could not load export.jsonl: {ex}")
+        for i, r in enumerate(uf_list):
+            real_labeled_rows.append(
+                {
+                    "text": r["text"],
+                    "risk": r["risk"],
+                    "is_sap": 0,
+                    "sap_id": f"ufb-{i}",
+                    "source": "user_feedback",
+                }
+            )
+        if uf_list:
+            print(f"[user_feedback] merged {len(uf_list)} labeled rows from data/user_feedback/export.jsonl")
         n_real_labeled = len(real_labeled_rows)
         n_real_unlabeled = sum(len(rows) for _, rows in source_lists) - n_real_labeled  # approx; pool has dedup/filter
         cap = max(0, SYNTHETIC_CAP_MULTIPLIER * n_real_labeled) if n_real_labeled else NUM_SYNTHETICS

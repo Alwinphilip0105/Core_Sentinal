@@ -22,11 +22,47 @@ core-sentinel-guardrail/config/kb_cache.yaml
 
 # Large / downloadable datasets (fetch or unzip locally; README + licenses stay in repo)
 core-sentinel-guardrail/data/**/*.jsonl
+core-sentinel-guardrail/data/user_feedback/
 # Root-level zips in kaggle folder (**/ does not always match zero segments)
 core-sentinel-guardrail/data/ai4privacy_kaggle/*.zip
 core-sentinel-guardrail/data/ai4privacy_kaggle/**/*.zip
 core-sentinel-guardrail/data/ai4privacy_kaggle/**/*.csv
 core-sentinel-guardrail/data/ai4privacy_kaggle/**/*.png
+
+# Secrets / local env
+.env
+*.env
+
+# Local SQLite audit DBs (WAL sidecars)
+core-sentinel-guardrail/logs/guardrail.db*
+core-sentinel-guardrail/logs/*.db-wal
+core-sentinel-guardrail/logs/*.db-shm
+core-sentinel-guardrail/logs/guardrail_scoring_export.csv
+core-sentinel-guardrail/logs/scan_results.db
+core-sentinel-guardrail/logs/scan_reports/
+core-sentinel-guardrail/logs/feedback_store*.jsonl
+core-sentinel-guardrail/logs/hash_index.jsonl
+core-sentinel-guardrail/logs/events.csv
+core-sentinel-guardrail/logs/clipboard_events.jsonl
+core-sentinel-guardrail/logs/risk_telemetry.jsonl
+core-sentinel-guardrail/logs/feedback_fulltext.jsonl
+
+# Generated eval / training reports (regenerate locally)
+core-sentinel-guardrail/reports/
+reports/
+
+# Local user config & ad-hoc backups (not for sharing)
+core-sentinel-guardrail/config/user_settings.json
+core-sentinel-guardrail/config_backup_*/
+
+# One-off scratch / DLL helpers (keep local only)
+fix_dll*.py
+fix_infer_dll.py
+test_scan.txt
+core-sentinel-guardrail/test_scan.txt
+
+# Local commit template (optional)
+.gitmessage
 
 # IDE / OS
 .idea/

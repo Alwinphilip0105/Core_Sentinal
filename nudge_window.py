@@ -7,6 +7,14 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButt
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QColor, QFont
 
+
+def _clamp_font_pt(n: int, floor: int = 7, ceiling: int = 72) -> int:
+    """Point size for QFont; never below 7 or above 72."""
+    if ceiling < floor:
+        ceiling = floor
+    return max(floor, min(ceiling, int(round(n))))
+
+
 class NudgeWindow(QWidget):
     COLOR_BG = QColor(25, 25, 30, 245)
     COLOR_DANGER = QColor(220, 53, 69)
@@ -40,13 +48,13 @@ class NudgeWindow(QWidget):
 
         header_layout = QHBoxLayout()
         self.title_label = QLabel("CORE SENTINAL | COMPLIANCE")
-        self.title_label.setFont(QFont("Segoe UI Variable", 9, QFont.Weight.Bold))
+        self.title_label.setFont(QFont("Segoe UI Variable", _clamp_font_pt(9), QFont.Weight.Bold))
         self.title_label.setStyleSheet(f"color: {self.COLOR_TEXT_SUB.name()}; letter-spacing: 0.5px;")
         header_layout.addWidget(self.title_label)
         layout.addLayout(header_layout)
 
         self.message_label = QLabel("Sensitive Data Pattern Detected")
-        self.message_label.setFont(QFont("Segoe UI Variable", 11, QFont.Weight.DemiBold))
+        self.message_label.setFont(QFont("Segoe UI Variable", _clamp_font_pt(11), QFont.Weight.DemiBold))
         self.message_label.setStyleSheet(f"color: {self.COLOR_DANGER.name()};")
         layout.addWidget(self.message_label)
 

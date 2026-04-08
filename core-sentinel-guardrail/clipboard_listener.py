@@ -16,7 +16,8 @@ if str(_guardrail_dir) not in sys.path:
     sys.path.insert(0, str(_guardrail_dir))
 
 import pyperclip
-from infer import score_clipboard_with_pii
+from access_control import request_paste_permission
+from infer import _log_scoring_event, _pii_class_for_log, score_clipboard_with_pii
 from active_window_llm import (
     get_foreground_app_label,
     is_active_window_llm,
@@ -34,6 +35,22 @@ IDOK = 1
 IDCANCEL = 2
 IDYES = 6
 IDNO = 7
+
+
+def log_event(text: str, result: dict, *, action: str) -> None:
+    """Append one audit row to logs/guardrail.db via infer's async queue (same schema as scoring events)."""
+    labels = result.get("pii_labels") or []
+    risk = str(result.get("risk", "unknown"))
+    rs = result.get("risk_score")
+    conf = 0.0
+    if isinstance(rs, (int, float)):
+        conf = min(1.0, max(0.0, float(rs) / 100.0))
+    _log_scoring_event(
+        text,
+        pii_class=_pii_class_for_log(labels, risk),
+        confidence=conf,
+        action=action,
+    )
 
 
 def show_guardrail_popup(
@@ -161,7 +178,24 @@ def handle_paste(
         show_warn_tray_balloon("Clipboard Guardrail", message)
         return True
 
-    # block — modal MessageBox (existing remediation-style prompt for this app)
+    if action == "block":
+        permitted = request_paste_permission("block")
+        if not permitted:
+            log_event(text, result, action="auth_denied")
+            show_warn_tray_balloon(
+                "Clipboard Guardrail",
+                "Paste blocked: confirmation was cancelled or denied.",
+            )
+            return False
+        show_guardrail_popup(
+            "Clipboard Guardrail Blocked",
+            message,
+            "error",
+            allow_override=False,
+        )
+        return False
+
+    # Fallback for unexpected action values (legacy mapping)
     show_guardrail_popup(
         "Clipboard Guardrail Blocked",
         message,

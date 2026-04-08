@@ -1,10 +1,40 @@
 {
-  "min_prob_high_block": 0.8,
-  "min_prob_high_warn": 0.5,
-  "min_prob_med_warn": 0.6,
+  "thresholds": {
+    "low": {
+      "warn": 1.0,
+      "block": 1.0,
+      "action_override": "silent",
+      "note": "Low risk never interrupts user — logged only"
+    },
+    "med": {
+      "warn": 0.60,
+      "block": 1.0,
+      "action_override": "warn_only",
+      "note": "Medium risk shows badge/toast, never blocks"
+    },
+    "high": {
+      "warn": 0.45,
+      "block": 0.75,
+      "note": "High risk shows panel and blocks paste"
+    }
+  },
+  "class_overrides": {
+    "NAME": { "max_action": "warn" },
+    "LOCATION": { "max_action": "warn" },
+    "CONTACT": { "max_action": "warn" },
+    "ID": { "max_action": "block" },
+    "FINANCIAL": { "max_action": "block" },
+    "AUTH": { "max_action": "block" },
+    "HEALTH": { "max_action": "block" },
+    "OTHER_PII": { "max_action": "warn" },
+    "O": { "max_action": "silent" }
+  },
+  "low_risk_policy": "silent",
+  "med_risk_policy": "warn_only_no_block",
+  "high_risk_policy": "full_block_with_panel",
   "inference_3class_labels": {
-    "prob_threshold_high": 0.8,
-    "prob_threshold_med": 0.4
+    "prob_threshold_high": 0.75,
+    "prob_threshold_med": 0.40
   },
   "strict_decision_rules": {
     "prob_high_block": 0.35,
@@ -14,45 +44,5 @@
   "pii_count_probability_threshold": 0.1,
   "critical_secret": {
     "min_token_entropy_bits": 4.2
-  },
-  "per_class_thresholds": {
-    "NAME": {
-      "warn": 0.7,
-      "block": 0.9
-    },
-    "LOCATION": {
-      "warn": 0.7,
-      "block": 0.9
-    },
-    "CONTACT": {
-      "warn": 0.6,
-      "block": 0.82
-    },
-    "ID": {
-      "warn": 0.6,
-      "block": 0.82
-    },
-    "FINANCIAL": {
-      "warn": 0.45,
-      "block": 0.65
-    },
-    "AUTH": {
-      "warn": 0.45,
-      "block": 0.65
-    },
-    "HEALTH": {
-      "warn": 0.5,
-      "block": 0.7
-    },
-    "OTHER_PII": {
-      "warn": 0.65,
-      "block": 0.85
-    },
-    "O": {
-      "warn": 1.0,
-      "block": 1.0
-    }
-  },
-  "_calibrated_at": "2026-04-07T03:30:31.111067+00:00",
-  "_calibration_source": "reports/pr_curve_summary.json"
+  }
 }

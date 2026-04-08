@@ -43,6 +43,82 @@ DEFAULT_RISK_POLICY: dict[str, Any] = {
 _policy_cache: dict[str, Any] | None = None
 _policy_path_used: Path | None = None
 
+_TIER_KEYS = frozenset({"low", "med", "high"})
+
+
+def _tier_warn_block(th: dict[str, Any]) -> tuple[float, float, float, float, float, float]:
+    """Warn/block pairs from thresholds.low / .med / .high (defaults if missing)."""
+    low = th.get("low") if isinstance(th.get("low"), dict) else {}
+    med = th.get("med") if isinstance(th.get("med"), dict) else {}
+    hi = th.get("high") if isinstance(th.get("high"), dict) else {}
+    wl = float(low.get("warn", 1.0))
+    bl = float(low.get("block", 1.0))
+    wm = float(med.get("warn", DEFAULT_RISK_POLICY["min_prob_med_warn"]))
+    bm = float(med.get("block", 1.0))
+    wh = float(hi.get("warn", DEFAULT_RISK_POLICY["min_prob_high_warn"]))
+    bh = float(hi.get("block", DEFAULT_RISK_POLICY["min_prob_high_block"]))
+    return wl, bl, wm, bm, wh, bh
+
+
+def _apply_tier_thresholds_to_min_prob(merged: dict[str, Any]) -> None:
+    """Map thresholds.low/med/high → min_prob_high_block, min_prob_high_warn, min_prob_med_warn."""
+    th = merged.get("thresholds")
+    if not isinstance(th, dict):
+        return
+    if not all(k in th for k in ("low", "med", "high")):
+        return
+    _, _, wm, _, wh, bh = _tier_warn_block(th)
+    merged["min_prob_high_block"] = bh
+    merged["min_prob_high_warn"] = wh
+    merged["min_prob_med_warn"] = wm
+
+
+def _expand_per_class_thresholds(merged: dict[str, Any]) -> None:
+    """
+    Build per_class_thresholds from class_overrides (max_action × tier warn/block) and
+    overlay calibrated entries under thresholds.<CLASS> (not low/med/high).
+    """
+    th = merged.get("thresholds")
+    if not isinstance(th, dict):
+        th = {}
+    wl, bl, wm, bm, wh, bh = _tier_warn_block(th)
+
+    pct: dict[str, dict[str, float]] = {}
+    co = merged.get("class_overrides")
+    if isinstance(co, dict) and co:
+        for cls, spec in co.items():
+            key = str(cls).strip().upper()
+            if not isinstance(spec, dict):
+                continue
+            ma = str(spec.get("max_action", "warn")).lower()
+            if ma == "silent":
+                pct[key] = {"warn": wl, "block": bl}
+            elif ma == "warn":
+                pct[key] = {"warn": wm, "block": bm}
+            elif ma == "block":
+                pct[key] = {"warn": wh, "block": bh}
+            else:
+                pct[key] = {"warn": wm, "block": bm}
+
+    for k, v in th.items():
+        if k in _TIER_KEYS or not isinstance(v, dict):
+            continue
+        if "warn" not in v and "block" not in v:
+            continue
+        ck = str(k).strip().upper()
+        pct[ck] = {
+            "warn": float(v.get("warn", 1.0)),
+            "block": float(v.get("block", 1.0)),
+        }
+
+    if pct:
+        merged["per_class_thresholds"] = pct
+
+
+def _normalize_merged_policy(merged: dict[str, Any]) -> None:
+    _apply_tier_thresholds_to_min_prob(merged)
+    _expand_per_class_thresholds(merged)
+
 
 def _deep_merge(base: dict, override: dict) -> dict:
     """Recursively merge override into base (override wins)."""
@@ -70,6 +146,7 @@ def load_merged_risk_policy(config_path: Path | None = None) -> dict[str, Any]:
                 merged = _deep_merge(merged, user)
         except (json.JSONDecodeError, OSError):
             pass
+    _normalize_merged_policy(merged)
     return merged
 
 

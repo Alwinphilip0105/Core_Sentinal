@@ -2,12 +2,14 @@
 Detect whether the current foreground window looks like an LLM target.
 
   - Desktop: window title and process name (ChatGPT, Claude, Gemini, Copilot, Perplexity, Poe,
-    plus title substrings like claude.ai, chatgpt, gemini, copilot, perplexity).
-  - Chromium (Brave, Edge, Chrome): CDP tab URL/title when available; else title fallback.
+    Comet, plus title substrings like claude.ai, chatgpt, gemini, copilot, perplexity, comet).
+  - Chromium (Brave, Edge, Chrome, Comet): CDP tab URL/title when available; else title fallback.
     URLs: chat.openai.com, claude.ai, gemini.google.com, copilot.microsoft.com, perplexity.ai,
-    poe.com, and any URL containing \"/chat\" or \"assistant\" (labeled \"Web LLM\").
-  - Ports: Brave 9222 (GUARDRAIL_CDP_PORT), Edge 9223 (GUARDRAIL_EDGE_CDP_PORT),
-    Chrome 9224 (GUARDRAIL_CHROME_CDP_PORT).
+    comet.perplexity.ai, poe.com, any URL containing \"perplexity\", and any URL with \"/chat\"
+    or \"assistant\" (labeled \"Web LLM\").
+  - CDP: tries browser-specific port first, then CDP_PORTS (9222, 9223, 9224, 9229).
+    Brave 9222 (GUARDRAIL_CDP_PORT), Edge 9223 (GUARDRAIL_EDGE_CDP_PORT),
+    Chrome 9224 (GUARDRAIL_CHROME_CDP_PORT), Comet 9229 (GUARDRAIL_COMET_CDP_PORT).
   - Use get_active_llm_name() for a single string label or None.
 
   Non-browser windows use title matching only. cleaned_title from _clean_browser_title.
@@ -23,6 +25,60 @@ from urllib.request import Request, urlopen
 from urllib.error import URLError
 
 
+# --- Consolidated LLM hints (titles, processes, URL fragments; includes Comet / Perplexity) ---
+KNOWN_LLM_SUBSTRINGS = [
+    "chatgpt",
+    "claude",
+    "gemini",
+    "copilot",
+    "perplexity",
+    "comet",
+    "poe",
+    "mistral",
+    "grok",
+    "llama",
+    "ollama",
+    "openai",
+    "anthropic",
+    "hugging",
+    "together",
+]
+
+LLM_TITLES = KNOWN_LLM_SUBSTRINGS
+
+LLM_PROCESSES = [
+    "chatgpt.exe",
+    "perplexity.exe",
+    "claude.exe",
+    "gemini.exe",
+    "poe.exe",
+    "copilot.exe",
+    "windowscopilot",
+    "brave.exe",
+    "chrome.exe",
+    "msedge.exe",
+    "comet.exe",
+    "comet browser",
+]
+
+LLM_URLS = [
+    "gemini.google.com",
+    "chat.openai.com",
+    "chatgpt.com",
+    "claude.ai",
+    "copilot.microsoft.com",
+    "comet.perplexity.ai",
+    "perplexity.ai",
+    "poe.com",
+    "bing.com/chat",
+    "anthropic.com",
+]
+
+# Chrome DevTools Protocol: try browser default first, then these in order (Comet may use 9229).
+CDP_PORTS: tuple[int, ...] = (9222, 9223, 9224, 9229)
+
+_CDP_HTTP_TIMEOUT_SEC = 0.5
+
 # Browser suffixes to strip from window/tab titles (order matters: longer first)
 _BROWSER_SUFFIXES = [
     " - Personal - Microsoft Edge",
@@ -32,6 +88,7 @@ _BROWSER_SUFFIXES = [
     " - Brave",
     " - Google Chrome",
     " - Chromium",
+    " - Comet",
     " - Firefox",
 ]
 
@@ -61,6 +118,7 @@ def _clean_browser_title(raw_title: str) -> str:
         " - google chrome",
         " - chrome",
         " - edge",
+        " - comet",
         " - firefox",
     ]:
         if s_lower.endswith(browser_suffix):
@@ -76,11 +134,24 @@ def _clean_browser_title(raw_title: str) -> str:
     return s.strip()
 
 
+def _title_matches_known_llm_substrings(title_raw: str) -> bool:
+    """True if window or tab title contains any KNOWN_LLM_SUBSTRING (case-insensitive)."""
+    t = (title_raw or "").lower()
+    if not t:
+        return False
+    return any(s in t for s in KNOWN_LLM_SUBSTRINGS)
+
+
 def _agent_from_title(title_raw: str) -> str:
     """Derive an agent label from the foreground/tab title text (desktop + browser tab titles)."""
     title_lower = (title_raw or "").lower()
     if not title_lower:
         return ""
+
+    if "comet" in title_lower:
+        return "Comet"
+    if "perplexity" in title_lower:
+        return "Perplexity"
 
     # Longer URL fragments first (subset of browser/CDP URL hints that appear in titles).
     for needle, label in [
@@ -88,6 +159,7 @@ def _agent_from_title(title_raw: str) -> str:
         ("chat.openai.com", "ChatGPT"),
         ("gemini.google.com", "Gemini"),
         ("copilot.microsoft.com", "Copilot"),
+        ("comet.perplexity.ai", "Comet"),
         ("perplexity.ai", "Perplexity"),
         ("poe.com", "Poe"),
         ("chatgpt.com", "ChatGPT"),
@@ -102,9 +174,15 @@ def _agent_from_title(title_raw: str) -> str:
         ("gemini", "Gemini"),
         ("copilot", "Copilot"),
         ("perplexity", "Perplexity"),
+        ("comet", "Comet"),
     ]:
         if needle in title_lower:
             return label
+
+    # KNOWN_LLM_SUBSTRINGS fallback labels (title heuristic).
+    for sub in ("mistral", "grok", "llama", "ollama", "openai", "anthropic", "hugging", "together"):
+        if sub in title_lower:
+            return sub.title()
 
     # Desktop / tab names: explicit product names (word-boundary where ambiguous).
     if re.search(r"\bchatgpt\b", title_lower):
@@ -166,13 +244,14 @@ def _get_pid_from_hwnd(hwnd: int) -> int:
     return int(pid.value)
 
 
-# URL host/path fragments -> agent label (longer / more specific first).
+# URL host/path fragments -> agent label (longer / more specific first). Kept in sync with LLM_URLS.
 _URL_AGENT_PATTERNS = [
     ("gemini.google.com", "Gemini"),
     ("chat.openai.com", "ChatGPT"),
     ("chatgpt.com", "ChatGPT"),
     ("claude.ai", "Claude"),
     ("copilot.microsoft.com", "Copilot"),
+    ("comet.perplexity.ai", "Comet"),
     ("perplexity.ai", "Perplexity"),
     ("poe.com", "Poe"),
     ("bing.com/chat", "Copilot"),
@@ -184,6 +263,7 @@ _CDP_PORTS = {
     "brave": ("GUARDRAIL_CDP_PORT", 9222),
     "chrome": ("GUARDRAIL_CHROME_CDP_PORT", 9224),
     "msedge": ("GUARDRAIL_EDGE_CDP_PORT", 9223),
+    "comet": ("GUARDRAIL_COMET_CDP_PORT", 9229),
 }
 
 
@@ -198,6 +278,22 @@ def _get_cdp_port_for_process(process_name: str) -> int:
     return int(os.environ.get("GUARDRAIL_CDP_PORT", "9222"))
 
 
+def _get_active_tab_from_cdp_with_fallback(window_title: str, process_name: str) -> Optional[dict]:
+    """Try CDP /json on the browser's default port, then CDP_PORTS in order (Comet may differ)."""
+    primary = _get_cdp_port_for_process(process_name)
+    seen: set[int] = set()
+    order: list[int] = []
+    for p in (primary, *CDP_PORTS):
+        if p not in seen:
+            seen.add(p)
+            order.append(p)
+    for port in order:
+        tab = _get_active_tab_from_cdp(window_title, port)
+        if tab:
+            return tab
+    return None
+
+
 def _get_active_tab_from_cdp(window_title: str, port: int) -> Optional[dict]:
     """
     Query CDP /json/list; find the tab whose title best matches window_title or whose URL
@@ -206,7 +302,7 @@ def _get_active_tab_from_cdp(window_title: str, port: int) -> Optional[dict]:
     url = f"http://127.0.0.1:{port}/json/list"
     try:
         req = Request(url)
-        with urlopen(req, timeout=1.5) as resp:
+        with urlopen(req, timeout=_CDP_HTTP_TIMEOUT_SEC) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except (URLError, OSError, ValueError, KeyError):
         return None
@@ -247,10 +343,34 @@ def _agent_from_url(url: str) -> str:
     for pattern, label in _URL_AGENT_PATTERNS:
         if pattern in url_lower:
             return label
+    if "perplexity" in url_lower:
+        return "Perplexity"
     # Browser tabs: any URL with /chat or assistant-style paths (after known hosts).
     if "/chat" in url_lower or "assistant" in url_lower:
         return "Web LLM"
     return ""
+
+
+def _llm_fallback_from_title(
+    title_raw: str, *, debug: bool = False
+) -> Optional[tuple[bool, str, Optional[str], Optional[str]]]:
+    """If window or cleaned title matches KNOWN_LLM_SUBSTRINGS, return an LLM tuple."""
+    for text in (title_raw, _clean_browser_title(title_raw)):
+        if not text:
+            continue
+        if not _title_matches_known_llm_substrings(text):
+            continue
+        agent = _agent_from_title(text)
+        if not agent:
+            continue
+        cleaned = _clean_browser_title(title_raw)
+        if debug:
+            print(
+                f"[LLM detect] Agent={agent!r} Title={cleaned!r} (substring fallback)",
+                flush=True,
+            )
+        return (True, agent, None, cleaned or None)
+    return None
 
 
 def is_active_window_llm(*, debug: bool = False) -> tuple[bool, str, Optional[str], Optional[str]]:
@@ -282,6 +402,7 @@ def is_active_window_llm(*, debug: bool = False) -> tuple[bool, str, Optional[st
         ("poe.exe", "Poe"),
         ("copilot.exe", "Copilot"),
         ("windowscopilot", "Copilot"),
+        ("comet.exe", "Comet"),
     ]
     for p, agent_label in known_processes:
         if p in process_name:
@@ -290,16 +411,20 @@ def is_active_window_llm(*, debug: bool = False) -> tuple[bool, str, Optional[st
                 print(f"[LLM detect] Agent={agent_label!r} Title={cleaned!r}", flush=True)
             return (True, agent_label, None, cleaned or None)
 
-    # Chromium browsers: prefer CDP to get tab title/url.
-    is_chromium = any(k in process_name for k in ["brave", "chrome", "msedge"])
+    # Chromium browsers (incl. Comet): prefer CDP to get tab title/url; try multiple CDP ports.
+    is_chromium = any(k in process_name for k in ["brave", "chrome", "msedge", "comet"])
     if is_chromium:
-        port = _get_cdp_port_for_process(process_name)
-        tab = _get_active_tab_from_cdp(title_raw, port)
+        tab = _get_active_tab_from_cdp_with_fallback(title_raw, process_name)
         if tab:
             url = tab.get("url") or ""
             tab_title = tab.get("title") or ""
 
             agent = _agent_from_url(url) or _agent_from_title(tab_title)
+            if not agent and (
+                _title_matches_known_llm_substrings(tab_title)
+                or _title_matches_known_llm_substrings(title_raw)
+            ):
+                agent = _agent_from_title(tab_title) or _agent_from_title(title_raw)
             cleaned = _clean_browser_title(tab_title)
             # If tab titles are like "<page> - ChatGPT", remove redundant suffix.
             if agent:
@@ -327,6 +452,9 @@ def is_active_window_llm(*, debug: bool = False) -> tuple[bool, str, Optional[st
             if debug:
                 print(f"[LLM detect] Agent={agent!r} Title={cleaned!r}", flush=True)
             return (True, agent, None, cleaned or None)
+        fb = _llm_fallback_from_title(title_raw, debug=debug)
+        if fb is not None:
+            return fb
         return (False, "", None, None)
 
     # Non-browser: title match.
@@ -337,6 +465,9 @@ def is_active_window_llm(*, debug: bool = False) -> tuple[bool, str, Optional[st
             print(f"[LLM detect] Agent={agent!r} Title={cleaned!r}", flush=True)
         return (True, agent, None, cleaned or None)
 
+    fb = _llm_fallback_from_title(title_raw, debug=debug)
+    if fb is not None:
+        return fb
     return (False, "", None, None)
 
 
@@ -348,6 +479,15 @@ def get_active_llm_name() -> Optional[str]:
     is_llm, agent, _, _ = is_active_window_llm()
     if is_llm and agent:
         return agent
+    hwnd = _get_foreground_window()
+    if not hwnd:
+        return None
+    title_raw = _get_window_title(hwnd)
+    title_lower = (title_raw or "").lower()
+    if "comet" in title_lower:
+        return "Comet"
+    if "perplexity" in title_lower:
+        return "Perplexity"
     return None
 
 

@@ -139,16 +139,35 @@ def kb_rule_spans(text: str) -> list[dict]:
     return out
 
 
+def strong_regex_pii_spans(text: str) -> list[dict]:
+    """
+    Strong-PII regex matches with character offsets from each re.Match (finditer).
+    Overlapping matches from different patterns are all returned.
+    """
+    if not text:
+        return []
+    out: list[dict] = []
+    for pattern, pattern_name in zip(_STRONG_PII_PATTERNS, _STRONG_PII_NAMES):
+        for m in pattern.finditer(text):
+            out.append(
+                {
+                    "start": m.start(),
+                    "end": m.end(),
+                    "class": pattern_name,
+                    "match": m.group(),
+                    "source": "regex",
+                }
+            )
+    return out
+
+
 def iter_regex_pii_matches(text: str):
     """
     Yield (start, end, class_name, matched_text) for every strong-PII regex match.
     Overlapping matches from different patterns are all returned.
     """
-    if not text:
-        return
-    for pat, name in zip(_STRONG_PII_PATTERNS, _STRONG_PII_NAMES):
-        for m in pat.finditer(text):
-            yield m.start(), m.end(), name, m.group()
+    for d in strong_regex_pii_spans(text):
+        yield d["start"], d["end"], d["class"], d["match"]
 
 
 def get_pii_override_triggers(text: str) -> list[str]:

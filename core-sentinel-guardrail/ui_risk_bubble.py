@@ -1,54 +1,53 @@
 """
 Grammarly-style floating pill for Core Sentinel guardrail.
-Visual-only rebuild: pill shape, hover action stack, Win32 input anchoring, state painting.
+Single paint-only bubble (92×46) with pill drawn at (6,6,80×34); action cards / feedback are separate.
 """
 
 from __future__ import annotations
 
-import html
+import os
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from active_window_llm import get_active_llm_name, is_active_window_llm
-from pii_remediation import encrypt_pii, hash_pii, mask_pii, redact_all_literal
+from active_window_llm import get_active_llm_name
+from guardrail_runtime import is_monitoring_paused, set_monitoring_paused
+from pii_remediation import encrypt_pii, encrypt_text, hash_pii, mask_pii, mask_pii_spans, redact_all_literal
 
-PILL_W = 72
+import user_settings
+from infer import score_clipboard_with_pii
+from toast import show_toast
+from ui_bubble_toolbar import BubbleToolbar, ToolbarTooltip
+from font_clamp import MIN_PX_BADGE, MIN_PX_BODY, MIN_PX_LABEL, paint_font_px
+
+# Outer widget (room for badge overflow)
+WIDGET_W = 92
+WIDGET_H = 46
+# Pill geometry inside widget (64×34: power + shield + score)
+PILL_X = 6
+PILL_Y = 6
+PILL_W = 64
+PILL_H = 34
+PILL_RX = 14
+
 CARD_W = 280
 CARD_SLIDE_PX = 36
-PILL_H = 32
-PILL_RX = 16
-MENU_BTN = 32
-MENU_GAP = 8
-MENU_SLOT_H = MENU_BTN * 3 + MENU_GAP * 2
-PILL_MENU_GAP = 8
-# Expanded slide stack: three action buttons + gap + pill (all inside _menu_host)
-EXPANDED_MENU_HOST_H = MENU_SLOT_H + PILL_MENU_GAP + PILL_H
-STRIP_H = 20
-# Hover strip when showing multi-chunk scan subtitle (main + small line)
-STRIP_H_MULTI = 34
 
-_MENU_ACTION_TOOLTIPS = {
-    "rephrase": "Rephrase — open a card with original vs PII-masked text; “Use this” copies the safe version.",
-    "encrypt": "Encrypt — open a card with hashed + ENC:: demo text; “Copy encrypted” copies to the clipboard.",
-    "redact": "Redact all — replace detected PII with [REDACTED] and copy to the clipboard.",
-}
-HOVER_NEAR_PX = 80
-
-# #1a1a1a @ 85% alpha (drawn in local coordinates; multiplied by windowOpacity)
-COLOR_PILL_BG = QtGui.QColor(26, 26, 26, int(255 * 0.85))
-COLOR_MENU_CIRCLE = QtGui.QColor(26, 26, 26, int(255 * 0.85))
-COLOR_SHIELD_ON = QtGui.QColor(21, 195, 154)
-COLOR_SHIELD_OFF = QtGui.QColor(120, 122, 128)
-COLOR_BADGE = QtGui.QColor(220, 53, 69)
-COLOR_CHECK = QtGui.QColor(40, 167, 69)
-COLOR_ICON = QtGui.QColor(200, 202, 208)
-COLOR_SPINNER_TRACK = QtGui.QColor(60, 62, 66)
+COLOR_PILL_BORDER = QtGui.QColor(255, 255, 255, 30)
+COLOR_PILL_PAUSED = QtGui.QColor(88, 88, 90)
+COLOR_SHIELD_OFF = QtGui.QColor(0x96, 0x98, 0x9A)
+COLOR_SHIELD_ON = QtGui.QColor(0x02, 0xC3, 0x9A)
+COLOR_BADGE_OK = QtGui.QColor(0x2E, 0x7D, 0x32)
+COLOR_SPINNER = QtGui.QColor(0x02, 0xC3, 0x9A)
+COLOR_CHECK = QtGui.QColor(0x02, 0xC3, 0x9A)
+COLOR_BADGE = QtGui.QColor(0xE5, 0x39, 0x35)
+COLOR_CRITICAL_COUNT = QtGui.QColor(0xFF, 0x8A, 0x80)
+COLOR_IDLE_GLYPH = QtGui.QColor(0x02, 0xC3, 0x9A)
 
 CARD_QSS = (
     "QFrame#actionCard { background: rgba(26,26,26,230); border: 1px solid #3a3a3a; "
@@ -64,150 +63,45 @@ CARD_QSS = (
 )
 
 
-class _MenuCircleButton(QtWidgets.QWidget):
-    """32×32 dark circle with a simple QPainter icon (pencil / lock / eraser)."""
-
-    clicked = QtCore.pyqtSignal()
-
-    def __init__(self, icon: str, parent=None):
-        super().__init__(parent)
-        self._icon = icon
-        self.setFixedSize(MENU_BTN, MENU_BTN)
-        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        p = QtGui.QPainter(self)
-        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-        p.setPen(QtCore.Qt.PenStyle.NoPen)
-        p.setBrush(COLOR_MENU_CIRCLE)
-        p.drawEllipse(0, 0, MENU_BTN, MENU_BTN)
-        p.setPen(QtGui.QPen(COLOR_ICON, 1.6))
-        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-        c = MENU_BTN // 2
-        if self._icon == "pencil":
-            p.drawLine(c - 6, c + 6, c + 5, c - 5)
-            p.drawLine(c + 2, c - 8, c + 8, c - 2)
-            p.drawLine(c - 7, c + 5, c - 5, c + 7)
-        elif self._icon == "lock":
-            p.drawArc(QtCore.QRectF(c - 5, c - 2, 10, 8), 30 * 16, 120 * 16)
-            p.drawRoundedRect(QtCore.QRectF(c - 6, c + 2, 12, 9), 1, 1)
-        else:  # eraser
-            p.drawRoundedRect(QtCore.QRectF(c - 7, c - 3, 14, 8), 2, 2)
-            p.drawLine(c - 5, c + 5, c + 6, c - 4)
-
-    def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
-        if event.button() == QtCore.Qt.MouseButton.LeftButton:
-            self.clicked.emit()
-        super().mouseReleaseEvent(event)
-
-
-class _PillCore(QtWidgets.QWidget):
-    """72×32 pill: shield, spinner / check / badge (sits in slide stack with menu)."""
-
-    def __init__(self, controller: "RiskBubble"):
-        super().__init__(controller)
-        self._c = controller
-        self.setFixedSize(PILL_W, PILL_H)
-        self.setMouseTracking(True)
-
-    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
-        self._c.mousePressEvent(event)
-
-    def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
-        self._c.mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
-        self._c.mouseReleaseEvent(event)
-
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        c = self._c
-        p = QtGui.QPainter(self)
-        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-
-        path = QtGui.QPainterPath()
-        path.addRoundedRect(0, 0, PILL_W, PILL_H, PILL_RX, PILL_RX)
-        p.fillPath(path, COLOR_PILL_BG)
-
-        cx, cy = PILL_W // 2, PILL_H // 2
-        shield_fill = COLOR_SHIELD_ON if c._in_llm else COLOR_SHIELD_OFF
-        sp = QtGui.QPainterPath()
-        sp.moveTo(cx, cy - 9)
-        sp.lineTo(cx + 8, cy - 4)
-        sp.lineTo(cx + 8, cy + 8)
-        sp.lineTo(cx - 8, cy + 8)
-        sp.lineTo(cx - 8, cy - 4)
-        sp.closeSubpath()
-        p.fillPath(sp, shield_fill)
-        p.setPen(QtGui.QPen(shield_fill.darker(130), 1))
-        p.drawPath(sp)
-
-        scx, scy = PILL_W - 15, PILL_H // 2
-        if c._analysing and c._pulse_radius > 0 and c._pulse_ring_alpha > 0.005:
-            pr = QtGui.QPen(
-                QtGui.QColor(21, 195, 154, int(255 * c._pulse_ring_alpha)), 1.5
-            )
-            pr.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
-            p.setPen(pr)
-            p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-            p.drawEllipse(
-                QtCore.QRectF(scx - c._pulse_radius, scy - c._pulse_radius, 2 * c._pulse_radius, 2 * c._pulse_radius)
-            )
-
-        if c._spinner_opacity > 0.01:
-            p.save()
-            p.setOpacity(c._spinner_opacity)
-            p.setPen(QtCore.Qt.PenStyle.NoPen)
-            p.setBrush(COLOR_SPINNER_TRACK)
-            p.drawEllipse(QtCore.QRectF(scx - 12, scy - 12, 24, 24))
-            pen = QtGui.QPen(COLOR_SHIELD_ON, 2.5)
-            pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
-            p.setPen(pen)
-            p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-            p.drawArc(
-                QtCore.QRectF(scx - 12, scy - 12, 24, 24),
-                int(-c._spin_angle * 16),
-                int(-270 * 16),
-            )
-            p.restore()
-
-        if c._show_all_clear and c._all_clear_opacity > 0.01 and not c._issue_count:
-            p.save()
-            p.setOpacity(c._all_clear_opacity)
-            p.setPen(QtGui.QPen(COLOR_CHECK, 2.2))
-            p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-            rcx, rcy = PILL_W - 14, cy
-            chk = QtGui.QPainterPath()
-            chk.moveTo(rcx - 5, rcy)
-            chk.lineTo(rcx - 1, rcy + 4)
-            chk.lineTo(rcx + 6, rcy - 5)
-            p.drawPath(chk)
-            p.restore()
-
-        if c._issue_count > 0 and not c._analysing:
-            badge = str(min(99, c._issue_count))
-            bx, by = PILL_W - 17, 1
-            p.save()
-            p.translate(bx + 7.5, by + 7.5)
-            p.scale(c._badge_scale, c._badge_scale)
-            p.translate(-7.5, -7.5)
-            p.setPen(QtCore.Qt.PenStyle.NoPen)
-            p.setBrush(COLOR_BADGE)
-            p.drawEllipse(QtCore.QRectF(0, 0, 15, 15))
-            p.setPen(QtGui.QColor(255, 255, 255))
-            bf = p.font()
-            bf.setBold(True)
-            bf.setPointSize(7 if len(badge) > 1 else 8)
-            p.setFont(bf)
-            p.drawText(QtCore.QRectF(0, 0, 15, 15), QtCore.Qt.AlignmentFlag.AlignCenter, badge)
-            p.restore()
+def _derive_critical_task_count(result: dict) -> int:
+    """
+    Items that should show as “critical” in the pill: API/secret hits, high risk, or strong scores.
+    """
+    if not isinstance(result, dict):
+        return 0
+    if bool(result.get("critical_secret_detected")):
+        spans = result.get("spans") if isinstance(result.get("spans"), list) else []
+        return max(len(spans), 1)
+    risk = str(result.get("risk", "low")).lower()
+    try:
+        score = int(result.get("risk_score", 0) or 0)
+    except (TypeError, ValueError):
+        score = 0
+    spans = result.get("spans") if isinstance(result.get("spans"), list) else []
+    triggers = result.get("triggers") or []
+    if not isinstance(triggers, (list, tuple)):
+        triggers = []
+    if risk == "high":
+        return max(len(spans), 1) if spans else 1
+    if score >= 75:
+        return max(len(spans), len(triggers), 1)
+    action = str(result.get("action", "") or "")
+    if action == "block" and score >= 55:
+        return max(len(spans), len(triggers), 1)
+    return 0
 
 
 class RiskBubble(QtWidgets.QWidget):
     """
-    Grammarly-like pill: states, hover menu above, status strip below, Win32 anchor to focused edit.
+    Grammarly-like pill: paint-only chrome; optional action card stack above; user-draggable position.
     """
 
     menu_action_clicked = QtCore.pyqtSignal(str)
+    context_menu_action = QtCore.pyqtSignal(str)
+    monitoring_pause_changed = QtCore.pyqtSignal(bool)
+    document_scan_progress = QtCore.pyqtSignal(int, str)
+    document_scan_finished = QtCore.pyqtSignal(object)
+    document_scan_failed = QtCore.pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -216,540 +110,963 @@ class RiskBubble(QtWidgets.QWidget):
         self._original_text = ""
         self._url = ""
         self._cleaned_title = ""
-        self._drag_pos: Optional[QtCore.QPoint] = None
+        self._dragging = False
+        self._drag_offset = QtCore.QPoint(0, 0)
         self._press_pos: Optional[QtCore.QPoint] = None
+        self._click_timer = QtCore.QTimer(self)
+        self._click_timer.setSingleShot(True)
+        self._click_timer.setInterval(280)
+        self._click_timer.timeout.connect(self._on_delayed_single_click)
 
         self._in_llm = False
         self._analysing = False
-        self._hover_ui = False
+        self._hover_tooltip_visible = False
         self._issue_count = 0
         self._show_all_clear = False
-        self._all_clear_opacity = 1.0
-        self._menu_expanded = False
-        self._menu_anims: List[QtCore.QPropertyAnimation] = []
         self._card_anim: Optional[QtCore.QPropertyAnimation] = None
         self._action_card_inner: Optional[QtWidgets.QWidget] = None
         self._redact_toast_timer = QtCore.QTimer(self)
         self._redact_toast_timer.setSingleShot(True)
         self._redact_toast_timer.timeout.connect(self._dismiss_action_card)
 
-        self._spin_angle = 0
+        self._last_text = ""
+        self._last_result: dict = {}
+        self._last_label = ""
+        self._feedback_widget: Optional[QtWidgets.QWidget] = None
+        self._feedback_timer: Optional[QtCore.QTimer] = None
+        self._action_card_reuse: Optional[QtWidgets.QFrame] = None
+
+        self._spin_angle = 0.0
         self._spinner_opacity = 0.0
-        self._badge_scale = 1.0
-        self._pulse_radius = 0.0
-        self._pulse_ring_alpha = 0.0
-        self._finish_anim_group: Optional[QtCore.QParallelAnimationGroup] = None
-        self._pulse_anim: Optional[QtCore.QVariantAnimation] = None
+
+        self._show_badge_on_issues = True
+
+        self._risk_score = 0
+        self._has_risk_score = False
+        # Secrets / high-risk / block-worthy items — shown in score slot; dims ambient opacity
+        self._critical_task_count = 0
+        self._idle_pixmap: Optional[QtGui.QPixmap] = None
+        self._idle_pixmap_source: str = ""
+        self._current_bg = QtGui.QColor(28, 28, 30, 210)
 
         self._spinner_timer = QtCore.QTimer(self)
-        self._spinner_timer.setInterval(50)
+        self._spinner_timer.setInterval(100)
         self._spinner_timer.timeout.connect(self._tick_spinner)
 
         self._all_clear_timer = QtCore.QTimer(self)
         self._all_clear_timer.setSingleShot(True)
-        self._all_clear_timer.timeout.connect(self._begin_all_clear_fade)
+        self._all_clear_timer.timeout.connect(self._hide_all_clear_indicator)
 
-        self._fade_timer = QtCore.QTimer(self)
-        self._fade_timer.timeout.connect(self._tick_all_clear_fade)
+        self._remediation_panel: Optional[QtWidgets.QWidget] = None
+
+        self._dot_opacity = 1.0
+        self._dot_pulse_timer = QtCore.QTimer(self)
+        self._dot_pulse_timer.setInterval(800)
+        self._dot_pulse_timer.timeout.connect(self._tick_dot_pulse)
+
+        self._toolbar: Optional[BubbleToolbar] = None
+        self._tb_tooltip = ToolbarTooltip()
+        self._toolbar_hide_timer = QtCore.QTimer(self)
+        self._toolbar_hide_timer.setSingleShot(True)
+        self._toolbar_hide_timer.setInterval(400)
+        self._toolbar_hide_timer.timeout.connect(self._maybe_hide_toolbar)
+        self._toolbar_idle_timer = QtCore.QTimer(self)
+        self._toolbar_idle_timer.setSingleShot(True)
+        self._toolbar_idle_timer.setInterval(2000)
+        self._toolbar_idle_timer.timeout.connect(self._hide_toolbar_idle_timeout)
+        self._status_hide_timer: Optional[QtCore.QTimer] = None
+
+        ga = QtGui.QGuiApplication.instance()
+        if ga is not None:
+            ga.applicationStateChanged.connect(self._on_application_state_changed)
+        self._toolbar_anim: Optional[QtCore.QPropertyAnimation] = None
+
+        self._is_hovered = False
+        self._target_opacity = 0.55
+        self._opacity_timer = QtCore.QTimer(self)
+        self._opacity_timer.setInterval(16)
+        self._opacity_timer.timeout.connect(self._tick_opacity)
 
         self.setWindowFlags(
             QtCore.Qt.WindowType.FramelessWindowHint
             | QtCore.Qt.WindowType.WindowStaysOnTopHint
             | QtCore.Qt.WindowType.Tool
         )
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_Hover, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
+        self.setAutoFillBackground(False)
         self.setMouseTracking(True)
-
-        self._opacity_anim = QtCore.QPropertyAnimation(self, b"windowOpacity", self)
-        self._opacity_anim.setDuration(180)
-        self._opacity_anim.setEasingCurve(QtCore.QEasingCurve.Type.OutCubic)
-
-        root = QtWidgets.QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
+        self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.ArrowCursor))
 
         self._action_card_wrap = QtWidgets.QWidget(self)
         self._action_card_wrap.setFixedHeight(0)
-        self._action_card_wrap.setAttribute(QtCore.Qt.WidgetAttribute.WA_Hover, True)
-        root.addWidget(self._action_card_wrap)
+        self._action_card_wrap.setFixedWidth(CARD_W)
 
-        self._menu_host = QtWidgets.QWidget(self)
-        self._menu_host.setFixedHeight(PILL_H)
-        self._menu_host.setFixedWidth(PILL_W)
-        self._menu_host.setAttribute(QtCore.Qt.WidgetAttribute.WA_Hover, True)
-        self._menu_hidden_y = EXPANDED_MENU_HOST_H + 4
-        self._menu_shown_ys = [8 + i * (MENU_BTN + MENU_GAP) for i in range(3)]
-        self._menu_buttons: List[_MenuCircleButton] = []
-        _bx0 = (PILL_W - MENU_BTN) // 2
-        for key, icon in (("rephrase", "pencil"), ("encrypt", "lock"), ("redact", "eraser")):
-            b = _MenuCircleButton(icon, self._menu_host)
-            b.setToolTip(_MENU_ACTION_TOOLTIPS.get(key, ""))
-            b.setAttribute(QtCore.Qt.WidgetAttribute.WA_Hover, True)
-            b.move(_bx0, -MENU_SLOT_H)
-            b.clicked.connect(lambda _=False, k=key: self.menu_action_clicked.emit(k))
-            self._menu_buttons.append(b)
-        self._pill = _PillCore(self)
-        self._pill.setParent(self._menu_host)
-        self._pill.setAttribute(QtCore.Qt.WidgetAttribute.WA_Hover, True)
-        self._pill.raise_()
-        root.addWidget(self._menu_host)
+        self._tooltip_win: Optional[QtWidgets.QLabel] = None
 
-        self._hover_label = QtWidgets.QLabel("")
-        self._hover_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
-        self._hover_label.setFixedHeight(STRIP_H)
-        self._hover_label.setTextFormat(QtCore.Qt.TextFormat.RichText)
-        self._hover_label.setStyleSheet(
-            "font-family: 'Segoe UI'; "
-            "background: rgba(26,26,26,200); border-radius: 6px; padding: 2px 6px;"
-        )
-        self._hover_label.hide()
-        root.addWidget(self._hover_label)
+        self.setFixedSize(WIDGET_W, WIDGET_H)
+
+        self._restore_pill_position()
 
         self._monitor_timer = QtCore.QTimer(self)
         self._monitor_timer.timeout.connect(self._refresh_monitoring)
-        self._monitor_timer.start(1000)
-
-        self._anchor_timer = QtCore.QTimer(self)
-        self._anchor_timer.timeout.connect(self._refresh_anchor_position)
-        self._anchor_timer.start(1000)
+        self._monitor_timer.setInterval(3000)
+        self._monitor_timer.start()
 
         self._refresh_monitoring()
-        self._resize_to_state()
-        self._apply_opacity_target(animate=False)
-        self.setToolTip("Core Sentinel — drag to move; click for remediation when issues exist")
+        self.setWindowOpacity(self._ambient_opacity())
+        self._opacity_timer.stop()
 
-    def _spinnerOpacity(self) -> float:
-        return self._spinner_opacity
+        self.document_scan_progress.connect(self._on_scan_progress)
+        self.document_scan_finished.connect(self._on_scan_done)
+        self.document_scan_failed.connect(self._on_scan_failed)
 
-    def _set_spinnerOpacity(self, v: float) -> None:
-        self._spinner_opacity = float(v)
-        self._pill.update()
+    # --- pill center in widget coordinates ---
+    def _idle_image_path(self) -> str:
+        env = (os.environ.get("GUARDRAIL_BUBBLE_IDLE_IMAGE") or "").strip()
+        if env.lower() in ("none", "0", "false", "-", "tick"):
+            return ""
+        if env:
+            return env
+        try:
+            p = user_settings.load().get("bubble_idle_image")
+            if p:
+                return str(p).strip()
+        except Exception:
+            pass
+        return ""
 
-    spinnerOpacity = QtCore.pyqtProperty(float, _spinnerOpacity, _set_spinnerOpacity)
+    def _get_idle_pixmap(self) -> Optional[QtGui.QPixmap]:
+        """Cached pixmap for the idle score slot (PNG/JPG/BMP/GIF; SVG not supported by QPixmap)."""
+        raw = self._idle_image_path()
+        if not raw:
+            self._idle_pixmap = None
+            self._idle_pixmap_source = ""
+            return None
+        path = Path(raw)
+        if not path.is_file():
+            self._idle_pixmap = None
+            return None
+        key = str(path.resolve())
+        if (
+            self._idle_pixmap is not None
+            and not self._idle_pixmap.isNull()
+            and self._idle_pixmap_source == key
+        ):
+            return self._idle_pixmap
+        pm = QtGui.QPixmap(str(path))
+        if pm.isNull():
+            self._idle_pixmap = None
+            return None
+        self._idle_pixmap = pm
+        self._idle_pixmap_source = key
+        return self._idle_pixmap
 
-    def _allClearOpacity(self) -> float:
-        return self._all_clear_opacity
+    def reload_idle_image(self) -> None:
+        """Call after changing user_settings bubble_idle_image so the cache refreshes."""
+        self._idle_pixmap = None
+        self._idle_pixmap_source = ""
+        self.update()
 
-    def _set_allClearOpacity(self, v: float) -> None:
-        self._all_clear_opacity = float(v)
-        self._pill.update()
-
-    allClearOpacity = QtCore.pyqtProperty(float, _allClearOpacity, _set_allClearOpacity)
-
-    def _badgeScale(self) -> float:
-        return self._badge_scale
-
-    def _set_badgeScale(self, v: float) -> None:
-        self._badge_scale = float(v)
-        self._pill.update()
-
-    badgeScale = QtCore.pyqtProperty(float, _badgeScale, _set_badgeScale)
-
-    def _menu_btn_x(self) -> int:
-        return max(0, (self._menu_host.width() - MENU_BTN) // 2)
+    def _pill_center_local(self) -> QtCore.QPoint:
+        return QtCore.QPoint(PILL_X + PILL_W // 2, PILL_Y + PILL_H // 2)
 
     def _pill_center_offset_from_window_top(self) -> int:
-        # Pill is anchored at the bottom of _menu_host
-        return self._action_card_wrap.height() + self._menu_host.height() - PILL_H // 2
-
-    def _hover_strip_height(self) -> int:
-        if not self._hover_ui:
-            return 0
-        r = self._result if isinstance(self._result, dict) else {}
-        if (
-            not self._analysing
-            and bool(r.get("text_truncated"))
-            and int(r.get("chunks_scored") or 0) > 1
-        ):
-            return STRIP_H_MULTI
-        return STRIP_H
-
-    def _resize_to_state(self) -> None:
-        w = CARD_W if self._action_card_wrap.height() > 0 else PILL_W
-        self._menu_host.setFixedWidth(w)
-        h = self._action_card_wrap.height() + self._menu_host.height() + self._hover_strip_height()
-        self.setFixedSize(w, max(h, PILL_H))
-        if not self._menu_anims:
-            self._sync_menu_button_positions()
-
-    def _layout_pill_in_menu_host(self) -> None:
-        w = self._menu_host.width()
-        h = self._menu_host.height()
-        x = max(0, (w - PILL_W) // 2)
-        y = max(0, h - PILL_H)
-        self._pill.move(x, y)
-
-    def _sync_menu_button_positions(self) -> None:
-        bx = self._menu_btn_x()
-        if self._menu_host.height() <= PILL_H:
-            for b in self._menu_buttons:
-                b.move(bx, -MENU_SLOT_H + 8)
-        else:
-            for i, b in enumerate(self._menu_buttons):
-                b.move(bx, self._menu_shown_ys[i])
-        self._layout_pill_in_menu_host()
-
-    def _base_window_opacity(self) -> float:
-        if not self._in_llm:
-            return 0.5
-        return 0.7
-
-    def _apply_opacity_target(self, *, animate: bool = True) -> None:
-        target = 1.0 if self._hover_ui else self._base_window_opacity()
-        if not animate:
-            self._opacity_anim.stop()
-            self.setWindowOpacity(target)
-            return
-        if self._opacity_anim.state() == QtCore.QAbstractAnimation.State.Running:
-            self._opacity_anim.stop()
-        self._opacity_anim.setStartValue(self.windowOpacity())
-        self._opacity_anim.setEndValue(target)
-        self._opacity_anim.start()
-
-    def _hover_status_main_line(self) -> str:
-        if not self._in_llm:
-            return "Not monitoring"
-        if self._analysing:
-            return get_active_llm_name() or self._llm_target or "LLM"
-        if self._issue_count > 0:
-            n = self._issue_count
-            return f"{n} issue{'s' if n != 1 else ''} found"
-        return get_active_llm_name() or self._llm_target or "LLM"
-
-    def _hover_status_text(self) -> str:
-        """Plain single-line status (main line only)."""
-        return self._hover_status_main_line()
-
-    def _hover_label_html(self) -> str:
-        """Rich text for hover strip: optional second line when long text was multi-chunk scanned."""
-        main = html.escape(self._hover_status_main_line())
-        body = (
-            f'<div align="center" style="line-height:1.2;">'
-            f'<span style="font-size:10px;color:#c8c8c8;">{main}</span>'
-        )
-        r = self._result if isinstance(self._result, dict) else {}
-        if (
-            not self._analysing
-            and bool(r.get("text_truncated"))
-            and int(r.get("chunks_scored") or 0) > 1
-        ):
-            llm = html.escape(get_active_llm_name() or self._llm_target or "LLM")
-            n = int(r.get("chunks_scored") or 0)
-            sub = html.escape(f"{llm} · {n} chunks scanned")
-            body += f'<br/><span style="font-size:8px;color:#909090;">{sub}</span>'
-        body += "</div>"
-        return body
-
-    def _update_hover_label(self) -> None:
-        if self._hover_ui:
-            self._hover_label.setText(self._hover_label_html())
-            self._hover_label.setFixedHeight(self._hover_strip_height())
-            self._hover_label.show()
-        else:
-            self._hover_label.setText("")
-            self._hover_label.setFixedHeight(STRIP_H)
-            self._hover_label.hide()
-        self._resize_to_state()
-
-    def _stop_menu_anims(self) -> None:
-        for a in self._menu_anims:
-            a.stop()
-        self._menu_anims.clear()
+        return self._action_card_wrap.height() + self._pill_center_local().y()
 
     def _pill_center_global(self) -> QtCore.QPoint:
-        return self._pill.mapToGlobal(QtCore.QPoint(PILL_W // 2, PILL_H // 2))
+        return self.mapToGlobal(self._pill_center_local())
 
-    def _set_menu_geometry_expanded(self, expand: bool) -> None:
-        pill_c_desired = self._pill_center_global().y()
-        if expand:
-            self._menu_host.setFixedHeight(EXPANDED_MENU_HOST_H)
-        else:
-            self._menu_host.setFixedHeight(PILL_H)
-        new_off = self._pill_center_offset_from_window_top()
-        new_y = int(pill_c_desired - new_off)
-        self.move(self.x(), new_y)
-        self._resize_to_state()
-        self._sync_menu_button_positions()
+    def _resize_to_state(self) -> None:
+        h = self._action_card_wrap.height() + WIDGET_H
+        self.setFixedSize(max(WIDGET_W, CARD_W), max(h, WIDGET_H))
 
-    def _run_menu_show_anims(self) -> None:
-        self._stop_menu_anims()
-        btn_x = self._menu_btn_x()
-        for i, b in enumerate(self._menu_buttons):
-            end = QtCore.QPoint(btn_x, self._menu_shown_ys[i])
-            start = QtCore.QPoint(btn_x, self._menu_hidden_y)
-            b.move(start)
-            anim = QtCore.QPropertyAnimation(b, b"pos", self)
-            anim.setDuration(220)
-            anim.setEasingCurve(QtCore.QEasingCurve.Type.OutCubic)
-            anim.setStartValue(start)
-            anim.setEndValue(end)
-            self._menu_anims.append(anim)
-            QtCore.QTimer.singleShot(i * 50, lambda a=anim: a.start())
+    def _clamp_point_to_screen(self, top_left: QtCore.QPoint) -> QtCore.QPoint:
+        screen = QtGui.QGuiApplication.primaryScreen()
+        if screen is None:
+            return top_left
+        g = screen.availableGeometry()
+        x = max(g.left(), min(top_left.x(), g.right() - self.width() + 1))
+        y = max(g.top(), min(top_left.y(), g.bottom() - self.height() + 1))
+        return QtCore.QPoint(x, y)
 
-    def _run_menu_hide_anims(self) -> None:
-        self._stop_menu_anims()
-        btn_x = self._menu_btn_x()
-        end = QtCore.QPoint(btn_x, self._menu_hidden_y)
+    def _move_to_default_corner(self) -> None:
+        screen = QtGui.QGuiApplication.primaryScreen()
+        if not screen:
+            return
+        g = screen.availableGeometry()
+        self.move(
+            g.right() - self.width() - 20,
+            g.bottom() - self.height() - 80,
+        )
 
-        def collapse_after():
-            if self._hover_ui:
+    def _restore_pill_position(self) -> None:
+        try:
+            d = user_settings.load()
+            x = d.get("bubble_x")
+            y = d.get("bubble_y")
+            if x is not None and y is not None:
+                p = QtCore.QPoint(int(x), int(y))
+                self.move(self._clamp_point_to_screen(p))
                 return
-            self._menu_expanded = False
-            self._set_menu_geometry_expanded(False)
+        except Exception:
+            pass
+        self._move_to_default_corner()
 
-        n = len(self._menu_buttons)
-        for i, b in enumerate(self._menu_buttons):
-            start = b.pos()
-            anim = QtCore.QPropertyAnimation(b, b"pos", self)
-            anim.setDuration(200)
-            anim.setEasingCurve(QtCore.QEasingCurve.Type.InCubic)
-            anim.setStartValue(start)
-            anim.setEndValue(end)
-            self._menu_anims.append(anim)
-            delay_ms = (n - 1 - i) * 50
-            if i == 0:
-                anim.finished.connect(collapse_after)
-            QtCore.QTimer.singleShot(delay_ms, lambda a=anim: a.start())
+    def _status_dot_color(self) -> QtGui.QColor:
+        if self._analysing:
+            return QtGui.QColor("#FFD740")
+        if is_monitoring_paused():
+            return QtGui.QColor("#757575")
+        if self._in_llm:
+            return QtGui.QColor("#00E676")
+        return QtGui.QColor("#757575")
 
-    def _set_hover_true(self) -> None:
-        if self._hover_ui:
+    def _tick_dot_pulse(self) -> None:
+        if not self._analysing:
+            self._dot_pulse_timer.stop()
+            self._dot_opacity = 1.0
+            self.update()
             return
-        self._hover_ui = True
-        self._stop_menu_anims()
-        if self._menu_host.height() <= PILL_H:
-            self._menu_expanded = True
-            self._set_menu_geometry_expanded(True)
-        self._run_menu_show_anims()
-        self._update_hover_label()
-        self._apply_opacity_target()
-        self._pill.update()
+        self._dot_opacity = 0.4 if self._dot_opacity > 0.7 else 1.0
+        self.update()
 
-    def _set_hover_false(self) -> None:
-        if not self._hover_ui:
-            return
-        self._hover_ui = False
-        self._update_hover_label()
-        self._apply_opacity_target()
-        if self._menu_expanded:
-            self._run_menu_hide_anims()
+    def _start_dot_pulse(self) -> None:
+        self._dot_opacity = 1.0
+        self._dot_pulse_timer.start()
+
+    def _stop_dot_pulse(self) -> None:
+        self._dot_pulse_timer.stop()
+        self._dot_opacity = 1.0
+
+    def _toolbar_end_pos(self) -> QtCore.QPoint:
+        if self._toolbar is None:
+            return QtCore.QPoint(self.x(), self.y())
+        app = QtWidgets.QApplication.instance()
+        scr = QtGui.QGuiApplication.screenAt(self.pos()) if app else None
+        if scr is None and app:
+            scr = app.primaryScreen()
+        if scr is None:
+            return QtCore.QPoint(self.x(), self.y())
+        screen = scr.availableGeometry()
+        if screen.width() <= 0:
+            return QtCore.QPoint(self.x(), self.y())
+        bubble_pos = self.pos()
+        tb_w = self._toolbar.width()
+        tb_h = self._toolbar.sizeHint().height()
+        mid_x = screen.left() + screen.width() // 2
+        if bubble_pos.x() > mid_x:
+            tb_x = bubble_pos.x() - tb_w - 8
         else:
-            self._pill.update()
+            tb_x = bubble_pos.x() + self.width() + 8
+        tb_y = bubble_pos.y() + self.height() // 2 - tb_h // 2
+        tb_y = max(screen.top() + 8, min(tb_y, screen.bottom() - tb_h - 8))
+        return QtCore.QPoint(tb_x, tb_y)
 
-    def _defer_hover_leave_check(self) -> None:
+    def _toolbar_slide_start(self, end: QtCore.QPoint) -> QtCore.QPoint:
+        screen = QtGui.QGuiApplication.primaryScreen()
+        if screen is None:
+            return end
+        g = screen.availableGeometry()
+        bx, by = self.x(), self.y()
+        mid_x = g.left() + g.width() // 2
+        mid_y = g.top() + g.height() // 2
+        cx = bx + self.width() // 2
+        cy = by + self.height() // 2
+        ex, ey = end.x(), end.y()
+        if cx > mid_x:
+            sx = ex + 40
+        else:
+            sx = ex - 40
+        if cy > mid_y:
+            sy = ey + 30
+        else:
+            sy = ey - 30
+        return QtCore.QPoint(sx, sy)
+
+    def _update_toolbar_position(self) -> None:
+        if self._toolbar is None or not self._toolbar.isVisible():
+            return
+        self._toolbar.move(self._toolbar_end_pos())
+
+    def _ensure_toolbar(self) -> BubbleToolbar:
+        if self._toolbar is not None:
+            return self._toolbar
+        self._toolbar = BubbleToolbar(self)
+        self._toolbar.rephrase_clicked.connect(self._on_toolbar_rephrase)
+        self._toolbar.redact_clicked.connect(self._on_toolbar_redact)
+        self._toolbar.encrypt_clicked.connect(self._on_toolbar_encrypt)
+        self._toolbar.scan_file_clicked.connect(self._on_toolbar_scan_file)
+        self._toolbar.settings_clicked.connect(self._on_toolbar_settings)
+        self._toolbar.rephrase_clicked.connect(self._hide_toolbar_immediately)
+        self._toolbar.redact_clicked.connect(self._hide_toolbar_immediately)
+        self._toolbar.encrypt_clicked.connect(self._hide_toolbar_immediately)
+        self._toolbar.scan_file_clicked.connect(self._hide_toolbar_immediately)
+        self._toolbar.settings_clicked.connect(self._hide_toolbar_immediately)
+        return self._toolbar
+
+    def _restart_toolbar_idle_timer(self) -> None:
+        self._toolbar_idle_timer.stop()
+        self._toolbar_idle_timer.start(2000)
+
+    def _toolbar_content_enter(self) -> None:
+        self._toolbar_hide_timer.stop()
+        self._restart_toolbar_idle_timer()
+
+    def _on_application_state_changed(self, state: QtCore.Qt.ApplicationState) -> None:
+        if state != QtCore.Qt.ApplicationState.ApplicationActive:
+            self._hide_toolbar_immediately()
+
+    def _hide_toolbar(self) -> None:
+        self._hide_toolbar_slide_out()
+
+    def _should_keep_toolbar_visible(self) -> bool:
+        if self.underMouse():
+            return True
+        if self._toolbar is not None:
+            if self._toolbar.underMouse():
+                return True
+            for btn in self._toolbar.findChildren(QtWidgets.QWidget):
+                if btn.underMouse():
+                    return True
+        return False
+
+    def _maybe_hide_toolbar(self) -> None:
+        if self._should_keep_toolbar_visible():
+            return
+        self._hide_toolbar()
+        if self._tb_tooltip is not None:
+            self._tb_tooltip.hide()
+
+    def _hide_toolbar_immediately(self) -> None:
+        self._hide_toolbar_for_drag()
+        if self._tb_tooltip is not None:
+            self._tb_tooltip.hide()
+
+    def _hide_toolbar_idle_timeout(self) -> None:
+        self._hide_toolbar_slide_out()
+
+    def _stop_toolbar_anim(self) -> None:
+        if self._toolbar_anim is not None:
+            self._toolbar_anim.stop()
+            self._toolbar_anim.deleteLater()
+            self._toolbar_anim = None
+
+    def _hide_toolbar_slide_out(self) -> None:
+        if self._toolbar is None or not self._toolbar.isVisible():
+            return
+        tb = self._toolbar
+        end = self._toolbar_end_pos()
+        away = self._toolbar_slide_start(end)
+        self._stop_toolbar_anim()
+        self._toolbar_anim = QtCore.QPropertyAnimation(tb, b"pos", self)
+        self._toolbar_anim.setDuration(180)
+        self._toolbar_anim.setStartValue(tb.pos())
+        self._toolbar_anim.setEndValue(away)
+        self._toolbar_anim.setEasingCurve(QtCore.QEasingCurve.Type.InCubic)
+        self._toolbar_anim.finished.connect(self._on_toolbar_hide_anim_finished)
+        self._toolbar_anim.start()
+
+    def _on_toolbar_hide_anim_finished(self) -> None:
+        if self._toolbar_anim is not None:
+            try:
+                self._toolbar_anim.finished.disconnect(self._on_toolbar_hide_anim_finished)
+            except TypeError:
+                pass
+        self._stop_toolbar_anim()
+        if self._toolbar is not None:
+            self._toolbar.hide()
+            # Reset dock position so Windows DWM does not leave a faded “ghost” at the slide-out spot.
+            self._toolbar.move(self._toolbar_end_pos())
+            self._toolbar.setWindowOpacity(1.0)
+
+    def _hide_toolbar_for_drag(self) -> None:
+        if self._toolbar is None or not self._toolbar.isVisible():
+            return
+        self._toolbar_hide_timer.stop()
+        self._toolbar_idle_timer.stop()
+        self._stop_toolbar_anim()
+        self._toolbar.hide()
+
+    def _show_toolbar(self) -> None:
+        self._restart_toolbar_idle_timer()
+        tb = self._ensure_toolbar()
+        tb.adjustSize()
+        if tb.isVisible():
+            self._update_toolbar_position()
+            return
+        end = self._toolbar_end_pos()
+        start = self._toolbar_slide_start(end)
+        self._stop_toolbar_anim()
+        tb.move(start)
+        tb.show()
+        tb.raise_()
+        tb.setWindowOpacity(self.windowOpacity())
+        self._toolbar_anim = QtCore.QPropertyAnimation(tb, b"pos", self)
+        self._toolbar_anim.setDuration(180)
+        self._toolbar_anim.setStartValue(start)
+        self._toolbar_anim.setEndValue(end)
+        self._toolbar_anim.setEasingCurve(QtCore.QEasingCurve.Type.OutCubic)
+        self._toolbar_anim.start()
+
+    def _toggle_monitoring(self) -> None:
+        self._on_toolbar_power()
+
+    def _do_rephrase(self) -> None:
+        self._on_toolbar_rephrase()
+
+    def _do_redact(self) -> None:
+        self._on_toolbar_redact()
+
+    def _do_encrypt(self) -> None:
+        self._on_toolbar_encrypt()
+
+    def _do_scan_file(self) -> None:
+        import threading
+
+        file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            None,
+            "Select document to scan for PII",
+            "",
+            "Documents (*.pdf *.docx *.xlsx *.pptx *.txt *.png *.jpg *.jpeg *.csv *.md)",
+        )
+        if not file_path:
+            return
+
+        show_toast(
+            f"Scanning {Path(file_path).name}…",
+            color="#1565C0",
+            duration=30000,
+            parent=self,
+        )
+
+        def _run() -> None:
+            try:
+                from document_scanner import scan_document
+
+                def _progress(pct: int, msg: str) -> None:
+                    self.document_scan_progress.emit(int(pct), str(msg))
+
+                result = scan_document(
+                    file_path,
+                    use_gemini=True,
+                    progress_cb=_progress,
+                )
+                self.document_scan_finished.emit(result)
+            except Exception as e:
+                self.document_scan_failed.emit(str(e))
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    @QtCore.pyqtSlot(object)
+    def _on_scan_done(self, result: object) -> None:
+        self.setToolTip("")
+        if isinstance(result, dict) and result.get("error"):
+            show_toast(
+                f"Scan failed: {result['error']}",
+                color="#C62828",
+                parent=self,
+            )
+            return
+        if not isinstance(result, dict):
+            return
+        count = int(result.get("issue_count", 0) or 0)
+        risk = str(result.get("overall_risk", "low") or "low")
+        color = {"high": "#C62828", "med": "#E65100", "low": "#2E7D32"}.get(risk, "#666")
+        show_toast(
+            f"Scan complete: {count} issues found — {risk.upper()} risk",
+            color=color,
+            parent=self,
+        )
+        report = result.get("report_path")
+        if report:
+            import webbrowser
+
+            rp = Path(str(report))
+            if rp.is_file():
+                webbrowser.open(rp.as_uri())
+
+    @QtCore.pyqtSlot(str)
+    def _on_scan_failed(self, err: str) -> None:
+        self.setToolTip("")
+        show_toast(f"Scan error: {err}", color="#C62828", parent=self)
+
+    def _on_scan_progress(self, pct: int, msg: str) -> None:
+        self.setToolTip(f"Scan: {pct}% — {msg}")
+
+    def _do_open_settings(self) -> None:
+        self._on_toolbar_settings()
+
+    def _on_toolbar_power(self) -> None:
+        self._toggle_monitoring_power()
+        self._apply_opacity_target()
+        self.update()
+        self._restart_toolbar_idle_timer()
+
+    def _on_toolbar_rephrase(self) -> None:
+        self._restart_toolbar_idle_timer()
+        cb = QtGui.QGuiApplication.clipboard()
+        text = (cb.text() or "").strip() or (self._last_text or "").strip()
+        if not text:
+            show_toast("No clipboard text to rephrase.", color="#757575", parent=self)
+            return
+        try:
+            result = score_clipboard_with_pii(text)
+            msg = str(result.get("message") or "").strip()
+            if not msg:
+                sug = result.get("suggestions")
+                if isinstance(sug, list) and sug:
+                    msg = str(sug[0])
+            if not msg:
+                msg = "Analysis complete."
+            if len(msg) > 500:
+                msg = msg[:500] + "…"
+            show_toast(msg, color="#02C39A", duration=3500, parent=self)
+        except Exception as e:
+            show_toast(f"Rephrase failed: {e}", color="#E53935", parent=self)
+
+    def _on_toolbar_redact(self) -> None:
+        self._restart_toolbar_idle_timer()
+        cb = QtGui.QGuiApplication.clipboard()
+        text = (cb.text() or "").strip() or (self._last_text or "").strip()
+        if not text:
+            show_toast("No clipboard text.", color="#757575", parent=self)
+            return
+        spans = self._last_result.get("spans") if isinstance(self._last_result, dict) else []
+        if isinstance(spans, list) and spans:
+            out = mask_pii_spans(text, spans)
+        else:
+            out = mask_pii(text)
+        cb.setText(out)
+        show_toast("Masked and copied", color="#FFD740", parent=self)
+
+    def _on_toolbar_encrypt(self) -> None:
+        self._restart_toolbar_idle_timer()
+        cb = QtGui.QGuiApplication.clipboard()
+        text = (cb.text() or "").strip() or (self._last_text or "").strip()
+        if not text:
+            show_toast("No clipboard text.", color="#757575", parent=self)
+            return
+        try:
+            enc = encrypt_text(text)
+            cb.setText(enc)
+            show_toast("Encrypted and copied", color="#42A5F5", parent=self)
+        except Exception as e:
+            show_toast(f"Encrypt failed: {e}", color="#E53935", parent=self)
+
+    def _on_toolbar_scan_file(self) -> None:
+        self._restart_toolbar_idle_timer()
+        self._do_scan_file()
+
+    def _on_toolbar_settings(self) -> None:
+        self._restart_toolbar_idle_timer()
+        self.context_menu_action.emit("settings")
+
+    def _pill_target_color(self) -> QtGui.QColor:
+        if not self._has_risk_score:
+            return QtGui.QColor(28, 28, 30, 210)
+        s = max(0, min(100, int(self._risk_score)))
+        if s <= 40:
+            return QtGui.QColor(27, 94, 32, 210)
+        if s <= 70:
+            return QtGui.QColor(230, 81, 0, 210)
+        return QtGui.QColor(183, 28, 28, 210)
+
+    def _sync_pill_bg(self) -> None:
+        self._current_bg = self._pill_target_color()
+        self.update()
+
+    def _pill_fill_paint_color(self) -> QtGui.QColor:
+        if is_monitoring_paused():
+            return COLOR_PILL_PAUSED
+        if self._is_hovered and not self._has_risk_score:
+            return QtGui.QColor(15, 15, 17, 245)
+        return self._current_bg
+
+    def _shield_fill_color(self) -> QtGui.QColor:
+        if is_monitoring_paused():
+            return QtGui.QColor(0x7A, 0x7C, 0x7E)
+        if not self._has_risk_score:
+            return QtGui.QColor(0x96, 0x98, 0x9A)
+        s = max(0, min(100, int(self._risk_score)))
+        if s <= 40:
+            return QtGui.QColor(0x69, 0xF0, 0xAE)
+        if s <= 70:
+            return QtGui.QColor(0xFF, 0xD5, 0x4F)
+        return QtGui.QColor(0xEF, 0x9A, 0x9A)
+
+    def _sync_toolbar_opacity(self) -> None:
+        tb = self._toolbar
+        if tb is None or not tb.isVisible():
+            return
+        tb.setWindowOpacity(self.windowOpacity())
+
+    def _ambient_opacity(self) -> float:
+        """Slightly dimmer when critical items need attention (user asked for reduced opacity)."""
+        if self._critical_task_count > 0:
+            return 0.42
+        return 0.55
+
+    def _tick_opacity(self) -> None:
+        target = self._target_opacity
+        current = self.windowOpacity()
+        diff = target - current
+        if abs(diff) < 0.02:
+            self.setWindowOpacity(target)
+            self._sync_toolbar_opacity()
+            self._opacity_timer.stop()
+            return
+        self.setWindowOpacity(current + diff * 0.25)
+        self._sync_toolbar_opacity()
+
+    def _apply_opacity_target(self, *, animate: bool = True) -> None:
+        self._target_opacity = 1.0 if self._is_hovered else self._ambient_opacity()
+        if animate:
+            self._opacity_timer.start()
+        else:
+            self.setWindowOpacity(self._target_opacity)
+            self._sync_toolbar_opacity()
+            self._opacity_timer.stop()
+
+    def _tooltip_status_text(self) -> str:
+        if is_monitoring_paused():
+            return "Monitoring paused"
+        if not self._in_llm:
+            return "Not monitoring"
+        if self._critical_task_count > 0:
+            c = self._critical_task_count
+            return f"{c} critical item{'s' if c != 1 else ''} — review clipboard"
+        if self._issue_count > 0:
+            n = self._issue_count
+            return f"{n} issue{'s' if n != 1 else ''} found — click to review"
+        name = get_active_llm_name() or self._llm_target or "LLM"
+        return f"Monitoring: {name}"
+
+    def _ensure_tooltip_win(self) -> QtWidgets.QLabel:
+        if self._tooltip_win is None:
+            lab = QtWidgets.QLabel(None)
+            lab.setWindowFlags(
+                QtCore.Qt.WindowType.FramelessWindowHint
+                | QtCore.Qt.WindowType.Tool
+                | QtCore.Qt.WindowType.WindowStaysOnTopHint
+            )
+            lab.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+            lab.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+            lab.setStyleSheet(
+                "background: rgba(28,28,30,240); color: white; font-size: 11px; "
+                "padding: 4px 8px; border-radius: 6px; font-family: 'Segoe UI';"
+            )
+            eff = QtWidgets.QGraphicsOpacityEffect(lab)
+            lab.setGraphicsEffect(eff)
+            eff.setOpacity(0.0)
+            self._tooltip_win = lab
+        return self._tooltip_win
+
+    def _show_hover_tooltip(self) -> None:
+        lab = self._ensure_tooltip_win()
+        lab.setText(self._tooltip_status_text())
+        lab.adjustSize()
+        br = self.frameGeometry()
+        x = br.left() + (self.width() - lab.width()) // 2
+        y = br.bottom() + 4
+        lab.move(x, y)
+        eff = lab.graphicsEffect()
+        if isinstance(eff, QtWidgets.QGraphicsOpacityEffect):
+            eff.setOpacity(1.0)
+        lab.setVisible(True)
+        lab.raise_()
+        self._hover_tooltip_visible = True
+        if self._status_hide_timer is None:
+            self._status_hide_timer = QtCore.QTimer(self)
+            self._status_hide_timer.setSingleShot(True)
+            self._status_hide_timer.timeout.connect(self._hide_hover_tooltip)
+        self._status_hide_timer.stop()
+        self._status_hide_timer.start(1500)
+
+    def _hide_hover_tooltip(self) -> None:
+        if self._status_hide_timer is not None:
+            self._status_hide_timer.stop()
+        if self._tooltip_win is None:
+            self._hover_tooltip_visible = False
+            return
+        self._tooltip_win.setVisible(False)
+        self._hover_tooltip_visible = False
+
+    def _on_hover_enter_deferred(self) -> None:
+        self._show_hover_tooltip()
+
+    def _on_hover_leave_deferred(self) -> None:
+        self._hide_hover_tooltip()
         w = QtWidgets.QApplication.widgetAt(QtGui.QCursor.pos())
-        if w is None:
-            self._set_hover_false()
-            return
-        if w is self or self.isAncestorOf(w):
-            return
-        self._set_hover_false()
-
-    def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
-        if event.type() in (
-            QtCore.QEvent.Type.Enter,
-            QtCore.QEvent.Type.HoverEnter,
-        ):
-            if obj is self or self.isAncestorOf(obj) or obj in self._menu_buttons:
-                self._set_hover_true()
-        elif event.type() in (
-            QtCore.QEvent.Type.Leave,
-            QtCore.QEvent.Type.HoverLeave,
-        ):
-            QtCore.QTimer.singleShot(0, self._defer_hover_leave_check)
-        return super().eventFilter(obj, event)
+        p: Optional[QtWidgets.QWidget] = w
+        while p is not None:
+            if p is self or p is self._toolbar:
+                return
+            p = p.parentWidget()
+        self._target_opacity = self._ambient_opacity()
+        self._is_hovered = False
+        self._opacity_timer.start()
+        self.update()
+        self._toolbar_hide_timer.stop()
+        self._toolbar_hide_timer.start(400)
 
     def enterEvent(self, event: QtCore.QEvent) -> None:
-        self._set_hover_true()
+        self._toolbar_hide_timer.stop()
+        if self._status_hide_timer is not None:
+            self._status_hide_timer.stop()
+        self._target_opacity = 1.0
+        self._is_hovered = True
+        self._opacity_timer.start()
+        self._show_toolbar()
+        self.update()
+        QtCore.QTimer.singleShot(0, self._on_hover_enter_deferred)
         super().enterEvent(event)
 
     def leaveEvent(self, event: QtCore.QEvent) -> None:
-        QtCore.QTimer.singleShot(0, self._defer_hover_leave_check)
+        QtCore.QTimer.singleShot(0, self._on_hover_leave_deferred)
         super().leaveEvent(event)
 
-    def showEvent(self, event: QtGui.QShowEvent) -> None:
-        super().showEvent(event)
-        self.installEventFilter(self)
-        self._menu_host.installEventFilter(self)
-        self._pill.installEventFilter(self)
-        self._hover_label.installEventFilter(self)
-        self._action_card_wrap.installEventFilter(self)
-        for b in self._menu_buttons:
-            b.installEventFilter(self)
+    def moveEvent(self, event: QtGui.QMoveEvent) -> None:
+        super().moveEvent(event)
+        if self._toolbar is not None and self._toolbar.isVisible():
+            self._update_toolbar_position()
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        del event
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+
+        pill = QtCore.QRectF(float(PILL_X), float(PILL_Y), float(PILL_W), float(PILL_H))
+        p.setPen(QtCore.Qt.PenStyle.NoPen)
+        p.setBrush(self._pill_fill_paint_color())
+        p.drawRoundedRect(pill, float(PILL_RX), float(PILL_RX))
+        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+        p.setPen(QtGui.QPen(COLOR_PILL_BORDER, 1.0))
+        p.drawRoundedRect(pill, float(PILL_RX), float(PILL_RX))
+
+        dot_r = QtCore.QRectF(float(PILL_X + 4), float(PILL_Y + 4), 8.0, 8.0)
+        dc = self._status_dot_color()
+        p.save()
+        if self._analysing:
+            p.setOpacity(self._dot_opacity)
+        p.setPen(QtCore.Qt.PenStyle.NoPen)
+        p.setBrush(dc)
+        p.drawEllipse(dot_r)
+        p.restore()
+
+        pcol = QtGui.QColor(0x02, 0xC3, 0x9A)
+        if is_monitoring_paused():
+            pcol = QtGui.QColor(120, 120, 122)
+        p.setPen(pcol)
+        fam = p.font().family() or "Segoe UI"
+        p.setFont(paint_font_px(fam, 12, floor=MIN_PX_BODY))
+        p.drawText(
+            QtCore.QRectF(float(PILL_X + 1), float(PILL_Y + 2), 12.0, float(PILL_H - 4)),
+            QtCore.Qt.AlignmentFlag.AlignCenter,
+            "⏻",
+        )
+
+        sy = PILL_Y + (PILL_H - 16) // 2
+        sx = PILL_X + 14
+        shield_fill = self._shield_fill_color()
+        p.setPen(shield_fill)
+        p.setFont(paint_font_px(fam, 14, floor=MIN_PX_LABEL))
+        p.drawText(
+            QtCore.QRectF(float(sx), float(sy), 16.0, 16.0),
+            QtCore.Qt.AlignmentFlag.AlignCenter,
+            "◈",
+        )
+
+        score_slot = QtCore.QRectF(float(sx + 16), float(PILL_Y + 2), 28.0, float(PILL_H - 4))
+        if not self._analysing:
+            if self._critical_task_count > 0:
+                p.setPen(COLOR_CRITICAL_COUNT)
+                p.setFont(paint_font_px(fam, 11, bold=True, floor=MIN_PX_LABEL))
+                p.drawText(
+                    score_slot,
+                    QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignVCenter,
+                    str(int(self._critical_task_count)),
+                )
+            elif self._has_risk_score and int(self._risk_score) >= 30:
+                p.setPen(shield_fill)
+                p.setFont(paint_font_px(fam, 11, bold=True, floor=MIN_PX_LABEL))
+                p.drawText(
+                    score_slot,
+                    QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
+                    str(int(self._risk_score)),
+                )
+            else:
+                pm = self._get_idle_pixmap()
+                if pm is not None and not pm.isNull():
+                    p.save()
+                    p.setOpacity(0.65)
+                    scaled = pm.scaled(
+                        int(score_slot.width()),
+                        int(score_slot.height()),
+                        QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                        QtCore.Qt.TransformationMode.SmoothTransformation,
+                    )
+                    x = int(score_slot.x() + (score_slot.width() - scaled.width()) / 2.0)
+                    y = int(score_slot.y() + (score_slot.height() - scaled.height()) / 2.0)
+                    dest = QtCore.QRectF(float(x), float(y), float(scaled.width()), float(scaled.height()))
+                    clip = QtGui.QPainterPath()
+                    w, h = dest.width(), dest.height()
+                    if w > 0 and h > 0 and abs(w - h) < 1.5:
+                        clip.addEllipse(dest)
+                    else:
+                        rr = min(8.0, min(w, h) * 0.35)
+                        clip.addRoundedRect(dest, rr, rr)
+                    p.setClipPath(clip)
+                    p.drawPixmap(x, y, scaled)
+                    p.restore()
+                else:
+                    p.save()
+                    p.setOpacity(0.5)
+                    p.setPen(COLOR_IDLE_GLYPH)
+                    p.setFont(paint_font_px(fam, 12, floor=MIN_PX_BODY))
+                    p.drawText(
+                        score_slot,
+                        QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignVCenter,
+                        "✓",
+                    )
+                    p.restore()
+
+        pcx = PILL_X + PILL_W // 2
+        pcy = PILL_Y + PILL_H // 2
+
+        if self._analysing and self._spinner_opacity > 0.01:
+            p.save()
+            p.setOpacity(self._spinner_opacity)
+            pen = QtGui.QPen(COLOR_SPINNER, 2.0)
+            pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+            p.setPen(pen)
+            p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+            p.drawArc(
+                QtCore.QRectF(pcx - 12, pcy - 12, 24, 24),
+                int(-self._spin_angle * 16),
+                int(-270 * 16),
+            )
+            p.restore()
+
+        if self._show_all_clear and not self._issue_count:
+            p.setPen(COLOR_CHECK)
+            p.setFont(paint_font_px(fam, 12, bold=True, floor=MIN_PX_BODY))
+            p.drawText(
+                QtCore.QRectF(float(pcx + 8), float(pcy - 8), 16.0, 16.0),
+                QtCore.Qt.AlignmentFlag.AlignCenter,
+                "✓",
+            )
+
+        if self._show_badge_on_issues and not self._analysing:
+            by = PILL_Y - 2
+            bh = 18
+            if self._issue_count > 0:
+                raw = self._issue_count
+                if raw > 99:
+                    badge = "99+"
+                    bw = 24
+                else:
+                    badge = str(raw)
+                    bw = 18 if raw < 10 else 22
+                bx = PILL_X + PILL_W - bw + 2
+                p.setPen(QtCore.Qt.PenStyle.NoPen)
+                p.setBrush(COLOR_BADGE)
+                p.drawEllipse(QtCore.QRectF(float(bx), float(by), float(bw), float(bh)))
+                p.setPen(QtGui.QColor(255, 255, 255))
+                p.setFont(
+                    paint_font_px(
+                        fam,
+                        9 if raw >= 10 else 10,
+                        bold=True,
+                        floor=MIN_PX_BADGE,
+                    )
+                )
+                p.drawText(
+                    QtCore.QRectF(float(bx), float(by), float(bw), float(bh)),
+                    QtCore.Qt.AlignmentFlag.AlignCenter,
+                    badge,
+                )
+            elif (
+                self._has_risk_score
+                and self._risk_score > 0
+                and self._issue_count == 0
+            ):
+                bw = 18
+                bx = PILL_X + PILL_W - bw + 2
+                p.setPen(QtCore.Qt.PenStyle.NoPen)
+                p.setBrush(COLOR_BADGE_OK)
+                p.drawEllipse(QtCore.QRectF(float(bx), float(by), float(bw), float(bh)))
+                p.setPen(QtGui.QColor(255, 255, 255))
+                p.setFont(paint_font_px(fam, 10, bold=True, floor=MIN_PX_BADGE))
+                p.drawText(
+                    QtCore.QRectF(float(bx), float(by), float(bw), float(bh)),
+                    QtCore.Qt.AlignmentFlag.AlignCenter,
+                    "✓",
+                )
 
     def _refresh_monitoring(self) -> None:
         was = self._in_llm
         self._in_llm = bool(get_active_llm_name())
+        want_ms = 800 if self._in_llm else 3000
+        if self._monitor_timer.interval() != want_ms:
+            self._monitor_timer.setInterval(want_ms)
         if was != self._in_llm:
             if not self._in_llm:
                 self.set_idle()
-        self._pill.update()
-        if self._hover_ui:
-            self._update_hover_label()
-        elif was != self._in_llm:
+        self.update()
+        if self._hover_tooltip_visible and self._tooltip_win is not None:
+            self._tooltip_win.setText(self._tooltip_status_text())
+            self._tooltip_win.adjustSize()
+        if was != self._in_llm:
             self._apply_opacity_target()
 
-    def _refresh_anchor_position(self) -> None:
-        if self._drag_pos is not None:
-            return
-        try:
-            self._refresh_anchor_position_impl()
-        except Exception:
-            pass
-
-    def _refresh_anchor_position_impl(self) -> None:
-        is_llm, _, _, _ = is_active_window_llm()
-        if not is_llm:
-            self.show_near_bottom_right()
-            return
-
-        left = top = right = bottom = None
-        try:
-            from input_field_rect import get_input_field_rect
-
-            ir = get_input_field_rect()
-            if ir is not None:
-                ix, iy, iw, ih = ir
-                left, top, right, bottom = ix, iy, ix + iw, iy + ih
-        except ImportError:
-            pass
-        except Exception:
-            pass
-
-        if left is None:
-            try:
-                from win_input_anchor import get_focused_text_surface_rect_screen
-
-                r = get_focused_text_surface_rect_screen()
-                if r is None:
-                    return
-                left, top, right, bottom = r
-            except ImportError:
-                return
-            except Exception:
-                return
-
-        cur = QtGui.QCursor.pos()
-        exp = QtCore.QRect(
-            left - HOVER_NEAR_PX,
-            top - HOVER_NEAR_PX,
-            (right - left) + 2 * HOVER_NEAR_PX,
-            (bottom - top) + 2 * HOVER_NEAR_PX,
-        )
-        if not exp.contains(cur):
-            return
-
-        pill_c_desired_y = (top + bottom) // 2
-        pill_c_desired_x = right + 6 + PILL_W // 2
-        off = self._pill_center_offset_from_window_top()
-        x = pill_c_desired_x - PILL_W // 2
-        y = pill_c_desired_y - off
-        self.move(int(x), int(y))
-
-    def _stop_finish_anims(self) -> None:
-        if self._finish_anim_group is not None:
-            self._finish_anim_group.stop()
-            self._finish_anim_group.deleteLater()
-            self._finish_anim_group = None
-
-    def _stop_pulse_anim(self) -> None:
-        if self._pulse_anim is not None:
-            self._pulse_anim.stop()
-            self._pulse_anim.deleteLater()
-            self._pulse_anim = None
-        self._pulse_radius = 0.0
-        self._pulse_ring_alpha = 0.0
-
-    def _on_pulse_frame(self, value: object) -> None:
-        t = float(value)
-        self._pulse_radius = 18.0 + 10.0 * t
-        self._pulse_ring_alpha = 0.4 * (1.0 - t)
-        self._pill.update()
-
-    def _start_pulse_anim(self) -> None:
-        self._stop_pulse_anim()
-        anim = QtCore.QVariantAnimation(self)
-        anim.setDuration(1200)
-        anim.setStartValue(0.0)
-        anim.setEndValue(1.0)
-        anim.setLoopCount(-1)
-        anim.setEasingCurve(QtCore.QEasingCurve.Type.Linear)
-        anim.valueChanged.connect(self._on_pulse_frame)
-        self._pulse_anim = anim
-        anim.start()
-
-    def set_analysing(self) -> None:
-        self._stop_finish_anims()
+    def set_analysing(self, text: str = "") -> None:
+        self._spinner_timer.stop()
+        self._hide_feedback_buttons()
+        if text:
+            self._last_text = text
+        self._last_label = ""
         self._all_clear_timer.stop()
-        self._fade_timer.stop()
         self._show_all_clear = False
-        self.setAllClearOpacity(0.0)
         self._issue_count = 0
-        self.setBadgeScale(1.0)
+        self._critical_task_count = 0
         self._analysing = True
-        self._spin_angle = 0
-        self.setSpinnerOpacity(1.0)
+        self._spin_angle = 0.0
+        self._spinner_opacity = 1.0
+        self._start_dot_pulse()
         self._spinner_timer.start()
-        self._start_pulse_anim()
-        self._pill.update()
-        if self._hover_ui:
-            self._update_hover_label()
+        self.update()
+        self._apply_opacity_target()
 
     def set_idle(self) -> None:
-        self._stop_finish_anims()
-        self._stop_pulse_anim()
+        self._hide_feedback_buttons()
         self._spinner_timer.stop()
+        self._stop_dot_pulse()
+        self._has_risk_score = False
+        self._sync_pill_bg()
         self._analysing = False
-        self.setSpinnerOpacity(0.0)
+        self._spinner_opacity = 0.0
         self._show_all_clear = False
-        self.setAllClearOpacity(0.0)
         self._issue_count = 0
-        self.setBadgeScale(1.0)
+        self._critical_task_count = 0
         self._all_clear_timer.stop()
-        self._fade_timer.stop()
-        self._pill.update()
-        if self._hover_ui:
-            self._update_hover_label()
+        self.update()
+        self._apply_opacity_target()
 
     def set_clear(self) -> None:
-        self._stop_pulse_anim()
         self._spinner_timer.stop()
+        self._stop_dot_pulse()
         self._analysing = False
         self._issue_count = 0
+        self._critical_task_count = 0
         self._show_all_clear = True
         self._all_clear_timer.stop()
-        self._fade_timer.stop()
-        self._stop_finish_anims()
-
-        self.setAllClearOpacity(0.0)
-        self.setSpinnerOpacity(1.0)
-
-        group = QtCore.QParallelAnimationGroup(self)
-        a_spin = QtCore.QPropertyAnimation(self, b"spinnerOpacity", self)
-        a_spin.setDuration(200)
-        a_spin.setStartValue(1.0)
-        a_spin.setEndValue(0.0)
-        a_spin.setEasingCurve(QtCore.QEasingCurve.Type.OutCubic)
-        a_chk = QtCore.QPropertyAnimation(self, b"allClearOpacity", self)
-        a_chk.setDuration(200)
-        a_chk.setStartValue(0.0)
-        a_chk.setEndValue(1.0)
-        a_chk.setEasingCurve(QtCore.QEasingCurve.Type.OutCubic)
-        group.addAnimation(a_spin)
-        group.addAnimation(a_chk)
-
-        def _on_clear_finish() -> None:
-            self._finish_anim_group = None
-            if self._all_clear_timer.isActive():
-                self._all_clear_timer.stop()
-            self._all_clear_timer.start(3000)
-
-        group.finished.connect(_on_clear_finish)
-        self._finish_anim_group = group
-        group.start()
-        self._pill.update()
-        if self._hover_ui:
-            self._update_hover_label()
+        self._spinner_opacity = 0.0
+        self._all_clear_timer.start(3000)
+        self.update()
+        self.show_feedback_buttons(self._last_text, self._last_label)
+        self._apply_opacity_target()
 
     def set_issues(self, count: int) -> None:
         n = max(0, int(count))
@@ -757,76 +1074,68 @@ class RiskBubble(QtWidgets.QWidget):
             self.set_clear()
             return
 
-        self._stop_pulse_anim()
         self._spinner_timer.stop()
+        self._stop_dot_pulse()
         self._analysing = False
         self._show_all_clear = False
-        self.setAllClearOpacity(0.0)
         self._all_clear_timer.stop()
-        self._fade_timer.stop()
-        self._stop_finish_anims()
-
         self._issue_count = n
-        self.setSpinnerOpacity(1.0)
-        self.setBadgeScale(0.5)
-
-        group = QtCore.QParallelAnimationGroup(self)
-        a_spin = QtCore.QPropertyAnimation(self, b"spinnerOpacity", self)
-        a_spin.setDuration(200)
-        a_spin.setStartValue(1.0)
-        a_spin.setEndValue(0.0)
-        a_spin.setEasingCurve(QtCore.QEasingCurve.Type.OutCubic)
-        a_badge = QtCore.QPropertyAnimation(self, b"badgeScale", self)
-        a_badge.setDuration(200)
-        a_badge.setStartValue(0.5)
-        a_badge.setEndValue(1.0)
-        a_badge.setEasingCurve(QtCore.QEasingCurve.Type.OutCubic)
-        group.addAnimation(a_spin)
-        group.addAnimation(a_badge)
-
-        def _on_issues_finish() -> None:
-            self._finish_anim_group = None
-
-        group.finished.connect(_on_issues_finish)
-        self._finish_anim_group = group
-        group.start()
-        self._pill.update()
-        if self._hover_ui:
-            self._update_hover_label()
-
-    def setSpinnerOpacity(self, v: float) -> None:
-        self._set_spinnerOpacity(v)
-
-    def setAllClearOpacity(self, v: float) -> None:
-        self._set_allClearOpacity(v)
-
-    def setBadgeScale(self, v: float) -> None:
-        self._set_badgeScale(v)
+        self._spinner_opacity = 0.0
+        self.update()
+        self.show_feedback_buttons(self._last_text, self._last_label)
+        self._apply_opacity_target()
 
     def _tick_spinner(self) -> None:
         if not self._analysing:
+            self._spinner_timer.stop()
             return
-        self._spin_angle = (self._spin_angle + 18) % 360
-        self._pill.update()
+        self._spin_angle = (self._spin_angle + 36.0) % 360.0
+        self.update()
 
-    def _begin_all_clear_fade(self) -> None:
-        self._fade_timer.start(40)
-
-    def _tick_all_clear_fade(self) -> None:
-        self._all_clear_opacity -= 0.08
-        if self._all_clear_opacity <= 0:
-            self._all_clear_opacity = 0.0
-            self._show_all_clear = False
-            self._fade_timer.stop()
-        self._pill.update()
-        if self._hover_ui:
-            self._update_hover_label()
+    def _hide_all_clear_indicator(self) -> None:
+        self._show_all_clear = False
+        self.update()
 
     def clear_issue_badge(self) -> None:
         self._issue_count = 0
-        self._pill.update()
-        if self._hover_ui:
-            self._update_hover_label()
+        self._critical_task_count = 0
+        if not self._analysing:
+            self._spinner_timer.stop()
+        self.update()
+        self._apply_opacity_target()
+
+    def set_show_badge_on_issues(self, show: bool) -> None:
+        self._show_badge_on_issues = bool(show)
+        self.update()
+
+    def _show_context_menu(self, global_pos: QtCore.QPoint) -> None:
+        menu = QtWidgets.QMenu(self)
+        menu.setStyleSheet(
+            "QMenu { background: #2b2b2b; color: #e8e8e8; border: 1px solid #444; "
+            "padding: 4px; font-family: 'Segoe UI'; font-size: 12px; }"
+            "QMenu::item { padding: 6px 24px 6px 12px; }"
+            "QMenu::item:selected { background: #3d3d3d; }"
+            "QMenu::separator { height: 1px; background: #444; margin: 4px 8px; }"
+        )
+
+        act_settings = menu.addAction("Settings")
+        act_settings.triggered.connect(lambda: self.context_menu_action.emit("settings"))
+
+        act_pause = menu.addAction("Pause monitoring")
+        act_pause.setCheckable(True)
+        act_pause.setChecked(is_monitoring_paused())
+        act_pause.triggered.connect(self.monitoring_pause_changed.emit)
+
+        menu.addSeparator()
+        act_scan = menu.addAction("Scan file for PII...")
+        act_scan.triggered.connect(lambda: self.context_menu_action.emit("scan_file"))
+        act_report = menu.addAction("View report")
+        act_report.triggered.connect(lambda: self.context_menu_action.emit("view_report"))
+        menu.addSeparator()
+        act_quit = menu.addAction("Quit")
+        act_quit.triggered.connect(lambda: self.context_menu_action.emit("quit"))
+
+        menu.exec(global_pos)
 
     def update_from_result(
         self,
@@ -838,6 +1147,7 @@ class RiskBubble(QtWidgets.QWidget):
     ) -> None:
         r: dict = result if isinstance(result, dict) else {}
         self._result = r
+        self._last_result = dict(r)
         self._llm_target = llm_target or ""
         self._original_text = original_text or ""
         self._url = url or ""
@@ -850,38 +1160,182 @@ class RiskBubble(QtWidgets.QWidget):
         triggers = r.get("triggers") or []
         if not isinstance(triggers, (list, tuple)):
             triggers = []
+        spans = r.get("spans") if isinstance(r.get("spans"), list) else []
         try:
             score = int(r.get("risk_score", 0))
         except (TypeError, ValueError):
             score = 0
         critical = bool(r.get("critical_secret_detected", False))
 
-        if action == "silent" and not critical and score < 30 and not triggers:
+        risk = r.get("risk", "low")
+        self._last_text = (original_text or "") or self._last_text
+        self._last_label = str(risk) if risk else "low"
+
+        clear_path = action == "silent" and not critical and score < 30 and not triggers
+        if clear_path:
             self.set_clear()
         else:
             n = len(triggers)
             if n <= 0 and (action in ("warn", "block") or critical or score >= 30):
                 n = 1
             self.set_issues(n)
+            self._critical_task_count = _derive_critical_task_count(r)
 
-        risk = r.get("risk", "low")
-        tip = f"PII risk {score}/100 ({risk}) — {llm_target}"
-        if self._cleaned_title:
-            tip += f" — {self._cleaned_title}"
-        self.setToolTip(tip)
-        self._pill.update()
-        if self._hover_ui:
-            self._update_hover_label()
+        self._risk_score = int(r.get("risk_score", 0) or 0)
+        self._issue_count = len(spans)
+        self._has_risk_score = True
+        self._sync_pill_bg()
+
+        self.update()
+
+    def show_feedback_buttons(self, original_text: str, predicted_label: str) -> None:
+        if not (original_text or "").strip():
+            return
+        if self._feedback_widget is None:
+            self._build_feedback_widget()
+
+        self._feedback_text = original_text
+        self._feedback_predicted = predicted_label
+
+        bubble_global = self.mapToGlobal(QtCore.QPoint(0, 0))
+        fb_x = bubble_global.x()
+        fb_y = bubble_global.y() + self.height() + 8
+        screen = QtWidgets.QApplication.primaryScreen()
+        if screen is not None:
+            ag = screen.availableGeometry()
+            fb_x = max(ag.left(), min(fb_x, ag.right() - 180))
+            fb_y = min(fb_y, ag.bottom() - 50)
+
+        self._feedback_widget.move(fb_x, fb_y)
+        self._feedback_widget.show()
+        self._feedback_widget.raise_()
+        self._feedback_widget.activateWindow()
+
+        if self._feedback_timer is None:
+            self._feedback_timer = QtCore.QTimer()
+            self._feedback_timer.setSingleShot(True)
+            self._feedback_timer.timeout.connect(self._feedback_widget.hide)
+        else:
+            self._feedback_timer.stop()
+        self._feedback_timer.start(8000)
+
+    def _hide_feedback_buttons(self) -> None:
+        if self._feedback_timer is not None:
+            self._feedback_timer.stop()
+        if self._feedback_widget is not None:
+            self._feedback_widget.hide()
+
+    def _build_feedback_widget(self) -> None:
+        self._feedback_widget = QtWidgets.QWidget(
+            None,
+            QtCore.Qt.WindowType.FramelessWindowHint
+            | QtCore.Qt.WindowType.WindowStaysOnTopHint
+            | QtCore.Qt.WindowType.Tool,
+        )
+        self._feedback_widget.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
+        self._feedback_widget.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
+
+        self._feedback_widget.setStyleSheet(
+            """
+            QWidget {
+                background-color: rgba(28, 28, 30, 230);
+                border-radius: 10px;
+                border: 1px solid rgba(255,255,255,0.1);
+            }
+            """
+        )
+
+        layout = QtWidgets.QHBoxLayout()
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
+
+        btn_correct = QtWidgets.QPushButton("Correct")
+        btn_correct.setFixedSize(80, 32)
+        btn_correct.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        btn_correct.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #2E7D32;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                font-size: 13px;
+                font-weight: 600;
+                padding: 6px 16px;
+            }
+            QPushButton:hover {
+                background-color: #388E3C;
+            }
+            QPushButton:pressed {
+                background-color: #1B5E20;
+            }
+            """
+        )
+        btn_correct.clicked.connect(self._on_feedback_correct)
+
+        btn_wrong = QtWidgets.QPushButton("Wrong")
+        btn_wrong.setFixedSize(80, 32)
+        btn_wrong.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        btn_wrong.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #C62828;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                font-size: 13px;
+                font-weight: 600;
+                padding: 6px 16px;
+            }
+            QPushButton:hover {
+                background-color: #D32F2F;
+            }
+            QPushButton:pressed {
+                background-color: #B71C1C;
+            }
+            """
+        )
+        btn_wrong.clicked.connect(self._on_feedback_wrong)
+
+        layout.addWidget(btn_correct)
+        layout.addWidget(btn_wrong)
+        self._feedback_widget.setLayout(layout)
+        self._feedback_widget.adjustSize()
+
+    def _on_feedback_correct(self) -> None:
+        from feedback_store import record_feedback
+
+        record_feedback(
+            self._feedback_text,
+            self._feedback_predicted,
+            self._feedback_predicted,
+            source="user_correct",
+        )
+        self._hide_feedback_buttons()
+
+    def _on_feedback_wrong(self) -> None:
+        from feedback_store import record_feedback
+
+        labels = ["low", "med", "high"]
+        label, ok = QtWidgets.QInputDialog.getItem(
+            self,
+            "Correct label",
+            "What should this be classified as?",
+            labels,
+            0,
+            False,
+        )
+        if ok and label:
+            record_feedback(
+                self._feedback_text,
+                self._feedback_predicted,
+                label,
+                source="user_correction",
+            )
+        self._hide_feedback_buttons()
 
     def show_near_bottom_right(self) -> None:
-        screen = QtGui.QGuiApplication.primaryScreen()
-        if not screen:
-            return
-        geom = screen.availableGeometry()
-        m = 24
-        x = geom.right() - self.width() - m
-        y = geom.bottom() - self.height() - m
-        self.move(x, y)
+        self._move_to_default_corner()
 
     def show_near_cursor(self) -> None:
         pos = QtGui.QCursor.pos()
@@ -894,69 +1348,171 @@ class RiskBubble(QtWidgets.QWidget):
             y = max(g.top(), min(y, g.bottom() - self.height()))
         self.move(x, y)
 
+    def _on_delayed_single_click(self) -> None:
+        if self._issue_count <= 0 and int(self._result.get("risk_score", 0)) <= 0:
+            return
+        from ui_remediation_dialog import RemediationDialog
+
+        existing = self._remediation_panel
+        if (
+            existing is not None
+            and existing.isVisible()
+            and not getattr(existing, "_closing_anim", False)
+        ):
+            existing.slide_out_and_hide()
+            return
+
+        if existing is not None:
+            same = (
+                getattr(existing, "_original_text", "") == (self._original_text or "")
+                and getattr(existing, "_result", {}) == self._result
+                and getattr(existing, "_llm_target", "") == (self._llm_target or "")
+            )
+            if not same:
+                existing.deleteLater()
+                self._remediation_panel = None
+
+        self.hide()
+        if self._remediation_panel is None:
+            dialog = RemediationDialog(
+                self._original_text,
+                self._result,
+                self._llm_target,
+                self,
+            )
+            self._remediation_panel = dialog
+            app = QtWidgets.QApplication.instance()
+            pc = app.property("paste_controller") if app else None
+            if pc is not None:
+                dialog.monitoring_toggled.connect(
+                    lambda paused: pc.kick_queue() if not paused else None
+                )
+
+            def _after_remediation(code: int) -> None:
+                self.show()
+                if code == QtWidgets.QDialog.DialogCode.Accepted:
+                    self.clear_issue_badge()
+
+            def _after_slide_out(_ok: bool) -> None:
+                self.show()
+
+            dialog.finished.connect(_after_remediation)
+            dialog.remediation_finished.connect(_after_slide_out)
+
+        panel = self._remediation_panel
+        assert panel is not None
+        panel.show()
+
+    def _power_hit_rect(self) -> QtCore.QRect:
+        return QtCore.QRect(PILL_X + 1, PILL_Y + 2, 12, PILL_H - 4)
+
+    def _toggle_monitoring_power(self) -> None:
+        paused = not is_monitoring_paused()
+        set_monitoring_paused(paused)
+        self.monitoring_pause_changed.emit(paused)
+
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
+        if event.button() == QtCore.Qt.MouseButton.RightButton:
+            self._show_context_menu(event.globalPosition().toPoint())
+            event.accept()
+            return
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
-            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            pos = event.position().toPoint()
+            if self._power_hit_rect().contains(pos):
+                self._toggle_monitoring_power()
+                self._apply_opacity_target()
+                self.update()
+                event.accept()
+                return
+            self._dragging = True
+            self._hide_toolbar_immediately()
+            self._drag_offset = event.globalPosition().toPoint() - self.pos()
             self._press_pos = event.globalPosition().toPoint()
             event.accept()
             return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
-        if self._drag_pos is not None and event.buttons() & QtCore.Qt.MouseButton.LeftButton:
-            self.move(event.globalPosition().toPoint() - self._drag_pos)
+        if self._dragging and event.buttons() & QtCore.Qt.MouseButton.LeftButton:
+            self._hide_toolbar_for_drag()
+            new_pos = event.globalPosition().toPoint() - self._drag_offset
+            new_pos = self._clamp_point_to_screen(new_pos)
+            self.move(new_pos)
+            self._update_toolbar_position()
             event.accept()
             return
         super().mouseMoveEvent(event)
 
+    def mouseDoubleClickEvent(self, event: QtGui.QMouseEvent) -> None:
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self._click_timer.stop()
+            self._dragging = False
+            self._press_pos = None
+            self.menu_action_clicked.emit("redact")
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
+
     def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
-        if event.button() == QtCore.Qt.MouseButton.LeftButton and self._drag_pos is not None:
-            moved = (event.globalPosition().toPoint() - self._press_pos).manhattanLength()
-            self._drag_pos = None
+        if event.button() == QtCore.Qt.MouseButton.LeftButton and self._dragging:
+            self._dragging = False
+            try:
+                user_settings.save_bubble_position(self.x(), self.y())
+            except Exception:
+                pass
+            moved = 0
+            if self._press_pos is not None:
+                moved = (event.globalPosition().toPoint() - self._press_pos).manhattanLength()
             self._press_pos = None
             if moved < 5:
-                if self._issue_count > 0 or int(self._result.get("risk_score", 0)) > 0:
-                    from ui_remediation_dialog import RemediationDialog
-
-                    self.hide()
-                    dialog = RemediationDialog(
-                        self._original_text,
-                        self._result,
-                        self._llm_target,
-                        self,
-                    )
-                    dialog.exec()
-                    self.clear_issue_badge()
-                    self.show()
+                self._click_timer.start()
+            self._update_toolbar_position()
             event.accept()
             return
         super().mouseReleaseEvent(event)
 
-    def _clear_action_card_children(self) -> None:
-        if self._card_anim:
-            self._card_anim.stop()
-            self._card_anim = None
-        for ch in list(self._action_card_wrap.children()):
-            if isinstance(ch, QtWidgets.QWidget):
-                ch.setParent(None)
-                ch.deleteLater()
-        self._action_card_inner = None
+    def _clear_action_card_layout(self) -> None:
+        if self._action_card_reuse is None:
+            return
+        lay = self._action_card_reuse.layout()
+        if lay is None:
+            return
+        while lay.count():
+            item = lay.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+
+    def _ensure_action_card_frame(self) -> QtWidgets.QFrame:
+        if self._action_card_reuse is None:
+            self._action_card_reuse = QtWidgets.QFrame()
+            self._action_card_reuse.setObjectName("actionCard")
+            self._action_card_reuse.setStyleSheet(CARD_QSS)
+        self._clear_action_card_layout()
+        return self._action_card_reuse
 
     def _dismiss_action_card(self) -> None:
         self._redact_toast_timer.stop()
         if self._action_card_wrap.height() <= 0:
-            self._clear_action_card_children()
+            if self._card_anim:
+                self._card_anim.stop()
+                self._card_anim = None
+            self._clear_action_card_layout()
             return
         pill_cy = self._pill_center_global().y()
-        self._clear_action_card_children()
+        if self._card_anim:
+            self._card_anim.stop()
+            self._card_anim = None
+        self._clear_action_card_layout()
         self._action_card_wrap.setFixedHeight(0)
+        self._action_card_wrap.move(0, 0)
         self._resize_to_state()
         self.move(self.x(), int(pill_cy - self._pill_center_offset_from_window_top()))
 
     def _slide_in_card(self, frame: QtWidgets.QWidget) -> None:
         if self._card_anim:
             self._card_anim.stop()
-        self._card_anim = QtCore.QPropertyAnimation(frame, b"pos", self)
+        self._card_anim = QtCore.QPropertyAnimation(frame, b"pos", self._action_card_wrap)
         self._card_anim.setDuration(220)
         self._card_anim.setEasingCurve(QtCore.QEasingCurve.Type.OutCubic)
         self._card_anim.setStartValue(frame.pos())
@@ -964,7 +1520,9 @@ class RiskBubble(QtWidgets.QWidget):
         self._card_anim.start()
 
     def _mount_action_card(self, frame: QtWidgets.QWidget) -> None:
-        self._clear_action_card_children()
+        if self._card_anim:
+            self._card_anim.stop()
+            self._card_anim = None
         frame.setParent(self._action_card_wrap)
         frame.setObjectName("actionCard")
         if not frame.styleSheet():
@@ -975,7 +1533,8 @@ class RiskBubble(QtWidgets.QWidget):
         inner_h = frame.height()
         wrap_h = inner_h + 8
         pill_cy = self._pill_center_global().y()
-        self._action_card_wrap.setFixedHeight(wrap_h)
+        self._action_card_wrap.setFixedSize(CARD_W, wrap_h)
+        self._action_card_wrap.move(0, 0)
         self._resize_to_state()
         x_m = max(4, (self.width() - fw) // 2)
         frame.move(x_m, 4 + CARD_SLIDE_PX)
@@ -1005,8 +1564,10 @@ class RiskBubble(QtWidgets.QWidget):
     def _show_rephrase_card(self, text: str) -> None:
         self._dismiss_action_card()
         rephrased = mask_pii(text)
-        frame = QtWidgets.QFrame()
-        lay = QtWidgets.QVBoxLayout(frame)
+        frame = self._ensure_action_card_frame()
+        lay = frame.layout()
+        if lay is None:
+            lay = QtWidgets.QVBoxLayout(frame)
         lay.setContentsMargins(10, 10, 10, 10)
         lay.setSpacing(6)
         lay.addWidget(QtWidgets.QLabel("Original"))
@@ -1042,8 +1603,10 @@ class RiskBubble(QtWidgets.QWidget):
         self._dismiss_action_card()
         hashed = hash_pii(text)
         enc = encrypt_pii(text)
-        frame = QtWidgets.QFrame()
-        lay = QtWidgets.QVBoxLayout(frame)
+        frame = self._ensure_action_card_frame()
+        lay = frame.layout()
+        if lay is None:
+            lay = QtWidgets.QVBoxLayout(frame)
         lay.setContentsMargins(10, 10, 10, 10)
         lay.setSpacing(8)
         lay.addWidget(
@@ -1070,10 +1633,12 @@ class RiskBubble(QtWidgets.QWidget):
 
     def _show_redact_all_card(self, text: str) -> None:
         self._dismiss_action_card()
-        redacted = redact_all_literal(text)
-        QtGui.QGuiApplication.clipboard().setText(redacted)
-        frame = QtWidgets.QFrame()
-        lay = QtWidgets.QVBoxLayout(frame)
+        masked = redact_all_literal(text)
+        QtGui.QGuiApplication.clipboard().setText(masked)
+        frame = self._ensure_action_card_frame()
+        lay = frame.layout()
+        if lay is None:
+            lay = QtWidgets.QVBoxLayout(frame)
         lay.setContentsMargins(14, 14, 14, 14)
         msg = QtWidgets.QLabel("Copied to clipboard")
         msg.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)

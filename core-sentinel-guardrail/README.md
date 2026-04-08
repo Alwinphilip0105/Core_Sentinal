@@ -60,3 +60,15 @@ from infer import score_clipboard
 result = score_clipboard("example text")
 # result: risk, prob_low, prob_med, prob_high, decision, pii_count, block
 ```
+
+---
+
+## Multi-machine feedback (GitHub)
+
+To share `logs/feedback_store.jsonl` across laptops with **git pull / push**, use a **private** repo and follow **`GITHUB_FEEDBACK_SYNC.md`** in this folder.
+
+To **merge that feedback into the training set and retrain** (3-class / `multi_real_synthetic`), see **`FEEDBACK_TRAINING_LOOP.md`** and run **`merge_feedback_to_training.py`** before `data.py` / `train.py`.
+
+## Risk telemetry (browse low / med / high batches)
+
+Each score is mirrored to **`logs/risk_telemetry.jsonl`** (hash-only). Run **`python tools/risk_dashboard_server.py`** and open the printed URL to review batches in a browser. Optional **`GUARDRAIL_TELEMETRY_WEBHOOK_URL`** POSTs each row to your server for a cloud log. Details: **`RISK_TELEMETRY.md`**.

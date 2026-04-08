@@ -3,22 +3,23 @@ Inference for TinyBERT guardrail: score text and policy-based allow/warn/block.
 Runs on CUDA if available, else CPU.
 Uses a direct AutoModel forward pass (not transformers pipeline) for lower per-paste latency;
 call preload_guardrail_model() at app startup so load cost is paid once, not on first paste.
-Env: GUARDRAIL_TORCH_THREADS, GUARDRAIL_MAX_SEQ_LEN (default 128), GUARDRAIL_SLIDING_STRIDE (default 32,
+Env: GUARDRAIL_TORCH_THREADS (default 2), GUARDRAIL_MAX_SEQ_LEN (default 128), GUARDRAIL_SLIDING_STRIDE (default 32,
 overlap between windows for long texts), GUARDRAIL_BLOCKING_PRELOAD (main.py),
 GUARDRAIL_BLOCK_RISK_SCORE_MIN (default 95: score at/above forces block UI),
 GUARDRAIL_DUPLICATE_BYPASS_MIN_SCORE (default 80: at/above never skips duplicate or inference-cache).
 
 Decision driven by config/risk_policy.json (3-class: min_prob_* defaults or file;
-9-class: optional per_class_thresholds with per-PII warn/block scores). Scoring exits queue a row
-to logs/events.csv on a background thread (timestamp, text_hash, pii_class, confidence, action).
+9-class: optional per_class_thresholds with per-PII warn/block scores). Scoring queues a row to
+logs/guardrail.db (SQLite) on a background thread (timestamp, text_hash, pii_class, confidence,
+action; optional context JSON). Set GUARDRAIL_LEGACY_EVENTS_CSV=1 to also append logs/events.csv.
 Optional PII-based path: use score_clipboard_with_pii() or score_clipboard(..., use_pii=True).
 """
 
-import csv
 import hashlib
 import json
 import math
 import os
+import sys
 import queue
 import re
 import threading
@@ -27,13 +28,14 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
-from guardrail_runtime import record_inference_scored_text, should_skip_inference_for_recent_hash
+from guardrail_runtime import get_cached_inference_result, record_inference_scored_text
+from pii_remediation import _resolve_span_bounds
 from risk_mapping import (
     aggregate_span_risks,
     apply_pii_overrides,
     get_pii_override_triggers,
-    iter_regex_pii_matches,
     kb_rule_spans,
+    strong_regex_pii_spans,
 )
 from risk_policy_loader import (
     DEFAULT_RISK_POLICY,
@@ -49,31 +51,58 @@ from risk_policy_loader import (
 # Suppress "Torch was not compiled with flash attention" (harmless; uses standard attention)
 warnings.filterwarnings("ignore", message=".*flash attention.*")
 
+def _is_windows_torch_dll_error(exc: BaseException) -> bool:
+    s = str(exc).lower()
+    return (
+        "dll" in s
+        or "c10" in s
+        or "torch_python" in s
+        or "winerror 126" in s
+        or "winerror 127" in s
+        or "the specified module could not be found" in s
+    )
+
+
 try:
+    if sys.platform == "win32":
+        import os
+
+        os.add_dll_directory(
+            os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "..",
+                ".venv",
+                "Lib",
+                "site-packages",
+                "torch",
+                "lib",
+            )
+        )
     import torch
     import torch.nn.functional as F
     from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer
-except OSError as e:
-    if "DLL" in str(e) or "c10.dll" in str(e):
-        raise SystemExit(
-            "PyTorch failed to load (Windows DLL error). Try one of:\n"
-            "  1. Install VC++ Redistributable (x64): https://aka.ms/vs/17/release/vc_redist.x64.exe\n"
-            "  2. Use CPU-only PyTorch: pip uninstall torch torchvision && pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu\n"
-        ) from e
+except (OSError, ImportError) as e:
+    import traceback
+    traceback.print_exc()
     raise
 
 DEVICE = 0 if torch.cuda.is_available() else -1  # 0 = first GPU, -1 = CPU
 
-# Optional: set e.g. GUARDRAIL_TORCH_THREADS=1 on CPU for steadier interactive latency.
+# Default 2 threads: TinyBERT is small; all cores increases scheduling jitter. Override via GUARDRAIL_TORCH_THREADS.
 _tn_env = os.environ.get("GUARDRAIL_TORCH_THREADS")
 if _tn_env is not None and _tn_env.strip().isdigit():
     torch.set_num_threads(max(1, int(_tn_env.strip())))
+else:
+    torch.set_num_threads(2)
 
 # Sequence length for tokenizer/model forward (lower = faster; default matches typical TinyBERT train).
 _MAX_SEQ_LEN = max(32, min(512, int(os.environ.get("GUARDRAIL_MAX_SEQ_LEN", "128"))))
 
 # Sliding-window inference: overlap in *content* tokens between consecutive windows (BERT reserves 2 for CLS+SEP).
 _infer_thread_local = threading.local()
+
+# Word-count threshold below which we use a single truncated encode (skip full-document tokenization).
+_SHORT_TEXT_MAX_WORDS = 80
 
 
 def _sliding_window_stride() -> int:
@@ -102,6 +131,29 @@ def _sliding_window_encode(
     max_content = max_len - 2  # room for CLS and SEP
     if max_content < 1:
         max_content = 1
+
+    t = text or ""
+    # Fast path: short text fits in one 128-token window — single encode, no full-text tokenization.
+    if len(t.split()) < _SHORT_TEXT_MAX_WORDS:
+        enc = tokenizer(
+            t,
+            max_length=max_len,
+            truncation=True,
+            padding="max_length",
+            return_tensors="pt",
+        )
+        alen = int(enc["attention_mask"][0].sum().item())
+        content_tokens = max(0, alen - 2)
+        return [
+            {
+                "input_ids": enc["input_ids"],
+                "attention_mask": enc["attention_mask"],
+                "char_start": 0,
+                "char_end": len(t),
+                "token_start": 0,
+                "token_end": content_tokens,
+            }
+        ]
 
     cls_id = tokenizer.cls_token_id
     sep_id = tokenizer.sep_token_id
@@ -233,10 +285,18 @@ def _pick_worst_window_probs(prob_vectors: list[list[float]], num_labels: int) -
     )
 
 
-def _run_sliding_inference(text: str) -> tuple[list, dict[int, float]] | None:
+def _run_sliding_inference(
+    text: str,
+    *,
+    min_window_confidence: float | None = None,
+    max_window_char_span: int | None = None,
+) -> tuple[list, dict[int, float]] | None:
     """
     Full-document inference: overlapping windows, then merge to a single prob vector for policy/labels.
     Stores window metadata on _infer_thread_local for score_clipboard_with_pii.
+
+    When min_window_confidence / max_window_char_span are set (document scans), windows that fail
+    the filter are excluded from the worst-window merge so large low-signal blocks do not drive HIGH.
     """
     t = (text or "").strip()
     if not t:
@@ -257,17 +317,26 @@ def _run_sliding_inference(text: str) -> tuple[list, dict[int, float]] | None:
 
     windows = _sliding_window_encode(t, tokenizer)
     content_token_count = 0
-    try:
-        enc0 = tokenizer(
-            t,
-            add_special_tokens=False,
-            truncation=False,
-            padding=False,
-            return_tensors=None,
-        )
-        content_token_count = len(enc0["input_ids"])
-    except (TypeError, ValueError):
-        content_token_count = 0
+    if len(t.split()) < _SHORT_TEXT_MAX_WORDS and windows:
+        try:
+            w0 = windows[0]
+            content_token_count = int(w0["attention_mask"][0].sum().item()) - 2
+            if content_token_count < 0:
+                content_token_count = 0
+        except (TypeError, ValueError, AttributeError, IndexError):
+            content_token_count = 0
+    else:
+        try:
+            enc0 = tokenizer(
+                t,
+                add_special_tokens=False,
+                truncation=False,
+                padding=False,
+                return_tensors=None,
+            )
+            content_token_count = len(enc0["input_ids"])
+        except (TypeError, ValueError):
+            content_token_count = 0
 
     window_scores_meta: list[dict] = []
     prob_vectors: list[list[float]] = []
@@ -300,7 +369,33 @@ def _run_sliding_inference(text: str) -> tuple[list, dict[int, float]] | None:
                 }
             )
 
-    worst = _pick_worst_window_probs(prob_vectors, n)
+    merge_vectors = prob_vectors
+    if min_window_confidence is not None or max_window_char_span is not None:
+        min_c = 0.0 if min_window_confidence is None else float(min_window_confidence)
+        max_span = 10**9 if max_window_char_span is None else int(max_window_char_span)
+        filtered: list[list[float]] = []
+        for i, p_list in enumerate(prob_vectors):
+            if i >= len(window_scores_meta):
+                break
+            ws = window_scores_meta[i]
+            try:
+                cs = int(ws.get("char_start", 0))
+                ce = int(ws.get("char_end", 0))
+            except (TypeError, ValueError):
+                continue
+            if ce - cs > max_span:
+                continue
+            if p_list and max(float(x) for x in p_list) < min_c:
+                continue
+            filtered.append(p_list)
+        merge_vectors = filtered
+
+    if not merge_vectors:
+        worst = [0.0] * n
+        if n > 0:
+            worst[0] = 1.0
+    else:
+        worst = _pick_worst_window_probs(merge_vectors, n)
     if not worst:
         _infer_thread_local.sliding_meta = {
             "token_count": content_token_count,
@@ -332,27 +427,128 @@ def _run_sliding_inference(text: str) -> tuple[list, dict[int, float]] | None:
     return scores, probs
 
 
+def _normalize_span_char_offsets(text: str, spans: list[dict]) -> None:
+    """
+    Ensure each span has start/end consistent with `text` and `match`.
+    When offsets are missing or do not align with the matched substring, locate `match` in `text`.
+    KB spans may use a truncated `match` (prefix of the full slice); in that case existing
+    char_start/char_end from regex are kept when the slice starts with `match`.
+    """
+    if not text or not spans:
+        return
+    for sp in spans:
+        if not isinstance(sp, dict):
+            continue
+        match = sp.get("match")
+        if match is None:
+            continue
+        match = str(match)
+        if not match.strip():
+            continue
+        start = sp.get("start")
+        end = sp.get("end")
+        ok = False
+        if isinstance(start, int) and isinstance(end, int) and 0 <= start < end <= len(text):
+            seg = text[start:end]
+            if seg == match or (len(seg) >= len(match) and seg.startswith(match)):
+                ok = True
+        if ok:
+            continue
+        pos = text.find(match)
+        if pos < 0:
+            pos = text.lower().find(match.lower())
+        if pos >= 0:
+            sp["start"] = pos
+            sp["end"] = pos + len(match)
+
+
+def _span_highlight_priority(span: dict) -> int:
+    """Higher = replace first when overlapping (regex/kb over coarse model_window)."""
+    src = str(span.get("source", "")).lower()
+    if src == "regex":
+        return 4
+    if src == "kb_rule":
+        return 3
+    if src == "model_window":
+        return 0
+    return 1
+
+
+def filter_triggers_already_in_spans(
+    spans: list[dict], triggers: list[str]
+) -> list[str]:
+    """
+    Drop human-readable trigger strings that duplicate a span's ``class`` (span card already
+    represents that detection, e.g. regex \"credit card pattern\" + trigger of the same name).
+    """
+    if not triggers:
+        return []
+    classes: set[str] = set()
+    for s in spans or []:
+        if not isinstance(s, dict):
+            continue
+        c = str(s.get("class", "")).strip().lower()
+        if c:
+            classes.add(c)
+    out: list[str] = []
+    for t in triggers:
+        tl = str(t).strip().lower()
+        if not tl:
+            continue
+        if tl in classes:
+            continue
+        out.append(str(t))
+    return out
+
+
 def highlight_pii_in_text(text: str, spans: list[dict]) -> str:
     """
-    Return text with each span replaced by a [class] marker (right-to-left so offsets stay valid).
+    Return text with each span replaced by a [class] marker.
+
+    Overlapping spans are deduplicated: prefer regex/kb over broad model_window, and shorter
+    spans over longer ones at the same priority. Remaining ranges are applied right-to-left on
+    the original string so indices stay valid.
     """
     if not text:
         return ""
     if not spans:
         return text
-    result = text
-    for span in sorted(spans, key=lambda s: int(s.get("start", 0)), reverse=True):
-        try:
-            start = int(span["start"])
-            end = int(span["end"])
-        except (TypeError, KeyError, ValueError):
+
+    candidates: list[tuple[int, int, str, int]] = []
+    for span in spans:
+        if not isinstance(span, dict):
             continue
+        resolved = _resolve_span_bounds(text, span)
+        if resolved is None:
+            continue
+        start, end, _seg = resolved
+        c = str(span.get("class") or "PII").replace("[", "").replace("]", "")[:64]
+        tag = f"[{c}]"
+        pri = _span_highlight_priority(span)
+        candidates.append((start, end, tag, pri))
+
+    if not candidates:
+        return text
+
+    # Greedy non-overlapping: higher priority first, then shorter span (specific match over window)
+    candidates.sort(key=lambda x: (-x[3], x[1] - x[0], x[0]))
+
+    selected: list[tuple[int, int, str]] = []
+    for start, end, tag, _pri in candidates:
+        overlaps = any(
+            not (end <= s0 or start >= s1) for (s0, s1, _) in selected
+        )
+        if overlaps:
+            continue
+        selected.append((start, end, tag))
+
+    selected.sort(key=lambda x: x[0], reverse=True)
+    result = text
+    for start, end, tag in selected:
         if start < 0 or start >= end:
             continue
         if end > len(result):
             end = len(result)
-        c = str(span.get("class") or "PII").replace("[", "").replace("]", "")[:64]
-        tag = f"[{c}]"
         result = result[:start] + tag + result[end:]
     return result
 
@@ -362,31 +558,37 @@ def get_pii_spans(
     policy: dict | None = None,
     *,
     sliding_meta: dict | None = None,
+    min_confidence: float = 0.45,
+    max_model_window_chars: int = 100,
 ) -> list[dict]:
     """
     Character-level span annotations for regex PII and model windows (non-low / non-O windows).
 
     Each item: start, end, class, match, source ("regex" | "kb_rule" | "model_window").
     kb_rule spans may include a \"risk\" field (low/med/high).
+
+    sliding_meta may include window_results: a list of dicts with a \"spans\" list (e.g. model
+    windows without offsets); those spans are merged and start/end are filled from match text.
+
+    Model windows longer than max_model_window_chars or below min_confidence are skipped
+    (reduces sliding-window over-flagging on long generic text).
     """
     p = policy or load_risk_policy()
     t = text if isinstance(text, str) else ""
     spans: list[dict] = []
 
-    for start, end, class_name, match in iter_regex_pii_matches(t):
-        spans.append(
-            {
-                "start": start,
-                "end": end,
-                "class": class_name,
-                "match": match,
-                "source": "regex",
-            }
-        )
-
+    spans.extend(strong_regex_pii_spans(t))
     spans.extend(kb_rule_spans(t))
 
     meta = sliding_meta or {}
+    for window_result in meta.get("window_results") or []:
+        if not isinstance(window_result, dict):
+            continue
+        for span in window_result.get("spans") or []:
+            if isinstance(span, dict):
+                span.setdefault("source", "model_window")
+                spans.append(span)
+
     vecs: list = list(meta.get("window_prob_vectors") or [])
     wscores: list = list(meta.get("window_scores") or [])
     n_lab = _model_num_labels if _model_num_labels is not None else 3
@@ -406,7 +608,10 @@ def get_pii_spans(
         if ce <= cs:
             continue
         slice_txt = t[cs:ce]
+        if len(slice_txt) > int(max_model_window_chars):
+            continue
 
+        win_conf: float
         if n_lab == 3:
             th, tm = get_inference_3class_label_thresholds(p)
             if len(p_list) < 3:
@@ -414,8 +619,10 @@ def get_pii_spans(
             ph, pm = float(p_list[2]), float(p_list[1])
             if ph > th:
                 wclass = "HIGH"
+                win_conf = ph
             elif pm > tm:
                 wclass = "MED"
+                win_conf = pm
             else:
                 continue
         else:
@@ -425,6 +632,10 @@ def get_pii_spans(
             wclass = str(id2l.get(best_i, "O")).strip().upper()
             if wclass in ("O", "LABEL_0", ""):
                 continue
+            win_conf = float(p_list[best_i])
+
+        if win_conf < float(min_confidence):
+            continue
 
         spans.append(
             {
@@ -436,7 +647,11 @@ def get_pii_spans(
             }
         )
 
-    return sorted(spans, key=lambda s: (s["start"], s["end"]))
+    _normalize_span_char_offsets(t, spans)
+    return sorted(
+        spans,
+        key=lambda s: (int(s.get("start", 0)), int(s.get("end", 0))),
+    )
 
 
 def _get_sliding_window_meta() -> dict:
@@ -470,7 +685,6 @@ CONFIG_PATH = _GUARDRAIL_ROOT / "config" / "risk_policy.json"
 PII_POLICY_PATH = _GUARDRAIL_ROOT / "config" / "pii_policy.json"
 PII_TO_RISK_PATH = _GUARDRAIL_ROOT / "config" / "pii_to_risk.json"
 LOGS_DIR = _GUARDRAIL_ROOT / "logs"
-EVENTS_CSV = LOGS_DIR / "events.csv"
 
 ID_TO_RISK = {0: "low", 1: "med", 2: "high"}
 RISK_TO_ID = {"low": 0, "med": 1, "high": 2}
@@ -642,20 +856,92 @@ def clipboard_ui_action(decision: str, *, critical_secret: bool = False) -> str:
     return "silent"
 
 
+_UI_ACTION_RANK = {"silent": 0, "warn": 1, "block": 2}
+
+
+def _decision_and_block_from_ui_action(action: str) -> tuple[str, bool]:
+    """Map UI action string to decision + block flag (after enforce_risk_policy)."""
+    a = (action or "silent").lower()
+    if a == "block":
+        return "block", True
+    if a == "warn":
+        return "warn", False
+    return "allow", False
+
+
+def _primary_pii_class_for_class_override(
+    labels: list | None,
+    class_probs: dict[int, float] | None,
+) -> str:
+    """Dominant non-O PII class for class_overrides lookup (9-class probs preferred)."""
+    if class_probs and _model_id2label:
+        best_i: int | None = None
+        best_p = -1.0
+        for i, prob in class_probs.items():
+            lab = str(_model_id2label.get(int(i), "O")).strip().upper()
+            if lab == "O":
+                continue
+            if float(prob) > best_p:
+                best_p = float(prob)
+                best_i = int(i)
+        if best_i is not None:
+            return str(_model_id2label.get(best_i, "O")).strip().upper()
+    for lab in labels or []:
+        u = str(lab).strip().upper()
+        if u and u != "O":
+            return u
+    return "O"
+
+
+def enforce_risk_policy(
+    action: str,
+    risk_label: str,
+    pii_class: str,
+    policy: dict,
+    *,
+    critical_secret: bool = False,
+) -> str:
+    """
+    Final UI action after merged model/regex decisions: three-tier risk_policy.json rules.
+    Critical secrets (API keys, etc.) always block. Low risk is always silent.
+    Med risk never blocks. High risk respects class_overrides max_action ceiling.
+    """
+    if critical_secret:
+        return "block"
+    rl = (risk_label or "low").lower()
+    if rl == "low":
+        return "silent"
+    if rl == "med":
+        a = (action or "silent").lower()
+        if a == "block":
+            return "warn"
+        return a if a in _UI_ACTION_RANK else "silent"
+
+    class_overrides = policy.get("class_overrides") or {}
+    key = str(pii_class or "O").strip().upper()
+    class_policy = class_overrides.get(key)
+    if not isinstance(class_policy, dict):
+        class_policy = {}
+    max_action = str(class_policy.get("max_action", "block")).lower()
+    if max_action not in _UI_ACTION_RANK:
+        max_action = "block"
+
+    a = (action or "silent").lower()
+    if _UI_ACTION_RANK.get(a, 0) > _UI_ACTION_RANK.get(max_action, 2):
+        return max_action
+    return a if a in _UI_ACTION_RANK else "silent"
+
+
 def _text_hash(text: str) -> str:
     """SHA256 hash of normalized text (no raw content in logs)."""
     return hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
 
 
-def _append_events_csv_row(row: list) -> None:
-    """Single-writer thread: append one data row (header written if file is new)."""
-    LOGS_DIR.mkdir(parents=True, exist_ok=True)
-    file_exists = EVENTS_CSV.exists()
-    with open(EVENTS_CSV, "a", encoding="utf-8", newline="") as f:
-        w = csv.writer(f)
-        if not file_exists:
-            w.writerow(["timestamp", "text_hash", "pii_class", "confidence", "action"])
-        w.writerow(row)
+def _append_events_csv_row(row: list, context_json: str | None = None) -> None:
+    """Background thread: persist one scoring row to SQLite (optional legacy CSV)."""
+    from guardrail_logs import write_scoring_event
+
+    write_scoring_event(row, context_json)
 
 
 def _events_csv_log_loop() -> None:
@@ -664,9 +950,13 @@ def _events_csv_log_loop() -> None:
         q = _events_log_queue
         if q is None:
             return
-        row = q.get()
+        item = q.get()
         try:
-            _append_events_csv_row(row)
+            if isinstance(item, tuple) and len(item) == 2:
+                row, ctx = item
+            else:
+                row, ctx = item, None
+            _append_events_csv_row(row, ctx)
         except Exception:
             pass
 
@@ -680,9 +970,27 @@ def _ensure_events_log_thread() -> None:
         _events_log_thread = threading.Thread(
             target=_events_csv_log_loop,
             daemon=True,
-            name="guardrail-events-csv",
+            name="guardrail-events-db",
         )
         _events_log_thread.start()
+
+
+def _telemetry_ctx(
+    *,
+    risk: str | None,
+    risk_score: int | None,
+    score_context: str,
+    critical_secret: bool = False,
+) -> dict:
+    """Fields stored in scoring context_json and copied to risk_telemetry.jsonl."""
+    d: dict = {
+        "risk": (risk or "unknown").strip().lower(),
+        "risk_score": int(risk_score) if risk_score is not None else 0,
+        "score_context": score_context,
+    }
+    if critical_secret:
+        d["critical_secret"] = True
+    return d
 
 
 def _log_scoring_event(
@@ -691,20 +999,23 @@ def _log_scoring_event(
     pii_class: str,
     confidence: float,
     action: str,
+    context: dict | None = None,
 ) -> None:
     """
-    Queue one row for logs/events.csv (background thread) so scoring never waits on disk.
-    Columns: timestamp, text_hash, pii_class, confidence, action.
+    Queue one row for logs/guardrail.db (background thread) so scoring never waits on disk.
+    Columns: timestamp, text_hash, pii_class, confidence, action; optional context JSON
+    (include risk, risk_score, score_context for telemetry / dashboards).
     """
     raw = text if isinstance(text, str) else ""
     text_hash = _text_hash(raw) if raw.strip() else hashlib.sha256(b"").hexdigest()
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     row = [timestamp, text_hash, pii_class, f"{confidence:.6f}", action]
+    ctx_json = json.dumps(context, ensure_ascii=False) if context else None
     _ensure_events_log_thread()
     q = _events_log_queue
     if q is not None:
         try:
-            q.put_nowait(row)
+            q.put_nowait((row, ctx_json))
         except queue.Full:
             pass
 
@@ -755,6 +1066,7 @@ def _load_guardrail_model() -> None:
         _guardrail_tokenizer = AutoTokenizer.from_pretrained(resolved)
         _guardrail_model = AutoModelForSequenceClassification.from_pretrained(resolved)
         _guardrail_model.eval()
+        torch.set_grad_enabled(False)
         _torch_device = torch.device("cuda:0" if DEVICE == 0 else "cpu")
         _guardrail_model.to(_torch_device)
 
@@ -780,12 +1092,21 @@ def preload_guardrail_model() -> None:
         torch.cuda.synchronize()
 
 
-def _infer_scores_and_probs(text: str) -> tuple[list, dict[int, float]] | None:
+def _infer_scores_and_probs(
+    text: str,
+    *,
+    min_window_confidence: float | None = None,
+    max_window_char_span: int | None = None,
+) -> tuple[list, dict[int, float]] | None:
     """
     Document-level scores from sliding-window inference (overlapping chunks) merged to one prob vector.
     See _run_sliding_inference / _sliding_window_encode; metadata via _get_sliding_window_meta().
     """
-    return _run_sliding_inference(text)
+    return _run_sliding_inference(
+        text,
+        min_window_confidence=min_window_confidence,
+        max_window_char_span=max_window_char_span,
+    )
 
 
 def _labels_from_scores(scores: list) -> list[str]:
@@ -1044,7 +1365,7 @@ def suggest_remediation(text: str, triggers: list[str], risk_score: int) -> list
         return [
             "Avoid sending unnecessary personal details to LLMs.",
             "Review clipboard content for names, IDs, and financial information before pasting.",
-            "If in doubt, redact or replace identifiers with placeholders.",
+            "If in doubt, mask or replace identifiers with placeholders.",
         ]
 
     # >= 80: targeted suggestions
@@ -1060,7 +1381,7 @@ def suggest_remediation(text: str, triggers: list[str], risk_score: int) -> list
         suggestions.append("Mask sensitive financial identifiers (keep last 4 digits) or encrypt/hash before pasting.")
 
     if has_any("email", "phone", "address"):
-        suggestions.append("Replace emails/phones/addresses with generic placeholders (e.g., [customer_email], [phone_redacted]).")
+        suggestions.append("Replace emails/phones/addresses with generic placeholders (e.g., [customer_email], [phone]).")
 
     if has_any("ip", "device", "token", "auth", "jwt", "bearer"):
         suggestions.append("Hash or truncate IP/device/token values (e.g., 10.0.0.xxx).")
@@ -1068,7 +1389,7 @@ def suggest_remediation(text: str, triggers: list[str], risk_score: int) -> list
     # Ensure we return 3–5 even if only one category was detected.
     # (You requested 3–5 concise suggestions.)
     general_high = [
-        "Prefer a safe redacted version of your text over the raw clipboard contents.",
+        "Prefer a safe masked version of your text over the raw clipboard contents.",
         "Share only what the assistant needs; avoid raw identifiers when possible.",
         "If you must share sensitive data, consider encrypting or hashing it before paste.",
         "Double-check the final text you send to the LLM matches your intent.",
@@ -1087,13 +1408,23 @@ def suggest_remediation(text: str, triggers: list[str], risk_score: int) -> list
     return suggestions
 
 
-def score_clipboard_with_pii(text: str, policy_override: dict | None = None) -> dict:
+def score_clipboard_with_pii(
+    text: str,
+    policy_override: dict | None = None,
+    *,
+    min_confidence: float = 0.45,
+    context: str = "clipboard",
+) -> dict:
     """
     Score clipboard text using PII label aggregation + regex overrides.
 
     Long texts use sliding-window inference (overlap GUARDRAIL_SLIDING_STRIDE) so tail content
     is not dropped by max-length truncation; per-window logits are merged by _pick_worst_window_probs.
     Regex overrides still run on the full string.
+
+    min_confidence: minimum model probability to keep a model_window span (default 0.45).
+    context: "clipboard" (default) or "document". Document scans use stricter thresholds
+    (min_confidence at least 0.65) and exclude oversized windows from merge and spans.
 
     policy_override: optional dict to override POLICY for this call (e.g. {"high": {"allow_warn_instead": False}}).
     Returns dict with risk, pii_labels, pii_risk_before_override, pii_override_applied,
@@ -1108,6 +1439,11 @@ def score_clipboard_with_pii(text: str, policy_override: dict | None = None) -> 
             pii_class="empty_input",
             confidence=0.0,
             action="silent",
+            context=_telemetry_ctx(
+                risk="low",
+                risk_score=0,
+                score_context=context,
+            ),
         )
         return {
             "risk": "low",
@@ -1128,38 +1464,37 @@ def score_clipboard_with_pii(text: str, policy_override: dict | None = None) -> 
             "window_scores": [],
             "spans": [],
         }
+    eff_min = max(min_confidence, 0.65) if context == "document" else min_confidence
+
+    cached = None
+    if context != "document":
+        cached = get_cached_inference_result(text, cache_kind="pii")
     if (
-        should_skip_inference_for_recent_hash(text)
+        cached is not None
         and not detect_critical_secret_leak(text)
         and not text_heuristic_duplicate_bypass(text)
     ):
-        msg = "Clipboard content appears safe (no sensitive data detected)."
+        cr = str(cached.get("risk", "low")).strip().lower()
+        try:
+            crs = int(cached.get("risk_score", 0))
+        except (TypeError, ValueError):
+            crs = 0
         _log_scoring_event(
             text,
             pii_class="dedup_cached",
             confidence=0.0,
-            action="silent",
+            action=str(cached.get("action", "silent")),
+            context=_telemetry_ctx(risk=cr, risk_score=crs, score_context=context),
         )
-        return {
-            "risk": "low",
-            "pii_labels": [],
-            "pii_risk_before_override": "low",
-            "pii_override_applied": False,
-            "decision": "allow",
-            "block": False,
-            "action": "silent",
-            "message": msg,
-            "triggers": [],
-            "risk_score": 0,
-            "suggestions": suggest_remediation(text, [], 0),
-            "critical_secret_detected": False,
-            "token_count": 0,
-            "chunks_scored": 0,
-            "text_truncated": False,
-            "window_scores": [],
-            "spans": get_pii_spans(text.strip(), load_risk_policy(), sliding_meta=None),
-        }
-    got = _infer_scores_and_probs(text)
+        return cached
+    if context == "document":
+        got = _infer_scores_and_probs(
+            text,
+            min_window_confidence=eff_min,
+            max_window_char_span=100,
+        )
+    else:
+        got = _infer_scores_and_probs(text)
     scores_list: list | None
     if got is None:
         scores_list = None
@@ -1223,19 +1558,39 @@ def score_clipboard_with_pii(text: str, policy_override: dict | None = None) -> 
         decision = "block"
         block = True
 
-    message = build_user_message(risk, decision, override_applied, triggers)
     suggestions = suggest_remediation(text, triggers, risk_score)
     action = clipboard_ui_action(decision, critical_secret=critical_secret_detected)
+    primary_pii = _primary_pii_class_for_class_override(labels, class_probs)
+    action = enforce_risk_policy(
+        action,
+        risk,
+        primary_pii,
+        risk_policy,
+        critical_secret=critical_secret_detected,
+    )
+    decision, block = _decision_and_block_from_ui_action(action)
+    message = build_user_message(risk, decision, override_applied, triggers)
     _log_scoring_event(
         text,
         pii_class=_pii_class_for_log(labels, risk),
         confidence=top_conf,
         action=action,
+        context=_telemetry_ctx(
+            risk=risk,
+            risk_score=risk_score,
+            score_context=context,
+            critical_secret=critical_secret_detected,
+        ),
     )
-    record_inference_scored_text(text)
     win_meta = _get_sliding_window_meta()
-    spans = get_pii_spans(text.strip(), risk_policy, sliding_meta=win_meta)
-    return {
+    spans = get_pii_spans(
+        text.strip(),
+        risk_policy,
+        sliding_meta=win_meta,
+        min_confidence=eff_min,
+        max_model_window_chars=100,
+    )
+    result = {
         "risk": risk,
         "pii_labels": labels,
         "pii_risk_before_override": base_risk,
@@ -1254,6 +1609,9 @@ def score_clipboard_with_pii(text: str, policy_override: dict | None = None) -> 
         "window_scores": win_meta.get("window_scores", []),
         "spans": spans,
     }
+    if context != "document":
+        record_inference_scored_text(text, result, cache_kind="pii")
+    return result
 
 
 def score_clipboard(text: str, use_pii: bool = False) -> dict:
@@ -1278,6 +1636,7 @@ def score_clipboard(text: str, use_pii: bool = False) -> dict:
             pii_class="empty_input",
             confidence=0.0,
             action="silent",
+            context=_telemetry_ctx(risk="low", risk_score=0, score_context="plain"),
         )
         return {
             "risk": "low",
@@ -1294,39 +1653,36 @@ def score_clipboard(text: str, use_pii: bool = False) -> dict:
     if use_pii:
         return score_clipboard_with_pii(text)
 
+    cached = get_cached_inference_result(text, cache_kind="plain")
     if (
-        should_skip_inference_for_recent_hash(text)
+        cached is not None
         and not detect_critical_secret_leak(text)
         and not text_heuristic_duplicate_bypass(text)
     ):
+        cr = str(cached.get("risk", "low")).strip().lower()
+        try:
+            crs = int(cached.get("risk_score", 0))
+        except (TypeError, ValueError):
+            crs = 0
         _log_scoring_event(
             text,
             pii_class="dedup_cached",
             confidence=0.0,
-            action="silent",
+            action=str(cached.get("action", "silent")),
+            context=_telemetry_ctx(risk=cr, risk_score=crs, score_context="plain"),
         )
-        return {
-            "risk": "low",
-            "conf": 0.0,
-            "prob_low": 1.0,
-            "prob_med": 0.0,
-            "prob_high": 0.0,
-            "decision": "allow",
-            "action": "silent",
-            "pii_count": 0,
-            "block": False,
-        }
+        return cached
 
     got = _infer_scores_and_probs(text)
     if got is None:
-        record_inference_scored_text(text)
         _log_scoring_event(
             text,
             pii_class="inference_unavailable",
             confidence=0.0,
             action="silent",
+            context=_telemetry_ctx(risk="low", risk_score=0, score_context="plain"),
         )
-        return {
+        fail_plain = {
             "risk": "low",
             "conf": 0.0,
             "prob_low": 1.0,
@@ -1337,6 +1693,8 @@ def score_clipboard(text: str, use_pii: bool = False) -> dict:
             "pii_count": 0,
             "block": False,
         }
+        record_inference_scored_text(text, fail_plain, cache_kind="plain")
+        return fail_plain
     _, probs = got
 
     n = _model_num_labels if _model_num_labels is not None else 3
@@ -1403,15 +1761,24 @@ def score_clipboard(text: str, use_pii: bool = False) -> dict:
         critical_escalate_warn_to_block=critical_secret,
     )
     action = clipboard_ui_action(decision, critical_secret=critical_secret)
+    triggers_plain = get_pii_override_triggers(text.strip()) if top_label == "high" else []
+    plain_risk_score = compute_risk_score(top_label, triggers_plain)
+    if critical_secret:
+        plain_risk_score = max(plain_risk_score, 90)
     _log_scoring_event(
         text,
         pii_class=_pii_class_for_log([], top_label),
         confidence=float(top_prob),
         action=action,
+        context=_telemetry_ctx(
+            risk=top_label,
+            risk_score=plain_risk_score,
+            score_context="plain",
+            critical_secret=critical_secret,
+        ),
     )
 
-    record_inference_scored_text(text)
-    return {
+    plain_result = {
         "risk": top_label,
         "conf": round(conf, 4),
         "prob_low": round(prob_low, 4),
@@ -1422,6 +1789,8 @@ def score_clipboard(text: str, use_pii: bool = False) -> dict:
         "pii_count": pii_count,
         "block": decision == "block",
     }
+    record_inference_scored_text(text, plain_result, cache_kind="plain")
+    return plain_result
 
 
 def predict_3class_bucket_from_probs(
