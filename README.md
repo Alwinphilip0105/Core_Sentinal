@@ -452,7 +452,7 @@ Add `screenshot_*.png` files at the repository root (paths used above) so the De
 
 ## License
 
-MIT License — free to use, modify, and distribute.
+MIT License — free to use, modify, and distribute. Full text: [`LICENSE`](LICENSE).
 
 ---
 
