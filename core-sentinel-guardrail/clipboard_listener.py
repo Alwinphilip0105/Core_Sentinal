@@ -4,6 +4,7 @@ shows UI by result[\"action\"] (silent / warn / block), and optionally suppresse
 """
 
 import hashlib
+import os
 import subprocess
 import sys
 import threading
@@ -19,8 +20,8 @@ import pyperclip
 from access_control import request_paste_permission
 from infer import _log_scoring_event, _pii_class_for_log, score_clipboard_with_pii
 from active_window_llm import (
+    detect_llm_window,
     get_foreground_app_label,
-    is_active_window_llm,
     log_guardrail_active_window_banner,
 )
 
@@ -131,7 +132,7 @@ def handle_paste(
     """
     _ = show_allow_toast  # CLI flag kept for compatibility; UI uses result["action"] only.
     # Only run PII analysis when the user is actively pasting into a known LLM target.
-    is_llm, agent_name, _url, _cleaned_title = is_active_window_llm(debug=False)
+    is_llm, agent_name, _url, _cleaned_title = detect_llm_window(debug=False)
     banner_label = agent_name if is_llm else get_foreground_app_label()
     log_guardrail_active_window_banner(is_llm, banner_label)
     if not is_llm:
@@ -148,6 +149,13 @@ def handle_paste(
         return True
 
     result = score_clipboard_with_pii(text, policy_override=policy_override)
+    if os.environ.get("GUARDRAIL_DEBUG_REMEDIATION", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        print(f"[result keys] {list(result.keys())}", flush=True)
+        print(f"[result] action={result.get('action')} spans={len(result.get('spans') or [])} ", flush=True)
     risk = result["risk"]
     decision = result["decision"]
     block = result["block"]

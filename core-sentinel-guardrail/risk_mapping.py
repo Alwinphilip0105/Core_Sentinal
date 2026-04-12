@@ -87,8 +87,59 @@ _IPV4 = re.compile(r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|
 # IPv6 (simplified: 8 groups of hex separated by :)
 _IPV6 = re.compile(r"\b(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}\b")
 
+# Medium-risk regex: warn path (do not force HIGH like strong PII).
+_STREET_ADDRESS = re.compile(
+    r"\d{2,5}\s+[A-Za-z][A-Za-z\s]{2,30},\s*[A-Za-z\s]+,?\s+[A-Z]{2}\s+\d{5}"
+)
+_INTL_PHONE = re.compile(
+    r"\+\d{1,3}[\s\-\.]?\(?\d{1,4}\)?[\s\-\.]?\d{3,12}"
+)
+
+# Passport: explicit label + ID, or ID with passport/travel-doc context (high risk).
+_PASSPORT_EXPLICIT = re.compile(
+    r"(?i)passport\s*(?:number|no|#|num)?"
+    r"\s*[:.]?\s*(?:[A-Z]{1,3}\s+)?[A-Z]{1,2}\d{6,9}"
+)
+_PASSPORT_NEAR_CONTEXT = re.compile(
+    r"\b[A-Z]{1,2}\d{6,9}\b(?=.*(?:passport|travel\s*doc))",
+    re.IGNORECASE,
+)
+
+_CONFIDENTIAL_MARKER = re.compile(
+    r"(?i)(confidential|internal\s+only"
+    r"|trade\s+secret|proprietary)"
+)
+_SALARY_INFO = re.compile(
+    r"(?i)salary\s*[:.]?\s*\$[\d,]+"
+)
+
+_MEDIUM_PII_PATTERNS = [
+    _STREET_ADDRESS,
+    _INTL_PHONE,
+    _CONFIDENTIAL_MARKER,
+    _SALARY_INFO,
+]
+_MEDIUM_PII_NAMES = [
+    "street address",
+    "international phone",
+    "Confidential marker",
+    "Salary information",
+]
+assert len(_MEDIUM_PII_PATTERNS) == len(_MEDIUM_PII_NAMES)
+
 # (pattern, user-facing trigger name) for message generation
-_STRONG_PII_PATTERNS = [_SSN, _CC, _IBAN, _ROUTING, _PHONE_US, _EMAIL, _IPV4, _IPV6]
+_STRONG_PII_PATTERNS = [
+    _SSN,
+    _CC,
+    _IBAN,
+    _ROUTING,
+    _PHONE_US,
+    _EMAIL,
+    _IPV4,
+    _IPV6,
+    _PASSPORT_EXPLICIT,
+    _PASSPORT_NEAR_CONTEXT,
+]
 _STRONG_PII_NAMES = [
     "SSN pattern",
     "credit card pattern",
@@ -98,6 +149,8 @@ _STRONG_PII_NAMES = [
     "email address",
     "IP address (IPv4)",
     "IP address (IPv6)",
+    "Passport number",
+    "Passport number",
 ]
 
 assert len(_STRONG_PII_PATTERNS) == len(_STRONG_PII_NAMES)
@@ -141,7 +194,8 @@ def kb_rule_spans(text: str) -> list[dict]:
 
 def strong_regex_pii_spans(text: str) -> list[dict]:
     """
-    Strong-PII regex matches with character offsets from each re.Match (finditer).
+    Strong- and medium-tier PII regex matches with character offsets from each re.Match (finditer).
+    Strong patterns imply HIGH override; medium patterns imply MED (see apply_pii_overrides).
     Overlapping matches from different patterns are all returned.
     """
     if not text:
@@ -156,6 +210,18 @@ def strong_regex_pii_spans(text: str) -> list[dict]:
                     "class": pattern_name,
                     "match": m.group(),
                     "source": "regex",
+                }
+            )
+    for pattern, pattern_name in zip(_MEDIUM_PII_PATTERNS, _MEDIUM_PII_NAMES):
+        for m in pattern.finditer(text):
+            out.append(
+                {
+                    "start": m.start(),
+                    "end": m.end(),
+                    "class": pattern_name,
+                    "match": m.group(),
+                    "source": "regex",
+                    "risk": MED,
                 }
             )
     return out
@@ -182,18 +248,22 @@ def get_pii_override_triggers(text: str) -> list[str]:
     for pat, name in zip(_STRONG_PII_PATTERNS, _STRONG_PII_NAMES):
         if pat.search(text):
             triggers.append(name)
+    for pat, name in zip(_MEDIUM_PII_PATTERNS, _MEDIUM_PII_NAMES):
+        if pat.search(text):
+            triggers.append(name)
     for name, cre, risk in _get_kb_patterns():
         if str(risk).lower() != HIGH:
             continue
         if cre.search(text):
             triggers.append(name)
-    return triggers
+    return list(dict.fromkeys(triggers))
 
 
 def apply_pii_overrides(text: str, base_risk: str) -> str:
     """
     If raw text matches any strong PII pattern, upgrade risk to HIGH.
     KB rules with risk \"high\" are treated the same (can force block path via HIGH).
+    Medium-tier patterns (street address, international phone) upgrade LOW → MED only.
     Never downgrades; only upgrades.
     """
     if not text or base_risk == HIGH:
@@ -206,4 +276,9 @@ def apply_pii_overrides(text: str, base_risk: str) -> str:
             continue
         if cre.search(text):
             return HIGH
+    for pat in _MEDIUM_PII_PATTERNS:
+        if pat.search(text):
+            if base_risk == LOW:
+                return MED
+            return base_risk
     return base_risk

@@ -69,3 +69,13 @@ core-sentinel-guardrail/test_scan.txt
 .vscode/
 .DS_Store
 Thumbs.db
+
+core-sentinel-guardrail/logs/
+logs/
+core-sentinel-guardrail/__pycache__/
+core-sentinel-guardrail/*.pyc
+core-sentinel-guardrail/models/
+core-sentinel-guardrail/config/user_settings.json
+core-sentinel-guardrail/logs/supabase_sync_state.json
+.venv/
+*.db

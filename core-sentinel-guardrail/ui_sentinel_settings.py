@@ -7,6 +7,7 @@ from pathlib import Path
 from PyQt6 import QtCore, QtWidgets
 
 import user_settings
+from guardrail_runtime import clear_guard_snooze, is_guard_snoozed
 
 _BUNDLED_IDLE = Path(user_settings.__file__).resolve().parent / "assets" / "coresentinel_idle.png"
 
@@ -82,6 +83,18 @@ class SentinelSettingsDialog(QtWidgets.QDialog):
         self._cb_sound.setChecked(bool(d.get("play_sound_on_block", False)))
         root.addWidget(self._cb_sound)
 
+        snooze_row = QtWidgets.QHBoxLayout()
+        self._lbl_snooze = QtWidgets.QLabel("")
+        self._lbl_snooze.setWordWrap(True)
+        self._btn_clear_snooze = QtWidgets.QPushButton("Remove snooze")
+        self._btn_clear_snooze.setToolTip(
+            "Ends an active snooze from the remediation panel so alerts show again immediately."
+        )
+        self._btn_clear_snooze.clicked.connect(self._on_clear_snooze)
+        snooze_row.addWidget(self._lbl_snooze, 1)
+        snooze_row.addWidget(self._btn_clear_snooze, 0)
+        root.addLayout(snooze_row)
+
         row = QtWidgets.QHBoxLayout()
         row.addWidget(QtWidgets.QLabel("Sensitivity"))
         row.addStretch(1)
@@ -122,6 +135,28 @@ class SentinelSettingsDialog(QtWidgets.QDialog):
         save_btn.clicked.connect(self._on_save)
         btn_row.addWidget(save_btn)
         root.addLayout(btn_row)
+
+    def showEvent(self, event: QtCore.QEvent) -> None:
+        super().showEvent(event)
+        self._refresh_snooze_ui()
+
+    def _refresh_snooze_ui(self) -> None:
+        if is_guard_snoozed():
+            self._lbl_snooze.setText("Snooze is on — alerts are suppressed until it ends.")
+            self._btn_clear_snooze.setEnabled(True)
+        else:
+            self._lbl_snooze.setText("No snooze active.")
+            self._btn_clear_snooze.setEnabled(False)
+
+    def _on_clear_snooze(self) -> None:
+        clear_guard_snooze()
+        self._refresh_snooze_ui()
+        try:
+            from toast import show_toast
+
+            show_toast("Snooze removed — guardrail alerts active again.", color="#02C39A", duration=2500)
+        except Exception:
+            pass
 
     def _browse_idle_image(self) -> None:
         path, _ = QtWidgets.QFileDialog.getOpenFileName(

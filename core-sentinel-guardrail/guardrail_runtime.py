@@ -152,6 +152,12 @@ def snooze_guard_10_minutes() -> None:
     snooze_guard_minutes(10.0)
 
 
+def clear_guard_snooze() -> None:
+    """End snooze immediately so the guardrail UI responds again."""
+    global _snooze_until_mono
+    _snooze_until_mono = 0.0
+
+
 def get_monitor_llm_only() -> bool:
     return _monitor_llm_only
 

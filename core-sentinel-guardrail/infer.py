@@ -671,6 +671,13 @@ def _get_sliding_window_meta() -> dict:
 
 def _risk_score_force_block_min() -> int:
     """If risk_score >= this (1..100), force decision/action block despite allow_warn_instead. 0 = disabled."""
+    pol = load_risk_policy()
+    bt = pol.get("block_threshold")
+    if bt is not None:
+        try:
+            return max(0, min(100, int(bt)))
+        except (TypeError, ValueError):
+            pass
     raw = os.environ.get("GUARDRAIL_BLOCK_RISK_SCORE_MIN", "95").strip()
     try:
         v = int(raw)
@@ -930,6 +937,34 @@ def enforce_risk_policy(
     if _UI_ACTION_RANK.get(a, 0) > _UI_ACTION_RANK.get(max_action, 2):
         return max_action
     return a if a in _UI_ACTION_RANK else "silent"
+
+
+# Scalar score → clipboard UI: above this → warn; at or below → silent (block paths unchanged).
+RISK_SCORE_SILENT_MAX = 30
+
+
+def _finalize_action_for_risk_score(
+    action: str,
+    risk_score: int,
+    *,
+    critical_secret: bool,
+) -> str:
+    """
+    Final gate: risk_score > RISK_SCORE_SILENT_MAX → warn, else silent.
+    Preserves block (forced high-score / policy block and critical-secret path).
+    """
+    if critical_secret:
+        return "block"
+    a = (action or "silent").lower()
+    if a == "block":
+        return "block"
+    try:
+        rs = int(risk_score)
+    except (TypeError, ValueError):
+        rs = 0
+    if rs > RISK_SCORE_SILENT_MAX:
+        return "warn"
+    return "silent"
 
 
 def _text_hash(text: str) -> str:
@@ -1218,24 +1253,42 @@ def _shannon_entropy(s: str) -> float:
     return -sum((c / n) * math.log2(c / n) for c in counts.values())
 
 
-# Patterns that strongly suggest API keys / secrets (always treat as critical).
-_CRITICAL_SECRET_PATTERNS = [
-    re.compile(r"sk-(?:live|test|proj)-[A-Za-z0-9]{20,}", re.IGNORECASE),
-    re.compile(r"sk-[A-Za-z0-9]{20,}"),  # OpenAI-style
-    re.compile(r"rk_live_[A-Za-z0-9]{10,}", re.IGNORECASE),
-    re.compile(r"AKIA[0-9A-Z]{16}"),
-    re.compile(r"ASIA[0-9A-Z]{16}"),
-    re.compile(r"ghp_[A-Za-z0-9]{36,}"),
-    re.compile(r"gho_[A-Za-z0-9]{36,}"),
-    re.compile(r"github_pat_[A-Za-z0-9_]{20,}", re.IGNORECASE),
-    re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}", re.IGNORECASE),
-    re.compile(r"AIza[Sy][A-Za-z0-9_-]{30,}"),  # Google API key shape
-    re.compile(r"ya29\.[A-Za-z0-9_-]+"),
-    re.compile(r"Bearer\s+[A-Za-z0-9._-]{24,}", re.IGNORECASE),
-    re.compile(r"(?:api[_-]?key|apikey)\s*[:=]\s*['\"]?[A-Za-z0-9._-]{16,}", re.IGNORECASE),
-    re.compile(
-        r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"
-    ),  # JWT
+# Regex rules that strongly suggest API keys / secrets (always treat as critical).
+# Each tuple: (compiled pattern, UI class label, span risk tier: "high" | "critical").
+_CRITICAL_SECRET_RULES: list[tuple[re.Pattern[str], str, str]] = [
+    (re.compile(r"sk-(?:live|test|proj)-[A-Za-z0-9]{20,}", re.IGNORECASE), "Critical secret", "high"),
+    (re.compile(r"sk-[A-Za-z0-9]{20,}"), "Critical secret", "high"),
+    (re.compile(r"rk_live_[A-Za-z0-9]{10,}", re.IGNORECASE), "Critical secret", "high"),
+    (re.compile(r"AKIA[0-9A-Z]{16}"), "Critical secret", "high"),
+    (re.compile(r"ASIA[0-9A-Z]{16}"), "Critical secret", "high"),
+    (re.compile(r"ghp_[A-Za-z0-9]{36,}"), "Critical secret", "high"),
+    (re.compile(r"gho_[A-Za-z0-9]{36,}"), "Critical secret", "high"),
+    (re.compile(r"github_pat_[A-Za-z0-9_]{20,}", re.IGNORECASE), "Critical secret", "high"),
+    (re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}", re.IGNORECASE), "Critical secret", "high"),
+    (re.compile(r"AIza[Sy][A-Za-z0-9_-]{30,}"), "Critical secret", "high"),
+    (re.compile(r"ya29\.[A-Za-z0-9_-]+"), "Critical secret", "high"),
+    (re.compile(r"Bearer\s+[A-Za-z0-9._-]{24,}", re.IGNORECASE), "Critical secret", "high"),
+    (re.compile(r"(?:api[_-]?key|apikey)\s*[:=]\s*['\"]?[A-Za-z0-9._-]{16,}", re.IGNORECASE), "Critical secret", "high"),
+    (
+        re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"),
+        "Critical secret",
+        "high",
+    ),
+    (
+        re.compile(r"(?i)(db_password|password|pwd|passwd)\s*[=:]\s*\S{6,}"),
+        "Password credential",
+        "critical",
+    ),
+    (
+        re.compile(r"-----BEGIN\s+(RSA\s+|EC\s+|OPENSSH\s+)?PRIVATE\s+KEY-----"),
+        "SSH private key",
+        "critical",
+    ),
+    (
+        re.compile(r"(mongodb|mysql|postgres|postgresql|redis|mssql)://\w+:[^@\s]+@"),
+        "DB connection string",
+        "critical",
+    ),
 ]
 
 
@@ -1248,7 +1301,7 @@ def detect_critical_secret_leak(text: str) -> bool:
     if not text or not text.strip():
         return False
     t = text.strip()
-    for rx in _CRITICAL_SECRET_PATTERNS:
+    for rx, _, _ in _CRITICAL_SECRET_RULES:
         if rx.search(t):
             return True
     # Long, high-entropy alphanumeric token (likely raw key material).
@@ -1260,6 +1313,216 @@ def detect_critical_secret_leak(text: str) -> bool:
         if _shannon_entropy(chunk) >= ent_min:
             return True
     return False
+
+
+def critical_secret_spans_for_ui(text: str) -> list[dict]:
+    """
+    Character spans for critical-secret matches. Used when get_pii_spans() returns [] but
+    detect_critical_secret_leak() is True — otherwise remediation shows \"No PII detected\"
+    despite score ~90 and block.
+    Mirrors the same patterns / entropy rule as detect_critical_secret_leak.
+    """
+    if not text or not text.strip():
+        return []
+    t = text.strip()
+    out: list[dict] = []
+    seen: set[tuple[int, int]] = set()
+    for rx, class_name, risk_tier in _CRITICAL_SECRET_RULES:
+        for m in rx.finditer(t):
+            key = (m.start(), m.end())
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(
+                {
+                    "start": m.start(),
+                    "end": m.end(),
+                    "class": class_name,
+                    "match": m.group()[:500],
+                    "source": "critical_secret",
+                    "risk": risk_tier,
+                }
+            )
+    ent_min = get_critical_secret_entropy_min(load_risk_policy())
+    for m in re.finditer(
+        r"(?<![A-Za-z0-9])[A-Za-z0-9+/=_-]{36,}(?![A-Za-z0-9+/=_-])", t
+    ):
+        chunk = m.group(0)
+        if _shannon_entropy(chunk) < ent_min:
+            continue
+        key = (m.start(), m.end())
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(
+            {
+                "start": m.start(),
+                "end": m.end(),
+                "class": "High-entropy secret",
+                "match": chunk[:500],
+                "source": "critical_secret",
+                "risk": "high",
+            }
+        )
+    return sorted(
+        out,
+        key=lambda s: (int(s.get("start", 0)), int(s.get("end", 0))),
+    )
+
+
+# Contact-only: subset of classes from spans; also includes labels emitted by strong_regex / model.
+_CONTACT_ONLY_CLASSES = frozenset(
+    {
+        "email",
+        "phone",
+        "ip_address",
+        "email pattern",
+        "phone pattern",
+        "ipv4",
+        "ipv6",
+        "mac address",
+        "fax number",
+        # Labels used elsewhere in strong_regex / model UI
+        "email address",
+        "phone number",
+        "ip address (ipv4)",
+        "ip address (ipv6)",
+        "contact",
+    }
+)
+_HIGH_RISK_CLASSES = frozenset(
+    {
+        "ssn",
+        "ssn pattern",
+        "credit card",
+        "credit card pattern",
+        "api key",
+        "critical secret",
+        "high-entropy secret",
+        "password",
+        "ssh",
+        "jwt",
+        "iban",
+        "bank account",
+        "passport",
+        "passport number",
+        "medical",
+        # Additional sensitive / identity classes from model or regex
+        "bank routing number",
+        "password credential",
+        "ssh private key",
+        "db connection string",
+        "name",
+        "location",
+        "id",
+        "financial",
+        "health",
+        "auth",
+        "other_pii",
+    }
+)
+
+
+# Sliding-window 3-class labels are risk tiers, not PII types — ignore for contact-only class logic.
+_SLIDING_WINDOW_RISK_CLASS_LABELS = frozenset({"high", "med", "low"})
+
+
+def _is_contact_only_pii(spans: list[dict], *, critical_secret: bool) -> bool:
+    """True when semantic PII classes are non-empty, all contact-type, and none high-risk."""
+    if critical_secret:
+        return False
+    detected: set[str] = set()
+    for s in spans or []:
+        if not isinstance(s, dict):
+            continue
+        c = str(s.get("class", "")).strip().lower()
+        if not c or c in _SLIDING_WINDOW_RISK_CLASS_LABELS:
+            continue
+        detected.add(c)
+    return (
+        bool(detected)
+        and detected.issubset(_CONTACT_ONLY_CLASSES)
+        and not detected.intersection(_HIGH_RISK_CLASSES)
+    )
+
+
+def _contact_only_cap_excluded_by_keywords(text: str) -> bool:
+    """
+    Do not treat phone-shaped spans as contact-only when the text clearly references
+    national IDs or medical numbers (regex may still label digits as phone).
+    """
+    u = (text or "").lower()
+    return any(
+        n in u
+        for n in (
+            "nhs number",
+            "national insurance number",
+            "national insurance ",
+            "aadhaar",
+            "social insurance number",
+            "canadian social insurance",
+        )
+    )
+
+
+def _scores_list_from_prob_vector(p_list: list[float]) -> list[dict]:
+    """Build the same score dicts as _run_sliding_inference for _labels_from_scores."""
+    n = _model_num_labels if _model_num_labels is not None else 3
+    scores: list[dict] = []
+    for i in range(min(n, len(p_list))):
+        label_name = _model_id2label.get(i, f"LABEL_{i}") if _model_id2label else f"LABEL_{i}"
+        scores.append({"label": str(label_name), "score": float(p_list[i])})
+    return scores
+
+
+def _per_window_model_risk_scores(prob_vectors: list[list[float]]) -> list[int]:
+    """
+    0..100 heuristic score per sliding window (model only, no regex triggers).
+    Used to detect sparse high-scoring windows on long mostly-safe text.
+    """
+    out: list[int] = []
+    for p_list in prob_vectors:
+        sl = _scores_list_from_prob_vector(p_list)
+        lw = _labels_from_scores(sl)
+        if not lw:
+            out.append(0)
+            continue
+        if str(lw[0]).strip().lower() in ("low", "med", "high"):
+            rw = str(lw[0]).strip().lower()
+        else:
+            rw = aggregate_span_risks([str(x) for x in lw])
+        out.append(compute_risk_score(rw, []))
+    return out
+
+
+def _apply_long_text_sliding_penalty(
+    per_window_scores: list[int],
+    merged_risk: str,
+    merged_risk_score: int,
+) -> tuple[str, int]:
+    """
+    If only a small fraction of windows exceed the warn band, scale the worst window score down.
+    Genuine PII tends to light up multiple windows; a lone false positive does not.
+
+    Uses max window score with a length/trigger-rate gate (not mean/sum of windows).
+    """
+    if not per_window_scores:
+        return merged_risk, merged_risk_score
+    n = len(per_window_scores)
+    max_score = max(per_window_scores)
+    triggered = sum(1 for s in per_window_scores if s >= 40)
+    trigger_rate = triggered / n
+    if n <= 3 or trigger_rate >= 0.3:
+        return merged_risk, merged_risk_score
+    adjusted = int(max_score * 0.6)
+    # Map adjusted scalar to risk tier for policy (45 lines up with 70*0.6 → ~42 → low/silent)
+    if adjusted < 45:
+        new_risk = "low"
+    elif adjusted < 70:
+        new_risk = "med"
+    else:
+        new_risk = "high"
+    return new_risk, adjusted
 
 
 def compute_risk_score(risk: str, triggers: list[str]) -> int:
@@ -1282,8 +1545,19 @@ def compute_risk_score(risk: str, triggers: list[str]) -> int:
     elif r == "high":
         score = 70
 
-    for trig in triggers or []:
+    for trig in dict.fromkeys(triggers or []):
         t = str(trig).lower()
+        # Passport (regex "Passport number") — push HIGH base toward ~85
+        if "passport number" in t:
+            score += 15
+            continue
+        # Corporate / salary (medium-tier regex triggers)
+        if "confidential marker" in t:
+            score += 15
+            continue
+        if "salary information" in t:
+            score += 20
+            continue
         # SSN / national ID
         if "ssn" in t or "national" in t:
             score += 30
@@ -1310,7 +1584,7 @@ def text_heuristic_implied_risk_score(text: str) -> int:
     if not t:
         return 0
     risk = apply_pii_overrides(t, "low")
-    triggers = get_pii_override_triggers(t) if risk == "high" else []
+    triggers = get_pii_override_triggers(t) if risk in ("high", "med") else []
     if risk == "high" and not triggers:
         triggers = get_pii_override_triggers(t)
     return compute_risk_score(risk, triggers)
@@ -1458,6 +1732,7 @@ def score_clipboard_with_pii(
             "risk_score": 0,
             "suggestions": suggest_remediation(text, [], 0),
             "critical_secret_detected": False,
+            "critical_secret": False,
             "token_count": 0,
             "chunks_scored": 0,
             "text_truncated": False,
@@ -1465,13 +1740,15 @@ def score_clipboard_with_pii(
             "spans": [],
         }
     eff_min = max(min_confidence, 0.65) if context == "document" else min_confidence
+    ts = text.strip()
+    critical_secret_detected = detect_critical_secret_leak(ts)
 
     cached = None
     if context != "document":
         cached = get_cached_inference_result(text, cache_kind="pii")
     if (
         cached is not None
-        and not detect_critical_secret_leak(text)
+        and not critical_secret_detected
         and not text_heuristic_duplicate_bypass(text)
     ):
         cr = str(cached.get("risk", "low")).strip().lower()
@@ -1487,7 +1764,9 @@ def score_clipboard_with_pii(
             context=_telemetry_ctx(risk=cr, risk_score=crs, score_context=context),
         )
         return cached
-    if context == "document":
+    if critical_secret_detected:
+        got = None
+    elif context == "document":
         got = _infer_scores_and_probs(
             text,
             min_window_confidence=eff_min,
@@ -1511,11 +1790,28 @@ def score_clipboard_with_pii(
         base_risk = str(labels[0]).strip().lower()
     else:
         base_risk = aggregate_span_risks(labels)
-    risk = apply_pii_overrides(text.strip(), base_risk)
+    risk = apply_pii_overrides(ts, base_risk)
     override_applied = base_risk != risk
-    critical_secret_detected = detect_critical_secret_leak(text.strip())
+    if critical_secret_detected:
+        risk = "high"
+        override_applied = True
     # Include regex triggers in message when risk is high (for block/warn messages)
-    triggers = get_pii_override_triggers(text.strip()) if (override_applied or risk == "high") else []
+    triggers = get_pii_override_triggers(ts) if (override_applied or risk in ("high", "med")) else []
+    if critical_secret_detected and not triggers:
+        triggers = ["critical_secret"]
+    merged_score_for_penalty = compute_risk_score(risk, triggers)
+    if (
+        not critical_secret_detected
+        and not triggers
+        and got is not None
+    ):
+        win_meta_pre = _get_sliding_window_meta()
+        prob_vecs = list(win_meta_pre.get("window_prob_vectors") or [])
+        if len(prob_vecs) > 3:
+            pws = _per_window_model_risk_scores(prob_vecs)
+            risk, merged_score_for_penalty = _apply_long_text_sliding_penalty(
+                pws, risk, merged_score_for_penalty
+            )
     base_policy = load_pii_policy()
     if policy_override:
         effective_policy = dict(base_policy)
@@ -1549,7 +1845,7 @@ def score_clipboard_with_pii(
         )
         block = decision == "block"
 
-    risk_score = compute_risk_score(risk, triggers)
+    risk_score = merged_score_for_penalty
     if critical_secret_detected:
         risk_score = max(risk_score, 90)
 
@@ -1557,6 +1853,28 @@ def score_clipboard_with_pii(
     if score_block_min >= 1 and risk_score >= score_block_min:
         decision = "block"
         block = True
+
+    win_meta = _get_sliding_window_meta()
+    if critical_secret_detected:
+        win_meta = {
+            "token_count": 0,
+            "chunks_scored": 0,
+            "text_truncated": False,
+            "window_scores": [],
+        }
+    spans = get_pii_spans(
+        ts,
+        risk_policy,
+        sliding_meta=win_meta,
+        min_confidence=eff_min,
+        max_model_window_chars=100,
+    )
+    # Critical path can set risk_score to 90+ while get_pii_spans returns [] (JWT/API patterns are
+    # not always duplicated in strong-regex / model windows). Emit spans so the panel can build cards.
+    if critical_secret_detected and not spans:
+        cs_spans = critical_secret_spans_for_ui(ts)
+        if cs_spans:
+            spans = cs_spans
 
     suggestions = suggest_remediation(text, triggers, risk_score)
     action = clipboard_ui_action(decision, critical_secret=critical_secret_detected)
@@ -1570,6 +1888,29 @@ def score_clipboard_with_pii(
     )
     decision, block = _decision_and_block_from_ui_action(action)
     message = build_user_message(risk, decision, override_applied, triggers)
+
+    # Contact-only: never block on email/phone/IP-only pastes; cap score and warn when model score > 70.
+    contact_only_capped = False
+    if (
+        _is_contact_only_pii(spans, critical_secret=critical_secret_detected)
+        and risk_score > 70
+        and not _contact_only_cap_excluded_by_keywords(ts)
+    ):
+        risk_score = min(risk_score, 70)
+        action = "warn"
+        decision, block = _decision_and_block_from_ui_action("warn")
+        message = build_user_message(risk, decision, override_applied, triggers)
+        suggestions = suggest_remediation(text, triggers, risk_score)
+        contact_only_capped = True
+
+    action = _finalize_action_for_risk_score(
+        action,
+        risk_score,
+        critical_secret=critical_secret_detected,
+    )
+    decision, block = _decision_and_block_from_ui_action(action)
+    message = build_user_message(risk, decision, override_applied, triggers)
+
     _log_scoring_event(
         text,
         pii_class=_pii_class_for_log(labels, risk),
@@ -1581,14 +1922,6 @@ def score_clipboard_with_pii(
             score_context=context,
             critical_secret=critical_secret_detected,
         ),
-    )
-    win_meta = _get_sliding_window_meta()
-    spans = get_pii_spans(
-        text.strip(),
-        risk_policy,
-        sliding_meta=win_meta,
-        min_confidence=eff_min,
-        max_model_window_chars=100,
     )
     result = {
         "risk": risk,
@@ -1603,12 +1936,15 @@ def score_clipboard_with_pii(
         "risk_score": risk_score,
         "suggestions": suggestions,
         "critical_secret_detected": critical_secret_detected,
+        "critical_secret": bool(critical_secret_detected),
         "token_count": win_meta.get("token_count", 0),
         "chunks_scored": win_meta.get("chunks_scored", 0),
         "text_truncated": win_meta.get("text_truncated", False),
         "window_scores": win_meta.get("window_scores", []),
         "spans": spans,
     }
+    if contact_only_capped:
+        result["_capped"] = "contact-only cap applied"
     if context != "document":
         record_inference_scored_text(text, result, cache_kind="pii")
     return result
@@ -1765,6 +2101,12 @@ def score_clipboard(text: str, use_pii: bool = False) -> dict:
     plain_risk_score = compute_risk_score(top_label, triggers_plain)
     if critical_secret:
         plain_risk_score = max(plain_risk_score, 90)
+    action = _finalize_action_for_risk_score(
+        action,
+        plain_risk_score,
+        critical_secret=critical_secret,
+    )
+    decision, _blk = _decision_and_block_from_ui_action(action)
     _log_scoring_event(
         text,
         pii_class=_pii_class_for_log([], top_label),

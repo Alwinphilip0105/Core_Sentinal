@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Core Sentinel — Live Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0d0d1a;color:#e0e0e0;min-height:100vh}
+
+/* HEADER */
+.hdr{background:#12122a;padding:16px 28px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.07);position:sticky;top:0;z-index:100}
+.hdr-left{display:flex;align-items:center;gap:12px}
+.shield{width:38px;height:38px;background:#02C39A;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px}
+.hdr-title{font-size:17px;font-weight:700;color:#fff}
+.hdr-sub{font-size:11px;color:rgba(255,255,255,0.35);margin-top:1px}
+.hdr-right{display:flex;align-items:center;gap:12px}
+.live-dot{width:8px;height:8px;border-radius:50%;background:#43A047;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.3)}}
+.live-label{font-size:11px;color:#43A047;font-weight:600}
+.sync-time{font-size:11px;color:rgba(255,255,255,0.3)}
+.btn{background:#02C39A;color:#fff;border:none;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+.btn:hover{background:#019B7A}
+.btn:disabled{background:#333;cursor:not-allowed}
+.btn-ghost{background:transparent;border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.6)}
+.btn-ghost:hover{border-color:rgba(255,255,255,0.35);color:#fff;background:transparent}
+
+/* CONFIG */
+.cfg{background:#12122a;border-bottom:1px solid rgba(255,255,255,0.07);padding:12px 28px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.cfg-lbl{font-size:11px;color:rgba(255,255,255,0.35);white-space:nowrap}
+.cfg-inp{background:#1a1a30;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:7px 12px;color:#fff;font-size:12px;width:260px;transition:border-color .15s}
+.cfg-inp:focus{outline:none;border-color:#02C39A}
+.cfg-status{font-size:11px;padding:4px 10px;border-radius:6px;font-weight:600}
+
+/* LAYOUT */
+.wrap{max-width:1280px;margin:0 auto;padding:20px 24px}
+.stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}
+.stat{background:#12122a;border-radius:10px;padding:16px;border:1px solid rgba(255,255,255,0.06);position:relative;overflow:hidden}
+.stat-num{font-size:28px;font-weight:700;line-height:1}
+.stat-lbl{font-size:10px;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:.06em;margin-top:4px}
+.stat-bar{position:absolute;bottom:0;left:0;height:3px;transition:width .6s}
+
+/* CHARACTER */
+.char-section{background:#12122a;border-radius:12px;padding:22px;border:1px solid rgba(255,255,255,0.06);margin-bottom:20px;display:flex;gap:20px;align-items:flex-start}
+.char-face{font-size:72px;line-height:1;flex-shrink:0;filter:drop-shadow(0 4px 12px rgba(0,0,0,0.4))}
+.char-right{flex:1}
+.char-name-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.char-name{font-size:18px;font-weight:700;color:#fff}
+.char-badge{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
+.speech{background:#1c1c32;border-radius:12px;padding:14px 18px;font-size:13px;line-height:1.7;color:rgba(255,255,255,0.85);border:1px solid rgba(255,255,255,0.07);margin-bottom:14px;position:relative}
+.speech::before{content:'';position:absolute;left:-10px;top:16px;border:8px solid transparent;border-right-color:#1c1c32}
+.habits{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.hb{padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600}
+.sugs{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sug{display:flex;gap:10px;background:#1a1a30;border-radius:8px;padding:10px 12px;border-left:3px solid}
+.sug-ico{font-size:16px;flex-shrink:0;margin-top:1px}
+.sug-body{font-size:11px;color:rgba(255,255,255,0.65);line-height:1.5}
+.sug-body strong{color:#fff;display:block;margin-bottom:2px}
+
+/* CHARTS */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px}
+.card{background:#12122a;border-radius:12px;padding:18px;border:1px solid rgba(255,255,255,0.06)}
+.card-title{font-size:12px;font-weight:600;color:rgba(255,255,255,0.5);margin-bottom:14px;display:flex;align-items:center;gap:7px}
+.card-title i{font-style:normal;font-size:15px}
+canvas{max-height:200px}
+
+/* HEATMAP */
+.hm-grid{display:grid;grid-template-columns:repeat(24,1fr);gap:3px;margin-top:8px}
+.hm-cell{height:18px;border-radius:3px;cursor:default;transition:opacity .15s}
+.hm-cell:hover{opacity:.7}
+.hm-xl{display:flex;justify-content:space-between;font-size:9px;color:rgba(255,255,255,0.25);margin-top:3px}
+
+/* TABLE */
+.table-wrap{overflow-x:auto;margin-top:8px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:8px 10px;color:rgba(255,255,255,0.35);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid rgba(255,255,255,0.07)}
+td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.04);color:rgba(255,255,255,0.7)}
+tr:last-child td{border-bottom:none}
+.pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700}
+.pill-block{background:rgba(229,57,53,.2);color:#ef9a9a}
+.pill-warn{background:rgba(255,179,0,.2);color:#ffe082}
+.pill-silent{background:rgba(67,160,71,.2);color:#a5d6a7}
+
+/* LOADING */
+.loading{display:flex;align-items:center;justify-content:center;gap:10px;padding:48px;color:rgba(255,255,255,0.3);font-size:13px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{width:18px;height:18px;border:2px solid rgba(255,255,255,0.1);border-top-color:#02C39A;border-radius:50%;animation:spin .7s linear infinite}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-left">
+    <div class="shield">🛡</div>
+    <div>
+      <div class="hdr-title">Core Sentinel</div>
+      <div class="hdr-sub">Live Behavior Analytics</div>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <div class="live-dot"></div>
+    <span class="live-label">LIVE</span>
+    <span class="sync-time" id="syncTime">Not loaded</span>
+    <button class="btn btn-ghost" onclick="loadData()" id="refreshBtn">⟳ Refresh</button>
+  </div>
+</div>
+
+<div class="cfg">
+  <span class="cfg-lbl">Supabase URL</span>
+  <input class="cfg-inp" id="cfgUrl" placeholder="https://xxxx.supabase.co" type="text">
+  <span class="cfg-lbl">Anon Key</span>
+  <input class="cfg-inp" id="cfgKey" placeholder="eyJhbGci..." type="password" style="width:200px">
+  <button class="btn" onclick="connect()">Connect</button>
+  <span class="cfg-status" id="cfgStatus"></span>
+</div>
+
+<div class="wrap">
+
+  <div class="stats-row" id="statsRow">
+    <div class="stat"><div class="stat-num" id="sTotal" style="color:#02C39A">—</div><div class="stat-lbl">Total pastes</div><div class="stat-bar" id="barTotal" style="background:#02C39A;width:0%"></div></div>
+    <div class="stat"><div class="stat-num" id="sBlock" style="color:#E53935">—</div><div class="stat-lbl">Blocked</div><div class="stat-bar" id="barBlock" style="background:#E53935;width:0%"></div></div>
+    <div class="stat"><div class="stat-num" id="sWarn"  style="color:#FFB300">—</div><div class="stat-lbl">Warned</div><div class="stat-bar" id="barWarn" style="background:#FFB300;width:0%"></div></div>
+    <div class="stat"><div class="stat-num" id="sSafe"  style="color:#43A047">—</div><div class="stat-lbl">Safe</div><div class="stat-bar" id="barSafe" style="background:#43A047;width:0%"></div></div>
+    <div class="stat"><div class="stat-num" id="sAvg"   style="color:#9C27B0">—</div><div class="stat-lbl">Avg risk score</div><div class="stat-bar" id="barAvg" style="background:#9C27B0;width:0%"></div></div>
+  </div>
+
+  <div id="charSection"><div class="loading"><div class="spin"></div>Connect to Supabase to see your behavior profile</div></div>
+
+  <div class="grid2">
+    <div class="card"><div class="card-title"><i>🎯</i> Action breakdown</div><canvas id="donut"></canvas></div>
+    <div class="card"><div class="card-title"><i>📊</i> Risk score distribution</div><canvas id="hist"></canvas></div>
+  </div>
+
+  <div class="grid3">
+    <div class="card"><div class="card-title"><i>🔍</i> Top PII types detected</div><canvas id="pii"></canvas></div>
+    <div class="card"><div class="card-title"><i>⏰</i> Pastes by hour of day</div><canvas id="hour"></canvas></div>
+    <div class="card"><div class="card-title"><i>📅</i> 7-day risk trend</div><canvas id="trend"></canvas></div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title"><i>🌡️</i> Today's risk heatmap by hour</div>
+    <div class="hm-grid" id="heatmap"></div>
+    <div class="hm-xl"><span>12am</span><span>3am</span><span>6am</span><span>9am</span><span>12pm</span><span>3pm</span><span>6pm</span><span>9pm</span><span>11pm</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><i>🕐</i> Recent events</div>
+    <div class="table-wrap"><table id="recentTable">
+      <thead><tr><th>Time</th><th>Action</th><th>Score</th><th>PII class</th><th>LLM</th></tr></thead>
+      <tbody id="recentBody"></tbody>
+    </table></div>
+  </div>
+
+</div>
+
+<script>
+let C={};
+let data=[];
+
+function connect(){
+  const url=document.getElementById('cfgUrl').value.trim();
+  const key=document.getElementById('cfgKey').value.trim();
+  if(!url||!key){setStatus('Enter both fields','#E53935');return;}
+  localStorage.setItem('sb_url',url);
+  localStorage.setItem('sb_key',key);
+  loadData();
+}
+
+function setStatus(msg,color){
+  const el=document.getElementById('cfgStatus');
+  el.textContent=msg;
+  el.style.background=color+'22';
+  el.style.color=color;
+}
+
+window.addEventListener('load',()=>{
+  const url=localStorage.getItem('sb_url')||'';
+  const key=localStorage.getItem('sb_key')||'';
+  if(url)document.getElementById('cfgUrl').value=url;
+  if(key)document.getElementById('cfgKey').value=key;
+  if(url&&key)loadData();
+});
+
+async function loadData(){
+  const url=localStorage.getItem('sb_url')||'';
+  const key=localStorage.getItem('sb_key')||'';
+  if(!url||!key)return;
+  document.getElementById('refreshBtn').disabled=true;
+  document.getElementById('refreshBtn').textContent='Loading...';
+  try{
+    const r=await fetch(`${url}/rest/v1/guardrail_events?select=*&order=timestamp.desc&limit=1000`,
+      {headers:{'apikey':key,'Authorization':'Bearer '+key}});
+    if(!r.ok)throw new Error(await r.text());
+    data=await r.json();
+    renderAll(data);
+    setStatus('Connected — '+data.length+' rows','#43A047');
+    document.getElementById('syncTime').textContent='Updated '+new Date().toLocaleTimeString();
+  }catch(e){
+    setStatus('Error: '+e.message.slice(0,40),'#E53935');
+  }
+  document.getElementById('refreshBtn').disabled=false;
+  document.getElementById('refreshBtn').textContent='⟳ Refresh';
+}
+
+function renderAll(rows){
+  if(!rows.length)return;
+  const total=rows.length;
+  const blocks=rows.filter(r=>r.action==='block').length;
+  const warns=rows.filter(r=>r.action==='warn').length;
+  const silent=rows.filter(r=>r.action==='silent').length;
+  const avg=Math.round(rows.reduce((s,r)=>s+(r.risk_score||0),0)/total);
+  const blockPct=Math.round(blocks/total*100);
+  const warnPct=Math.round(warns/total*100);
+  const safePct=Math.round(silent/total*100);
+
+  document.getElementById('sTotal').textContent=total;
+  document.getElementById('sBlock').textContent=blocks;
+  document.getElementById('sWarn').textContent=warns;
+  document.getElementById('sSafe').textContent=silent;
+  document.getElementById('sAvg').textContent=avg;
+  setTimeout(()=>{
+    document.getElementById('barBlock').style.width=blockPct+'%';
+    document.getElementById('barWarn').style.width=warnPct+'%';
+    document.getElementById('barSafe').style.width=safePct+'%';
+    document.getElementById('barAvg').style.width=avg+'%';
+    document.getElementById('barTotal').style.width='100%';
+  },100);
+
+  renderCharacter(blockPct,warnPct,safePct,avg,rows);
+  renderDonut(blocks,warns,silent);
+  renderHist(rows);
+  renderPII(rows);
+  renderHour(rows);
+  renderTrend(rows);
+  renderHeatmap(rows);
+  renderTable(rows.slice(0,15));
+}
+
+const PERSONAS=[
+  {min:30,max:100,emoji:'😱',name:'Danger Dave',badge:'#E53935',
+   msg:(b,w,s,avg,top)=>`Holy moly! <strong>${b}% of your pastes are getting blocked</strong> — that is a LOT of sensitive data. You paste credentials, secrets and personal info into AI chats way too casually. Your average risk score is <strong>${avg}/100</strong>. If you keep this up something is going to leak badly.`,
+   habits:['#E53935'],
+   sugs:[
+    {c:'#E53935',i:'🔑',t:'Never paste secrets',b:'API keys and passwords in LLM chats is how credentials get leaked. Use a secrets manager — never paste raw credentials anywhere.'},
+    {c:'#E53935',i:'🚨',t:'Enable hard block mode',b:'Turn on Critical blocking in Sentinel settings so dangerous pastes are physically impossible to send.'},
+    {c:'#FFB300',i:'📋',t:'Build a paste checklist',b:'Before every Ctrl+V ask yourself: credentials? personal data? internal docs? If yes — redact first.'},
+    {c:'#1565C0',i:'📚',t:'Read the PII reference',b:'Review the PII document to know exactly what triggers a block so you can avoid it proactively.'},
+   ]},
+  {min:15,max:29,emoji:'😬',name:'Careless Carl',badge:'#FFB300',
+   msg:(b,w,s,avg,top)=>`You\'re getting there but <strong>${w}% of pastes trigger warnings</strong> and <strong>${b}% get blocked</strong>. You\'re regularly pasting emails, phone numbers and partial identifiers without thinking. Average risk score: <strong>${avg}/100</strong>. A few habit changes will make a big difference.`,
+   habits:['#FFB300'],
+   sugs:[
+    {c:'#FFB300',i:'✉️',t:'Stop pasting contact info',b:'Emails and phone numbers are your top warning triggers. Use placeholders like user@example.com when asking for help.'},
+    {c:'#02C39A',i:'✨',t:'Use Rephrase more',b:'Instead of redacting manually, hit Rephrase — Sentinel rewrites your text naturally without the PII intact.'},
+    {c:'#1565C0',i:'⏰',t:'Check your risky hours',b:'The heatmap shows when you paste most dangerously. Be extra conscious during those hours.'},
+    {c:'#43A047',i:'🎯',t:'Set medium sensitivity',b:'Medium mode catches contact info without being too aggressive. Perfect for your current habits.'},
+   ]},
+  {min:5,max:14,emoji:'🤔',name:'Cautious Chris',badge:'#1565C0',
+   msg:(b,w,s,avg,top)=>`Not bad! <strong>${s}% safe pastes</strong> shows good instincts. The <strong>${w}% warning rate</strong> means you occasionally paste names and contact details without thinking. Average score <strong>${avg}/100</strong>. A few tweaks and you will be in the safe zone consistently.`,
+   habits:['#1565C0'],
+   sugs:[
+    {c:'#1565C0',i:'💡',t:'Quick scan before pasting',b:'Names, emails and addresses cause most of your warnings. A 2-second scan before Ctrl+V would eliminate them.'},
+    {c:'#02C39A',i:'🔄',t:'Redact instead of dismiss',b:'When a warning appears, click Redact rather than dismissing it. It keeps your message readable but removes the PII.'},
+    {c:'#43A047',i:'🏆',t:'Go for a streak',b:'You are close to Safe Sam territory. Try to get 25 consecutive safe pastes — Sentinel will celebrate with you!'},
+   ]},
+  {min:0,max:4,emoji:'😎',name:'Safe Sam',badge:'#43A047',
+   msg:(b,w,s,avg,top)=>`Outstanding! <strong>${s}% safe pastes</strong> and only <strong>${b}% blocked</strong> — you are in the top tier. Your average risk score of <strong>${avg}/100</strong> is excellent. You have genuinely good data hygiene. You are the kind of user every security team loves.`,
+   habits:['#43A047'],
+   sugs:[
+    {c:'#43A047',i:'🏆',t:'Keep the streak going',b:'Your consecutive safe paste record is impressive. Keep building it — milestones unlock at 50 and 100.'},
+    {c:'#02C39A',i:'👥',t:'Share your habits',b:'Your block rate is a model others should follow. Consider sharing your paste checklist with your team.'},
+    {c:'#9C27B0',i:'🔧',t:'Try Strict mode',b:'Since you handle data carefully, Strict sensitivity will catch even more edge cases without frustrating you.'},
+   ]},
+];
+
+function getTopPII(rows){
+  const c={};
+  rows.forEach(r=>{const p=(r.pii_classes||'').trim();if(p&&p!=='low'&&p!=='')c[p]=(c[p]||0)+1;});
+  return Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,3);
+}
+
+function renderCharacter(blockPct,warnPct,safePct,avg,rows){
+  const p=PERSONAS.find(x=>blockPct>=x.min&&blockPct<=x.max)||PERSONAS[3];
+  const top=getTopPII(rows);
+  const topHTML=top.map(([k,v])=>`<span class="hb" style="background:rgba(229,57,53,.18);color:#ef9a9a">${k} (${v}x)</span>`).join('');
+  const sugHTML=p.sugs.map(s=>`
+    <div class="sug" style="border-left-color:${s.c}">
+      <div class="sug-ico">${s.i}</div>
+      <div class="sug-body"><strong>${s.t}</strong>${s.b}</div>
+    </div>`).join('');
+
+  document.getElementById('charSection').innerHTML=`
+    <div class="char-section">
+      <div class="char-face">${p.emoji}</div>
+      <div class="char-right">
+        <div class="char-name-row">
+          <div class="char-name">${p.name}</div>
+          <span class="char-badge" style="background:${p.badge}22;color:${p.badge}">${p.badge==='#E53935'?'High Risk':p.badge==='#FFB300'?'Medium Risk':p.badge==='#1565C0'?'Moderate':'Low Risk'}</span>
+        </div>
+        <div class="speech">${p.msg(blockPct,warnPct,safePct,avg,top)}</div>
+        ${top.length?`<div class="habits"><span style="font-size:11px;color:rgba(255,255,255,0.3);margin-right:4px">Top PII you paste:</span>${topHTML}</div>`:''}
+        <div class="sugs">${sugHTML}</div>
+      </div>
+    </div>`;
+}
+
+function mk(id,type,data,opts={}){
+  if(C[id])C[id].destroy();
+  C[id]=new Chart(document.getElementById(id).getContext('2d'),{type,data,options:{
+    responsive:true,maintainAspectRatio:true,
+    plugins:{legend:{labels:{color:'rgba(255,255,255,0.5)',font:{size:11},boxWidth:12}}},
+    scales:type==='bar'||type==='line'?{
+      x:{ticks:{color:'rgba(255,255,255,0.35)',font:{size:10}},grid:{color:'rgba(255,255,255,0.04)'}},
+      y:{ticks:{color:'rgba(255,255,255,0.35)',font:{size:10}},grid:{color:'rgba(255,255,255,0.04)'}}
+    }:{},
+    ...opts
+  }});
+}
+
+function renderDonut(b,w,s){
+  mk('donut','doughnut',{
+    labels:['Blocked','Warned','Safe'],
+    datasets:[{data:[b,w,s],backgroundColor:['#E53935','#FFB300','#43A047'],borderWidth:0,hoverOffset:4}]
+  },{plugins:{legend:{position:'right'}}});
+}
+
+function renderHist(rows){
+  const bk=Array(10).fill(0);
+  rows.forEach(r=>{bk[Math.min(9,Math.floor((r.risk_score||0)/10))]++;});
+  const cols=bk.map((_,i)=>i<=3?'#43A047':i<=6?'#FFB300':'#E53935');
+  mk('hist','bar',{
+    labels:['0','10','20','30','40','50','60','70','80','90'],
+    datasets:[{label:'Pastes',data:bk,backgroundColor:cols,borderRadius:3}]
+  },{plugins:{legend:{display:false}}});
+}
+
+function renderPII(rows){
+  const c={};
+  rows.forEach(r=>{const p=(r.pii_classes||'').trim();if(p&&p!=='low'&&p!=='')c[p]=(c[p]||0)+1;});
+  const s=Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,7);
+  if(!s.length)return;
+  mk('pii','bar',{
+    labels:s.map(([k])=>k.length>14?k.slice(0,14)+'…':k),
+    datasets:[{label:'Count',data:s.map(([,v])=>v),backgroundColor:'rgba(229,57,53,0.65)',borderRadius:3}]
+  },{indexAxis:'y',plugins:{legend:{display:false}}});
+}
+
+function renderHour(rows){
+  const h=Array(24).fill(0);
+  rows.forEach(r=>{if(!r.timestamp)return;try{h[new Date(r.timestamp).getHours()]++;}catch(e){}});
+  mk('hour','line',{
+    labels:Array.from({length:24},(_,i)=>i%6===0?(i===0?'12a':i===12?'12p':i<12?i+'a':(i-12)+'p'):''),
+    datasets:[{label:'Pastes',data:h,borderColor:'#02C39A',backgroundColor:'rgba(2,195,154,0.08)',tension:0.4,fill:true,pointRadius:2,pointHoverRadius:4}]
+  },{plugins:{legend:{display:false}}});
+}
+
+function renderTrend(rows){
+  const days={};
+  for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);days[d.toISOString().slice(0,10)]={block:0,warn:0,silent:0};}
+  rows.forEach(r=>{if(!r.timestamp)return;const d=r.timestamp.slice(0,10);if(days[d])days[d][r.action]=(days[d][r.action]||0)+1;});
+  const labels=Object.keys(days).map(d=>d.slice(5));
+  mk('trend','line',{labels,datasets:[
+    {label:'Block',data:Object.values(days).map(d=>d.block),borderColor:'#E53935',backgroundColor:'rgba(229,57,53,0.08)',tension:0.4,fill:true,pointRadius:2},
+    {label:'Warn', data:Object.values(days).map(d=>d.warn), borderColor:'#FFB300',backgroundColor:'rgba(255,179,0,0.08)', tension:0.4,fill:true,pointRadius:2},
+    {label:'Safe', data:Object.values(days).map(d=>d.silent),borderColor:'#43A047',backgroundColor:'rgba(67,160,71,0.08)', tension:0.4,fill:true,pointRadius:2},
+  ]},{plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:10}}}}});
+}
+
+function renderHeatmap(rows){
+  const h=Array(24).fill(0);
+  const today=new Date().toISOString().slice(0,10);
+  rows.forEach(r=>{
+    if(!r.timestamp||!r.timestamp.startsWith(today))return;
+    try{h[new Date(r.timestamp).getHours()]+=(r.risk_score||0)/100;}catch(e){}
+  });
+  const max=Math.max(...h,1);
+  document.getElementById('heatmap').innerHTML=h.map((v,i)=>{
+    const p=v/max;
+    const bg=p===0?'rgba(255,255,255,0.04)':
+      p<0.33?`rgba(67,160,71,${0.25+p})`:`
+      p<0.66?rgba(255,179,0,${0.25+p})`:
+             `rgba(229,57,53,${0.25+p})`;
+    return `<div class="hm-cell" style="background:${p===0?'rgba(255,255,255,0.04)':p<0.33?'rgba(67,160,71,'+(0.3+p*0.6)+')':p<0.66?'rgba(255,179,0,'+(0.3+p*0.6)+')':'rgba(229,57,53,'+(0.3+p*0.6)+')'}" title="${i}:00"></div>`;
+  }).join('');
+}
+
+function renderTable(rows){
+  document.getElementById('recentBody').innerHTML=rows.map(r=>{
+    const t=r.timestamp?new Date(r.timestamp).toLocaleTimeString():'—';
+    const pillCls=r.action==='block'?'pill-block':r.action==='warn'?'pill-warn':'pill-silent';
+    return `<tr>
+      <td>${t}</td>
+      <td><span class="pill ${pillCls}">${r.action||'—'}</span></td>
+      <td>${r.risk_score||0}</td>
+      <td>${(r.pii_classes||'—').slice(0,28)}</td>
+      <td>${(r.llm_name||'—').slice(0,20)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// auto-refresh every 60 seconds
+setInterval(()=>{
+  if(localStorage.getItem('sb_url')&&localStorage.getItem('sb_key'))
+    loadData();
+},60000);
+</script>
+</body>
+</html>

@@ -30,9 +30,188 @@ if str(_GUARDRAIL_ROOT) not in sys.path:
 
 from gemini_scanner import merge_local_and_gemini, scan_with_gemini  # noqa: E402
 from infer import score_clipboard_with_pii  # noqa: E402
+from risk_mapping import strong_regex_pii_spans  # noqa: E402
 from text_extractor import extract  # noqa: E402
 
 DB_PATH = _GUARDRAIL_ROOT / "logs" / "scan_results.db"
+
+# Regex span classes that force block + high risk when found on full-page scan
+_CRITICAL_REGEX_CLASSES = {
+    "SSN pattern",
+    "credit card pattern",
+    "API key pattern",
+    "JWT pattern",
+    "IBAN pattern",
+    "IBAN",
+}
+
+_ACTION_RANK = {"silent": 0, "warn": 1, "block": 2}
+_RISK_RANK = {"low": 0, "med": 1, "high": 2}
+
+
+def _chunk_text(text: str, chunk_size: int = 500, overlap: int = 100) -> list[str]:
+    if len(text) <= chunk_size:
+        return [text]
+    chunks: list[str] = []
+    start = 0
+    while start < len(text):
+        end = min(start + chunk_size, len(text))
+        chunks.append(text[start:end])
+        start += chunk_size - overlap
+    return chunks
+
+
+def _offset_spans(spans: list[dict], delta: int) -> list[dict]:
+    out: list[dict] = []
+    for s in spans:
+        d = dict(s)
+        try:
+            d["start"] = int(s.get("start", 0)) + delta
+            d["end"] = int(s.get("end", 0)) + delta
+        except (TypeError, ValueError):
+            continue
+        out.append(d)
+    return out
+
+
+def _worse_action(a: str, b: str) -> str:
+    aa = str(a).lower()
+    bb = str(b).lower()
+    ra = _ACTION_RANK.get(aa, 0)
+    rb = _ACTION_RANK.get(bb, 0)
+    return a if ra >= rb else b
+
+
+def _higher_risk(a: str, b: str) -> str:
+    ra = _RISK_RANK.get(str(a).lower(), 0)
+    rb = _RISK_RANK.get(str(b).lower(), 0)
+    return a if ra >= rb else b
+
+
+def _worse_decision(a: str, b: str) -> str:
+    """Prefer block > warn > allow for merged chunk decisions."""
+    order = {"allow": 0, "warn": 1, "block": 2}
+    aa = str(a).lower()
+    bb = str(b).lower()
+    return a if order.get(aa, 0) >= order.get(bb, 0) else b
+
+
+def _iter_chunk_ranges(text: str, chunk_size: int = 500, overlap: int = 100):
+    """Same windows as _chunk_text; yields (start_offset, chunk) for correct span mapping."""
+    if len(text) <= chunk_size:
+        yield 0, text
+        return
+    start = 0
+    while start < len(text):
+        end = min(start + chunk_size, len(text))
+        yield start, text[start:end]
+        start += chunk_size - overlap
+
+
+def _merge_chunk_metadata(chunk_results: list[dict]) -> dict:
+    if not chunk_results:
+        return {
+            "risk": "low",
+            "pii_labels": [],
+            "pii_risk_before_override": "low",
+            "pii_override_applied": False,
+            "decision": "allow",
+            "block": False,
+            "action": "silent",
+            "message": "",
+            "triggers": [],
+            "risk_score": 0,
+            "suggestions": [],
+            "critical_secret_detected": False,
+            "token_count": 0,
+            "chunks_scored": 0,
+            "text_truncated": False,
+            "window_scores": [],
+            "spans": [],
+        }
+    merged = dict(chunk_results[0])
+    for r in chunk_results[1:]:
+        merged["risk_score"] = max(int(merged.get("risk_score") or 0), int(r.get("risk_score") or 0))
+        merged["risk"] = _higher_risk(str(merged.get("risk", "low")), str(r.get("risk", "low")))
+        merged["action"] = _worse_action(str(merged.get("action", "silent")), str(r.get("action", "silent")))
+        merged["critical_secret_detected"] = bool(
+            merged.get("critical_secret_detected") or r.get("critical_secret_detected")
+        )
+        merged["chunks_scored"] = int(merged.get("chunks_scored") or 0) + int(r.get("chunks_scored") or 0)
+        merged["token_count"] = max(
+            int(merged.get("token_count") or 0),
+            int(r.get("token_count") or 0),
+        )
+        merged["text_truncated"] = bool(merged.get("text_truncated") or r.get("text_truncated"))
+        merged["pii_override_applied"] = bool(merged.get("pii_override_applied") or r.get("pii_override_applied"))
+        merged["decision"] = _worse_decision(str(merged.get("decision", "allow")), str(r.get("decision", "allow")))
+        merged["block"] = bool(merged.get("block") or r.get("block"))
+    seen_t: set[str] = set()
+    tr_union: list[str] = []
+    for r in chunk_results:
+        for t in r.get("triggers") or []:
+            ts = str(t)
+            if ts not in seen_t:
+                seen_t.add(ts)
+                tr_union.append(ts)
+    merged["triggers"] = tr_union
+    merged["pii_labels"] = merged.get("pii_labels") or []
+    merged["suggestions"] = merged.get("suggestions") or []
+    merged["window_scores"] = merged.get("window_scores") or []
+    return merged
+
+
+def _dedupe_spans(spans: list[dict]) -> list[dict]:
+    seen: set[tuple[int, int, str]] = set()
+    out: list[dict] = []
+    for s in spans:
+        try:
+            st = int(s.get("start", 0))
+            en = int(s.get("end", 0))
+        except (TypeError, ValueError):
+            continue
+        key = (st, en, str(s.get("class", "")))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(s)
+    return out
+
+
+def scan_page_text_local(page_text: str) -> dict:
+    """
+    Chunked model scoring + full-page strong-regex merge (document scan).
+    """
+    chunk_results: list[dict] = []
+    merged_spans: list[dict] = []
+
+    for start_off, chunk in _iter_chunk_ranges(page_text):
+        if len(chunk.strip()) < 20:
+            continue
+        r = score_clipboard_with_pii(chunk, context="document")
+        chunk_results.append(r)
+        merged_spans.extend(_offset_spans(r.get("spans") or [], start_off))
+
+    result = _merge_chunk_metadata(chunk_results)
+    result["spans"] = _dedupe_spans(merged_spans)
+
+    regex_spans = strong_regex_pii_spans(page_text)
+    if regex_spans:
+        result["spans"] = list(result.get("spans") or [])
+        result["spans"].extend(regex_spans)
+        result["spans"] = _dedupe_spans(result["spans"])
+
+        found_critical = any(s.get("class") in _CRITICAL_REGEX_CLASSES for s in regex_spans)
+        if found_critical:
+            result["action"] = "block"
+            result["risk"] = "high"
+            if result.get("risk_score", 0) < 80:
+                result["risk_score"] = 85
+            result["risk_score"] = max(int(result.get("risk_score") or 0), 100)
+            result["block"] = True
+            result["decision"] = "block"
+
+    return result
 
 
 def _init_db() -> None:
@@ -111,7 +290,7 @@ def scan_document(
             if not page_text:
                 continue
 
-            result = score_clipboard_with_pii(page_text, context="document")
+            result = scan_page_text_local(page_text)
             result["page"] = page.get("page", i + 1)
             result["text_preview"] = page_text[:200]
             page_results.append(result)
@@ -150,6 +329,8 @@ def scan_document(
 
         max_score = max((r.get("risk_score", 0) for r in page_results), default=0)
 
+        total_span_issues = sum(len(r.get("spans", [])) for r in page_results)
+
         scan_result = {
             "file": str(path),
             "file_name": path.name,
@@ -158,13 +339,15 @@ def scan_document(
             "method": extracted.get("method", "unknown"),
             "overall_risk": overall_risk,
             "risk_score": max_score,
-            "issue_count": len(flagged_pages) + len(gemini_findings),
+            "issue_count": total_span_issues + len(gemini_findings),
             "pii_classes": all_classes,
             "flagged_pages": flagged_pages,
             "gemini_findings": gemini_findings,
             "gemini_used": bool(gemini_findings),
             "scanned_at": datetime.now().isoformat(),
-            "summary": (f"{len(flagged_pages)} of {len(pages)} pages contain PII"),
+            "summary": (
+                f"{total_span_issues} PII span(s); {len(flagged_pages)} of {len(pages)} page(s) flagged"
+            ),
         }
 
         _progress(90, "Saving to database...")
@@ -418,6 +601,82 @@ def _generate_html_report(result: dict, *, file_path: str | None = None) -> str:
     out_path = out_dir / f"scan_{file_stem}_{ts}.html"
     out_path.write_text(html_doc, encoding="utf-8")
     return str(out_path)
+
+
+def generate_paste_report(text: str, result: dict) -> Path:
+    """
+    Mini HTML report for a scored clipboard snapshot (background monitor / LLM context).
+    Saved under logs/paste_reports/paste_{timestamp}.html
+    """
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    report_dir = _GUARDRAIL_ROOT / "logs" / "paste_reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+
+    score = int(result.get("risk_score", 0) or 0)
+    action = str(result.get("action", "silent"))
+    spans = result.get("spans") if isinstance(result.get("spans"), list) else []
+
+    spans_html = "".join(
+        f"""
+        <tr>
+          <td>{html.escape(str(s.get("class", "?")))}</td>
+          <td><code>{html.escape(str(s.get("match", ""))[:50])}</code></td>
+          <td>{html.escape(str(s.get("risk", "?")))}</td>
+          <td>{html.escape(str(s.get("source", "?")))}</td>
+        </tr>"""
+        for s in spans
+        if isinstance(s, dict)
+    )
+
+    color = "#E53935" if score >= 70 else "#FFB300" if score >= 40 else "#43A047"
+
+    preview = html.escape((text or "")[:200])
+    if len(text or "") > 200:
+        preview += "…"
+
+    spans_block = (
+        "<table><tr><th>Class</th><th>Match</th><th>Risk</th><th>Source</th></tr>"
+        + spans_html
+        + "</table>"
+        if spans
+        else '<p style="color:#666">No specific PII spans extracted — contextual detection only.</p>'
+    )
+
+    html_doc = f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<title>Paste Report {ts}</title>
+<style>
+  body{{font-family:sans-serif;padding:24px;
+       background:#f9fafb;color:#333}}
+  .header{{background:{color};color:white;
+           padding:16px 20px;border-radius:8px;
+           margin-bottom:20px}}
+  table{{width:100%;border-collapse:collapse}}
+  th{{background:#f0f0f0;padding:8px;
+      text-align:left;font-size:12px}}
+  td{{padding:8px;border-bottom:1px solid #eee;
+      font-size:12px}}
+  code{{background:#f5f5f5;padding:2px 4px;
+        border-radius:3px;font-size:11px}}
+</style></head><body>
+<div class="header">
+  <h2 style="margin:0">Sentinel Paste Report</h2>
+  <p style="margin:4px 0 0;opacity:.85">
+    {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+    · Score: {score}/100 · Action: {action.upper()}
+  </p>
+</div>
+<p><strong>Text preview:</strong>
+   <code>{preview}</code>
+</p>
+<h3>Detected spans ({len(spans)})</h3>
+{spans_block}
+</body></html>"""
+
+    report_path = report_dir / f"paste_{ts}.html"
+    report_path.write_text(html_doc, encoding="utf-8")
+    print(f"[report] saved: {report_path}", flush=True)
+    return report_path
 
 
 if __name__ == "__main__":

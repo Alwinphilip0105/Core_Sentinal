@@ -155,8 +155,19 @@ def _extract_docx(path: Path) -> dict:
     from docx import Document
 
     doc = Document(str(path))
-    paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
-    text = "\n".join(paragraphs)
+    texts: list[str] = []
+    for p in doc.paragraphs:
+        if p.text.strip():
+            texts.append(p.text)
+    for table in doc.tables:
+        for row in table.rows:
+            row_texts: list[str] = []
+            for cell in row.cells:
+                if cell.text.strip():
+                    row_texts.append(cell.text.strip())
+            if row_texts:
+                texts.append(" | ".join(row_texts))
+    text = "\n".join(texts)
     pages = [{"page": 1, "text": text}]
     return {
         "text": text,

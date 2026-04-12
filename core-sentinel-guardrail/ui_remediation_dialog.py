@@ -4,7 +4,14 @@ Full-height right-edge drawer: Sentinel remediation panel (non-modal).
 
 from __future__ import annotations
 
+import hashlib
+import os
+import re
 import sys
+import threading
+from datetime import datetime, timezone
+from functools import partial
+from html import escape
 from pathlib import Path
 
 if str(Path(__file__).resolve().parent) not in sys.path:
@@ -14,15 +21,17 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 
 import user_settings
 from guardrail_runtime import is_monitoring_paused, set_monitoring_paused, snooze_guard_minutes
-from infer import filter_triggers_already_in_spans
+from infer import critical_secret_spans_for_ui, filter_triggers_already_in_spans
 from guardrail_logs import log_remediation_event
 from infer import _log_scoring_event
 from pii_remediation import (
     _resolve_span_bounds,
     mask_pii_spans,
+    redact_for_clipboard,
     remediate_text,
     rephrase_text,
 )
+from feedback_store import count_pending_wrong_feedback, record_feedback
 from toast import Toast, show_toast
 from font_clamp import MIN_PX_BODY, paint_font_px
 
@@ -84,14 +93,156 @@ def _score_tier(score: int) -> tuple[QtGui.QColor, str, str, str]:
     return QtGui.QColor("#C62828"), "High", "#B71C1C", "High Risk"
 
 
+def _score_wheel_arc_color(score: int) -> QtGui.QColor:
+    """Ring arc color from numeric score only (not span count)."""
+    s = max(0, min(100, int(score)))
+    if s >= 71:
+        return QtGui.QColor("#E53935")
+    if s >= 41:
+        return QtGui.QColor("#FFB300")
+    return QtGui.QColor("#43A047")
+
+
 def _strip_risk_colors(span_or_trigger: dict | str) -> tuple[QtGui.QColor, str]:
     if isinstance(span_or_trigger, dict):
         r = str(span_or_trigger.get("risk", "low")).lower()
-        if r in ("high", "h"):
+        if r in ("high", "h", "critical", "crit"):
             return QtGui.QColor("#E53935"), "high"
         if r in ("med", "medium", "m"):
             return QtGui.QColor("#F9A825"), "med"
         return QtGui.QColor("#F9A825"), "med"
+
+
+class MaskingModeSlider(QtWidgets.QWidget):
+    mode_changed = QtCore.pyqtSignal(str)
+
+    MODES = [
+        ("Partial", "partial", "#02C39A"),
+        ("Stars", "stars", "#1565C0"),
+        ("Full", "full", "#E65100"),
+        ("Type only", "type_only", "#7B1FA2"),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._index = 0
+        self._drag_x = None
+        self.setFixedHeight(52)
+        self.setMinimumWidth(260)
+        self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        self.setMouseTracking(True)
+
+    def current_mode(self) -> str:
+        return self.MODES[self._index][1]
+
+    def current_label(self) -> str:
+        return self.MODES[self._index][0]
+
+    def current_color(self) -> str:
+        return self.MODES[self._index][2]
+
+    def set_mode(self, mode: str) -> None:
+        m = str(mode or "").lower()
+        for i, (_, key, _) in enumerate(self.MODES):
+            if key == m:
+                if i != self._index:
+                    self._index = i
+                    self.update()
+                return
+
+    def _index_from_x(self, x: int) -> int:
+        w = max(1, self.width())
+        n = len(self.MODES)
+        section = w / n
+        idx = int(x / section)
+        return max(0, min(idx, n - 1))
+
+    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            new_idx = self._index_from_x(int(event.position().x()))
+            if new_idx != self._index:
+                self._index = new_idx
+                self.update()
+                self.mode_changed.emit(self.current_mode())
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
+        if event.buttons() == QtCore.Qt.MouseButton.LeftButton:
+            new_idx = self._index_from_x(int(event.position().x()))
+            if new_idx != self._index:
+                self._index = new_idx
+                self.update()
+                self.mode_changed.emit(self.current_mode())
+        super().mouseMoveEvent(event)
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        del event
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+
+        w = self.width()
+        h = self.height()
+        n = len(self.MODES)
+        inner_w = max(1.0, float(w - 24))
+
+        track_rect = QtCore.QRectF(12, h // 2 - 3, w - 24, 6)
+        painter.setPen(QtCore.Qt.PenStyle.NoPen)
+        painter.setBrush(QtGui.QColor(220, 220, 220, 180))
+        painter.drawRoundedRect(track_rect, 3, 3)
+
+        if n > 1:
+            fill_w = (self._index / (n - 1)) * inner_w
+        else:
+            fill_w = inner_w
+        if fill_w > 0:
+            color = QtGui.QColor(self.current_color())
+            fill_rect = QtCore.QRectF(12, h // 2 - 3, fill_w, 6)
+            painter.setBrush(color)
+            painter.drawRoundedRect(fill_rect, 3, 3)
+
+        for i, (label, _mode, color) in enumerate(self.MODES):
+            if n > 1:
+                tick_x = 12 + (i / (n - 1)) * inner_w
+            else:
+                tick_x = w / 2
+
+            if i == self._index:
+                dot_color = QtGui.QColor(color)
+                painter.setBrush(dot_color)
+                painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255), 2.0))
+                painter.drawEllipse(QtCore.QPointF(tick_x, h // 2), 8, 8)
+            else:
+                painter.setBrush(QtGui.QColor(180, 180, 180))
+                painter.setPen(QtCore.Qt.PenStyle.NoPen)
+                painter.drawEllipse(QtCore.QPointF(tick_x, h // 2), 4, 4)
+
+            label_color = QtGui.QColor(color) if i == self._index else QtGui.QColor(150, 150, 150)
+            painter.setPen(label_color)
+            font = QtGui.QFont()
+            font.setPixelSize(10)
+            if i == self._index:
+                font.setBold(True)
+            painter.setFont(font)
+            label_rect = QtCore.QRectF(tick_x - 35, min(h // 2 + 10, h - 18), 70, 16)
+            painter.drawText(
+                label_rect,
+                QtCore.Qt.AlignmentFlag.AlignCenter,
+                label,
+            )
+
+        if n > 1:
+            thumb_x = 12 + (self._index / (n - 1)) * inner_w
+        else:
+            thumb_x = w / 2
+        thumb_color = QtGui.QColor(self.current_color())
+        ring_color = QtGui.QColor(thumb_color)
+        ring_color.setAlpha(40)
+        painter.setBrush(ring_color)
+        painter.setPen(QtCore.Qt.PenStyle.NoPen)
+        painter.drawEllipse(QtCore.QPointF(thumb_x, h // 2), 13, 13)
+        painter.setBrush(thumb_color)
+        painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255), 2.5))
+        painter.drawEllipse(QtCore.QPointF(thumb_x, h // 2), 9, 9)
 
 
 class _IssueCardWidget(QtWidgets.QFrame):
@@ -281,7 +432,7 @@ class _ScoreWheel(QtWidgets.QWidget):
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         del event
-        col, _, _, _ = _score_tier(self._score)
+        col = _score_wheel_arc_color(self._score)
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         cx, cy = 32.0, 32.0
@@ -326,8 +477,14 @@ class RemediationDialog(QtWidgets.QDialog):
         result: dict,
         llm_target: str,
         parent=None,
+        *,
+        hold_mode: bool = False,
+        critical_hold: bool = False,
     ):
         super().__init__(parent)
+        self._hold_mode = bool(hold_mode)
+        self._critical_hold = bool(critical_hold)
+        self._warn_review_mode = False
         self._bubble = parent
         self._mask_mode = "partial"
         self._original_text = original_text or ""
@@ -374,16 +531,31 @@ class RemediationDialog(QtWidgets.QDialog):
         triggers = self._result.get("triggers", [])
         if not isinstance(triggers, (list, tuple)):
             triggers = []
+        if (
+            not spans
+            and not triggers
+            and bool(self._result.get("critical_secret_detected"))
+            and (self._original_text or "").strip()
+        ):
+            syn = critical_secret_spans_for_ui(self._original_text.strip())
+            if syn:
+                spans = syn
+                self._result["spans"] = syn
         triggers = filter_triggers_already_in_spans(
             [s for s in spans if isinstance(s, dict)], list(triggers)
         )
         issue_count = len(spans) + len(triggers)
+        self._no_literal_spans = not bool(spans) and not bool(triggers)
         if issue_count == 0:
-            display_score = 0
-            display_risk = "Safe"
-            display_color = QtGui.QColor("#2E7D32")
-            pill_bg = "#1B5E20"
-            pill_txt = "Safe"
+            if rs >= 40:
+                display_score = rs
+                display_color, display_risk, pill_bg, pill_txt = _score_tier(rs)
+            else:
+                display_score = 0
+                display_risk = "Safe"
+                display_color = QtGui.QColor("#2E7D32")
+                pill_bg = "#1B5E20"
+                pill_txt = "Safe"
         else:
             display_score = rs
             display_color, display_risk, pill_bg, pill_txt = _score_tier(rs)
@@ -395,10 +567,20 @@ class RemediationDialog(QtWidgets.QDialog):
         self._last_spans = list(spans) if isinstance(spans, list) else []
         glob_risk = str(self._result.get("risk", "low")).lower()
         self._glob_risk = glob_risk
+        self._current_risk = glob_risk
+        self._current_score = rs
+        self._correction_picker: QtWidgets.QWidget | None = None
 
         root = QtWidgets.QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
+        self._main_layout = root
+
+        self._hold_banner = QtWidgets.QWidget()
+        self._safe_banner = QtWidgets.QWidget()
+        self._build_hold_banners()
+        root.addWidget(self._hold_banner)
+        root.addWidget(self._safe_banner)
 
         # --- Header (drag hint + title row) ---
         self._header = QtWidgets.QWidget()
@@ -537,6 +719,71 @@ class RemediationDialog(QtWidgets.QDialog):
 
         root.addWidget(score_row)
 
+        # --- Feedback row (below risk score) ---
+        feedback_widget = QtWidgets.QWidget()
+        feedback_widget.setStyleSheet("background: #2C2C2E; border: none;")
+        feedback_layout = QtWidgets.QHBoxLayout(feedback_widget)
+        feedback_layout.setContentsMargins(12, 6, 12, 6)
+        feedback_layout.setSpacing(8)
+
+        feedback_lbl = QtWidgets.QLabel("Was this correct?")
+        feedback_lbl.setStyleSheet(
+            "font-size: 11px; color: #888;"
+            "background: transparent;"
+        )
+        feedback_layout.addWidget(feedback_lbl)
+
+        feedback_layout.addStretch(1)
+
+        self._btn_correct = QtWidgets.QPushButton("✓ Correct")
+        self._btn_correct.setFixedHeight(28)
+        self._btn_correct.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        self._btn_correct.setStyleSheet(
+            """
+            QPushButton {
+                background: rgba(67,160,71,0.15);
+                color: #43A047;
+                border: 1px solid rgba(67,160,71,0.4);
+                border-radius: 6px;
+                font-size: 11px;
+                font-weight: 600;
+                padding: 0 12px;
+            }
+            QPushButton:hover {
+                background: rgba(67,160,71,0.25);
+            }
+            QPushButton:pressed {
+                background: rgba(67,160,71,0.4);
+            }
+            """
+        )
+        self._btn_correct.clicked.connect(self._on_feedback_correct)
+        feedback_layout.addWidget(self._btn_correct)
+
+        self._btn_wrong = QtWidgets.QPushButton("✗ Wrong")
+        self._btn_wrong.setFixedHeight(28)
+        self._btn_wrong.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        self._btn_wrong.setStyleSheet(
+            """
+            QPushButton {
+                background: rgba(229,57,53,0.15);
+                color: #E53935;
+                border: 1px solid rgba(229,57,53,0.4);
+                border-radius: 6px;
+                font-size: 11px;
+                font-weight: 600;
+                padding: 0 12px;
+            }
+            QPushButton:hover {
+                background: rgba(229,57,53,0.25);
+            }
+            """
+        )
+        self._btn_wrong.clicked.connect(self._on_feedback_wrong)
+        feedback_layout.addWidget(self._btn_wrong)
+
+        root.addWidget(feedback_widget)
+
         # --- Settings accordion (inline; built in _build_settings_section) ---
         self._settings_panel = self._build_settings_section()
         self._settings_panel.setMaximumHeight(0)
@@ -571,44 +818,59 @@ class RemediationDialog(QtWidgets.QDialog):
             )
             cv.addWidget(chunk_info)
 
+        self._issues_scroll_area: QtWidgets.QScrollArea | None = None
+        self._empty_state_wrap: QtWidgets.QWidget | None = None
+
         if not self._has_issues:
-            empty_wrap = QtWidgets.QWidget()
-            ev = QtWidgets.QVBoxLayout(empty_wrap)
-            ev.setContentsMargins(16, 32, 16, 32)
-            ev.setSpacing(12)
-            ev.addStretch(1)
-            sh = QtWidgets.QLabel("🛡")
-            sh.setStyleSheet("font-size: 28px; color: #ccc;")
-            sh.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-            ev.addWidget(sh)
-            t_empty = QtWidgets.QLabel("No PII detected")
-            t_empty.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-            t_empty.setStyleSheet("font-size: 13px; color: #9ca3af; font-family: Segoe UI;")
-            ev.addWidget(t_empty)
-            ev.addStretch(2)
-            cv.addWidget(empty_wrap)
+            if self._no_literal_spans and rs >= 70:
+                self._show_contextual_warning(cv, rs, glob_risk)
+            elif self._no_literal_spans and rs >= 40:
+                self._show_contextual_caution(cv, rs)
+            else:
+                empty_wrap = QtWidgets.QWidget()
+                self._empty_state_wrap = empty_wrap
+                ev = QtWidgets.QVBoxLayout(empty_wrap)
+                ev.setContentsMargins(16, 32, 16, 32)
+                ev.setSpacing(12)
+                ev.addStretch(1)
+                sh = QtWidgets.QLabel("🛡")
+                sh.setStyleSheet("font-size: 28px; color: #ccc;")
+                sh.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+                ev.addWidget(sh)
+                t_empty = QtWidgets.QLabel("No PII detected")
+                t_empty.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+                t_empty.setStyleSheet("font-size: 13px; color: #9ca3af; font-family: Segoe UI;")
+                ev.addWidget(t_empty)
+                ev.addStretch(2)
+                cv.addWidget(empty_wrap)
         else:
             mask_bar = QtWidgets.QWidget()
-            mlay = QtWidgets.QHBoxLayout(mask_bar)
+            mlay = QtWidgets.QVBoxLayout(mask_bar)
             mlay.setContentsMargins(12, 6, 12, 4)
-            ml = QtWidgets.QLabel("Mask style")
-            ml.setStyleSheet("font-size: 11px; color: #6b7280; font-family: Segoe UI;")
-            self._combo_mask_mode = QtWidgets.QComboBox()
-            self._combo_mask_mode.addItems(
-                ["Partial (smart)", "Full replace", "Stars", "Type only"]
+            mlay.setSpacing(6)
+            mode_label = QtWidgets.QLabel("Masking mode")
+            mode_label.setStyleSheet(
+                "font-size: 11px; font-weight: 600; "
+                "color: #666; margin-bottom: 4px;"
             )
-            self._combo_mask_mode.setStyleSheet(_PANEL_COMBOBOX_QSS)
-            self._combo_mask_mode.setCurrentIndex(0)
-            self._combo_mask_mode.currentIndexChanged.connect(self._on_mask_mode_changed)
-            mlay.addWidget(ml)
-            mlay.addStretch()
-            mlay.addWidget(self._combo_mask_mode)
+            mlay.addWidget(mode_label)
+            self._mask_slider = MaskingModeSlider(mask_bar)
+            self._mask_slider.setFixedHeight(52)
+            self._mask_slider.set_mode(self._mask_mode)
+            self._mask_slider.mode_changed.connect(self._on_mask_mode_changed)
+            mlay.addWidget(self._mask_slider)
             cv.addWidget(mask_bar)
 
             first = True
             for s in spans:
                 if not isinstance(s, dict):
                     continue
+                if os.environ.get("GUARDRAIL_DEBUG_REMEDIATION", "").strip().lower() in (
+                    "1",
+                    "true",
+                    "yes",
+                ):
+                    print(f"[card] building card for span: {s}", flush=True)
                 cls = str(s.get("class", "PII"))
                 try:
                     st = int(s.get("start", 0))
@@ -661,6 +923,7 @@ class RemediationDialog(QtWidgets.QDialog):
 
         cv.addStretch(1)
         scroll.setWidget(content_host)
+        self._issues_scroll_area = scroll
         root.addWidget(scroll, 1)
 
         # --- Single result preview (Redact / Rephrase / Fix all); between scroll and footer ---
@@ -744,6 +1007,7 @@ class RemediationDialog(QtWidgets.QDialog):
 
         # --- Footer: Redact | Rephrase | Snooze | Fix all + undo link ---
         footer = QtWidgets.QWidget()
+        self._footer_widget = footer
         footer.setStyleSheet("background: #FFFFFF; border-top: 1px solid #F0F0F0;")
         fl = QtWidgets.QVBoxLayout(footer)
         fl.setContentsMargins(0, 0, 0, 0)
@@ -825,6 +1089,55 @@ class RemediationDialog(QtWidgets.QDialog):
 
         fl.addWidget(footer_row)
 
+        self._override_confirm = QtWidgets.QWidget()
+        self._override_confirm.setVisible(False)
+        ocl = QtWidgets.QHBoxLayout(self._override_confirm)
+        ocl.setContentsMargins(12, 4, 12, 4)
+        self._override_hint = QtWidgets.QLabel(
+            "Are you sure? This contains HIGH risk data."
+        )
+        self._override_hint.setStyleSheet(
+            "font-size: 11px; color: #555; font-family: Segoe UI;"
+        )
+        self._override_hint.setWordWrap(True)
+        ocl.addWidget(self._override_hint, 1)
+        self._override_confirm_btn = QtWidgets.QPushButton("Confirm")
+        self._override_confirm_btn.setFixedSize(72, 28)
+        self._override_confirm_btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self._override_confirm_btn.setStyleSheet(
+            "QPushButton { background: #E53935; color: white; font-size: 11px; "
+            "border: none; border-radius: 6px; font-weight: 600; }"
+            "QPushButton:hover { background: #C62828; }"
+        )
+        self._override_confirm_btn.clicked.connect(self._on_override_confirmed)
+        self._override_cancel_btn = QtWidgets.QPushButton("Cancel")
+        self._override_cancel_btn.setFixedSize(72, 28)
+        self._override_cancel_btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self._override_cancel_btn.setStyleSheet(
+            "QPushButton { background: #f3f4f6; color: #374151; font-size: 11px; "
+            "border: 1px solid #E5E7EB; border-radius: 6px; }"
+        )
+        self._override_cancel_btn.clicked.connect(self._on_override_cancelled)
+        ocl.addWidget(self._override_confirm_btn)
+        ocl.addWidget(self._override_cancel_btn)
+        fl.addWidget(self._override_confirm)
+
+        self._proceed_row = QtWidgets.QWidget()
+        pr = QtWidgets.QHBoxLayout(self._proceed_row)
+        pr.setContentsMargins(8, 2, 12, 6)
+        pr.addStretch(1)
+        self._proceed_anyway_btn = QtWidgets.QPushButton("Proceed anyway")
+        self._proceed_anyway_btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self._proceed_anyway_btn.setStyleSheet(
+            "QPushButton { background: transparent; color: #9ca3af; font-size: 11px; "
+            "border: none; font-weight: 500; }"
+            "QPushButton:hover { color: #6b7280; }"
+        )
+        self._proceed_anyway_btn.clicked.connect(self._on_proceed_anyway_clicked)
+        pr.addWidget(self._proceed_anyway_btn, alignment=QtCore.Qt.AlignmentFlag.AlignRight)
+        self._proceed_row.setVisible(self._hold_mode and not self._critical_hold)
+        fl.addWidget(self._proceed_row)
+
         self._undo_skip_link = QtWidgets.QLabel(
             '<a href="#" style="color:#888;text-decoration:none;">Undo — restore all skipped items</a>'
         )
@@ -849,6 +1162,722 @@ class RemediationDialog(QtWidgets.QDialog):
         self.setFixedWidth(PANEL_W)
         self._apply_panel_height()
         self._update_issue_count()
+        # When there are no literal spans/triggers but score >= 40, keep wheel/header aligned
+        # with model risk (contextual path). Only zero the wheel when truly low score.
+        if self._has_issues:
+            self._update_score_display(self._risk_score, self._glob_risk)
+        elif rs >= 40:
+            self._update_score_display(rs, self._glob_risk)
+        else:
+            self._update_score_display(0, "low")
+
+        if self._hold_mode and self._critical_hold:
+            for c in self._issue_cards:
+                c._skip_btn.setEnabled(False)
+                c._skip_btn.setToolTip("Cannot skip critical data")
+                c._skip_btn.setStyleSheet(
+                    "QPushButton { background: #f3f4f6; color: #9ca3af; font-size: 10px; "
+                    "border: 1px solid #E5E7EB; border-radius: 4px; }"
+                )
+
+    def _analyze_contextual_triggers(self, text: str, score: int) -> list[dict]:
+        """
+        When spans=[] but score is high, analyze text for heuristic triggers that may
+        explain why the model elevated risk. Each item:
+        {trigger, reason, severity, suggestion}
+        """
+        del score  # reserved for future score-conditioned rules
+        triggers: list[dict] = []
+        if not text or not str(text).strip():
+            return triggers
+
+        name_pattern = re.findall(r"\b[A-Z][a-z]+ [A-Z][a-z]+\b", text)
+        if name_pattern:
+            triggers.append(
+                {
+                    "trigger": f'Full name: "{name_pattern[0]}"',
+                    "reason": (
+                        "Full names are personal identifiers that can be used "
+                        "to identify individuals"
+                    ),
+                    "severity": "medium",
+                    "suggestion": (
+                        'Replace with "the user" or a placeholder like [NAME]'
+                    ),
+                }
+            )
+
+        date_pattern = re.findall(
+            r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b", text
+        )
+        if date_pattern:
+            triggers.append(
+                {
+                    "trigger": f'Date: "{date_pattern[0]}"',
+                    "reason": (
+                        "Dates of birth or appointment dates can be identifying "
+                        "when combined with other information"
+                    ),
+                    "severity": "medium",
+                    "suggestion": (
+                        "Remove specific dates unless essential to the question"
+                    ),
+                }
+            )
+
+        age_pattern = re.findall(
+            r"\b(?:age[d]?\s+\d{1,3}|\d{1,3}\s+years?\s+old)\b",
+            text,
+            re.IGNORECASE,
+        )
+        if age_pattern:
+            triggers.append(
+                {
+                    "trigger": f'Age phrase: "{age_pattern[0]}"',
+                    "reason": (
+                        "Age combined with other details can support re-identification"
+                    ),
+                    "severity": "medium",
+                    "suggestion": (
+                        "Generalize (e.g. “adult” / “minor”) if age is not required"
+                    ),
+                }
+            )
+
+        return triggers
+
+    def _show_contextual_warning(
+        self, layout: QtWidgets.QVBoxLayout, score: int, risk: str
+    ) -> None:
+        del risk  # reserved for future copy tuning
+        w = QtWidgets.QWidget()
+        outer = QtWidgets.QVBoxLayout(w)
+        outer.setContentsMargins(20, 20, 20, 20)
+        outer.setSpacing(12)
+        outer.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
+
+        icon = QtWidgets.QLabel("⚠")
+        icon.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        icon.setStyleSheet(
+            "font-size: 32px; color: #FFB300;"
+            "background: transparent;"
+        )
+        outer.addWidget(icon)
+
+        title = QtWidgets.QLabel("Contextual risk detected")
+        title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet(
+            "font-size: 14px; font-weight: 600;"
+            "color: #FFB300; background: transparent;"
+        )
+        outer.addWidget(title)
+
+        msg = QtWidgets.QLabel(
+            f"The model flagged this text with a risk score "
+            f"of {score}/100 based on context and patterns, "
+            f"but no specific PII pattern was isolated.\n\n"
+            f"This often means the text contains:\n"
+            f"• Personal details phrased in natural language\n"
+            f"• Names combined with identifying context\n"
+            f"• Sensitive business or financial language\n"
+            f"• Partial identifiers that suggest PII"
+        )
+        msg.setWordWrap(True)
+        msg.setStyleSheet(
+            "font-size: 12px; color: #666;"
+            "background: transparent; line-height: 1.6;"
+        )
+        outer.addWidget(msg)
+
+        why_items = self._analyze_contextual_triggers(self._original_text or "", score)
+        if why_items:
+            why_hdr = QtWidgets.QLabel("Why the model may have flagged this")
+            why_hdr.setStyleSheet(
+                "font-size: 12px; font-weight: 700; color: #424242;"
+                "background: transparent; margin-top: 4px;"
+            )
+            outer.addWidget(why_hdr)
+            for item in why_items:
+                sev = str(item.get("severity", "medium")).lower()
+                sev_color = "#E65100" if sev == "high" else "#F57F17"
+                trig = QtWidgets.QLabel()
+                trig.setWordWrap(True)
+                tr = escape(str(item.get("trigger", "")))
+                rs = escape(str(item.get("reason", "")))
+                sg = escape(str(item.get("suggestion", "")))
+                trig.setText(
+                    f'<p style="margin:0 0 10px 0;">'
+                    f'<span style="color:{sev_color};font-weight:600;">{tr}</span><br/>'
+                    f'<span style="color:#555;">{rs}</span><br/>'
+                    f'<span style="color:#1565C0;font-size:11px;"><i>Tip: {sg}</i></span>'
+                    f"</p>"
+                )
+                trig.setTextFormat(QtCore.Qt.TextFormat.RichText)
+                trig.setStyleSheet("background: transparent;")
+                outer.addWidget(trig)
+
+        rec = QtWidgets.QLabel(
+            "Recommendation: Review the text manually "
+            "before pasting. If it contains names, "
+            "numbers, or personal context — consider "
+            "rephrasing it."
+        )
+        rec.setWordWrap(True)
+        rec.setStyleSheet(
+            """
+            font-size: 11px;
+            color: #E65100;
+            background: #FFF8E1;
+            border: 1px solid #FFE0B2;
+            border-radius: 6px;
+            padding: 8px 10px;
+        """
+        )
+        outer.addWidget(rec)
+        outer.addStretch(1)
+        layout.addWidget(w)
+
+    def _show_contextual_caution(self, layout: QtWidgets.QVBoxLayout, score: int) -> None:
+        w = QtWidgets.QWidget()
+        outer = QtWidgets.QVBoxLayout(w)
+        outer.setContentsMargins(20, 20, 20, 20)
+        outer.setSpacing(10)
+        outer.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
+
+        icon = QtWidgets.QLabel("ℹ")
+        icon.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        icon.setStyleSheet(
+            "font-size: 28px; color: #1565C0;"
+            "background: transparent;"
+        )
+        outer.addWidget(icon)
+
+        title = QtWidgets.QLabel("Low-level patterns noticed")
+        title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet(
+            "font-size: 13px; font-weight: 600;"
+            "color: #1565C0; background: transparent;"
+        )
+        outer.addWidget(title)
+
+        msg = QtWidgets.QLabel(
+            f"Risk score: {score}/100\n\n"
+            "The model detected mild signals that "
+            "may indicate personal or sensitive context. "
+            "No specific PII pattern was found.\n\n"
+            "The paste has been allowed through. "
+            "You can dismiss this panel."
+        )
+        msg.setWordWrap(True)
+        msg.setStyleSheet(
+            "font-size: 12px; color: #666;"
+            "background: transparent;"
+        )
+        outer.addWidget(msg)
+        outer.addStretch(1)
+        layout.addWidget(w)
+
+    def _update_score_display(self, score: int, risk: str | None = None) -> None:
+        """Align score wheel, tier label, and header pill with the shown risk (see __init__ empty-state path)."""
+        try:
+            rs = int(score)
+        except (TypeError, ValueError):
+            rs = 0
+        rs = max(0, min(100, rs))
+        self._risk_score = rs
+        if risk is not None:
+            self._glob_risk = str(risk).lower()
+        display_color, display_risk, pill_bg, pill_txt = _score_tier(rs)
+        self._score_wheel.set_score(rs)
+        self._lbl_tier_big.setText(display_risk)
+        self._lbl_tier_big.setStyleSheet(
+            f"font-size: 13px; font-weight: bold; color: {display_color.name()}; font-family: {FONT_FAMILY};"
+        )
+        self._risk_badge.setText(pill_txt)
+        self._risk_badge.setStyleSheet(
+            f"background: {pill_bg}; color: #ffffff; font-size: 11px; font-weight: bold; "
+            f"padding: 4px 10px; border-radius: 12px; font-family: {FONT_FAMILY}; min-width: 72px;"
+        )
+        self._current_score = rs
+        self._current_risk = self._glob_risk
+
+    def _on_feedback_correct(self) -> None:
+        """User confirmed the detection was correct."""
+        self._record_feedback(
+            predicted=self._current_risk,
+            correct=self._current_risk,
+            feedback_type="correct",
+        )
+        self._btn_correct.setText("✓ Thanks!")
+        self._btn_correct.setEnabled(False)
+        self._btn_wrong.setEnabled(False)
+        self._btn_correct.setStyleSheet(
+            """
+            QPushButton {
+                background: rgba(67,160,71,0.3);
+                color: #43A047;
+                border: 1px solid #43A047;
+                border-radius: 6px;
+                font-size: 11px;
+                font-weight: 600;
+                padding: 0 12px;
+            }
+            """
+        )
+        show_toast(
+            "Feedback recorded — model gets smarter!",
+            color="#43A047",
+            duration=2000,
+            parent=self,
+            title="✓ Confirmed correct",
+        )
+
+    def _on_feedback_wrong(self) -> None:
+        """User says detection was wrong — pick correct label."""
+        self._btn_correct.setEnabled(False)
+        self._btn_wrong.setEnabled(False)
+        self._show_correction_picker()
+
+    def _show_correction_picker(self) -> None:
+        """Inline picker for correct risk label."""
+        if self._correction_picker is not None:
+            self._main_layout.removeWidget(self._correction_picker)
+            self._correction_picker.deleteLater()
+            self._correction_picker = None
+
+        picker = QtWidgets.QWidget()
+        picker.setObjectName("correctionPicker")
+        picker.setStyleSheet(
+            """
+            QWidget#correctionPicker {
+                background: #FFF8E1;
+                border: 1px solid #FFB300;
+                border-radius: 8px;
+            }
+            """
+        )
+        layout = QtWidgets.QVBoxLayout(picker)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(8)
+
+        lbl = QtWidgets.QLabel("What should the correct level be?")
+        lbl.setStyleSheet(
+            "font-size: 12px; font-weight: 600;"
+            "color: #E65100; background: transparent;"
+        )
+        layout.addWidget(lbl)
+
+        btn_row = QtWidgets.QHBoxLayout()
+        btn_row.setSpacing(6)
+
+        options = [
+            ("Safe", "low", "#43A047"),
+            ("Medium", "med", "#FFB300"),
+            ("High", "high", "#E53935"),
+            ("Critical", "critical", "#B71C1C"),
+        ]
+
+        for label, value, color in options:
+            btn = QtWidgets.QPushButton(label)
+            btn.setFixedHeight(30)
+            btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+            btn.setStyleSheet(
+                f"""
+                QPushButton {{
+                    background: {color}22;
+                    color: {color};
+                    border: 1px solid {color}66;
+                    border-radius: 6px;
+                    font-size: 11px;
+                    font-weight: 600;
+                    padding: 0 10px;
+                }}
+                QPushButton:hover {{
+                    background: {color}44;
+                }}
+                """
+            )
+            btn.clicked.connect(partial(self._on_correction_selected, value, label))
+            btn_row.addWidget(btn)
+
+        layout.addLayout(btn_row)
+
+        idx = self._main_layout.indexOf(self._footer_widget)
+        self._main_layout.insertWidget(idx, picker)
+        self._correction_picker = picker
+
+    def _on_correction_selected(self, correct_label: str, display_label: str) -> None:
+        """User picked the correct classification."""
+        predicted = self._current_risk or "high"
+
+        self._record_feedback(
+            predicted=predicted,
+            correct=correct_label,
+            feedback_type="wrong",
+        )
+
+        if self._correction_picker is not None:
+            self._main_layout.removeWidget(self._correction_picker)
+            self._correction_picker.deleteLater()
+            self._correction_picker = None
+
+        self._btn_wrong.setText(f"✗ Corrected → {display_label}")
+        self._btn_wrong.setStyleSheet(
+            """
+            QPushButton {
+                background: rgba(255,179,0,0.2);
+                color: #FFB300;
+                border: 1px solid #FFB300;
+                border-radius: 6px;
+                font-size: 11px;
+                padding: 0 12px;
+            }
+            """
+        )
+        show_toast(
+            f"Correction saved: {predicted} → {display_label}. Model will learn!",
+            color="#FFB300",
+            duration=3000,
+            parent=self,
+            title="Feedback recorded",
+        )
+        self._check_retrain_threshold()
+
+    def _record_feedback(self, *, predicted: str, correct: str, feedback_type: str) -> None:
+        """Persist feedback and sync to Supabase in the background."""
+        text = getattr(self, "_original_text", "") or ""
+        record_feedback(
+            text,
+            str(predicted),
+            str(correct),
+            source="remediation_panel",
+            risk_score=int(self._current_score or 0),
+            feedback_type=feedback_type,
+        )
+        print(
+            f"[feedback] saved: {predicted} → {correct} ({feedback_type})",
+            flush=True,
+        )
+        text_hash = hashlib.sha256(text.encode()).hexdigest()
+        entry = {
+            "timestamp": datetime.now(timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z"),
+            "text_hash": text_hash,
+            "predicted": str(predicted),
+            "correct": str(correct),
+            "feedback_type": feedback_type,
+        }
+        threading.Thread(
+            target=self._sync_feedback_supabase,
+            args=(entry,),
+            daemon=True,
+        ).start()
+
+    def _sync_feedback_supabase(self, entry: dict) -> None:
+        """Sync feedback to Supabase feedback_corrections table when configured."""
+        url = os.environ.get("SUPABASE_URL")
+        key = os.environ.get("SUPABASE_ANON_KEY")
+        if not url or not key:
+            return
+        try:
+            from supabase import create_client
+
+            sb = create_client(url, key)
+            sb.table("feedback_corrections").insert(
+                {
+                    "recorded_at": entry["timestamp"],
+                    "text_hash": entry["text_hash"],
+                    "predicted": entry["predicted"],
+                    "correct": entry["correct"],
+                    "source": entry["feedback_type"],
+                }
+            ).execute()
+        except Exception:
+            pass
+
+    def _check_retrain_threshold(self) -> None:
+        """Notify when enough wrong-label corrections are pending."""
+        pending = count_pending_wrong_feedback()
+        print(f"[feedback] {pending} pending corrections", flush=True)
+        if pending >= 30:
+            show_toast(
+                f"{pending} corrections collected. Run train.py tonight to retrain!",
+                color="#1565C0",
+                duration=6000,
+                parent=self,
+                title="Model update ready",
+            )
+        elif pending >= 10:
+            show_toast(
+                f"{pending}/30 corrections collected.",
+                color="#888888",
+                duration=2000,
+                parent=self,
+                title="Feedback progress",
+            )
+
+    def show_with_hold_mode(
+        self,
+        *,
+        spans: list | None = None,
+        score: int = 0,
+        risk: str = "low",
+        critical: bool = False,
+        original_text: str = "",
+    ) -> None:
+        """
+        Hold paste: sync snapshot fields, refresh score UI, then show.
+
+        Issue cards are built in ``__init__`` from ``result`` (must use a deep-copied result from
+        the scorer so ``spans`` are not shared with the inference cache). This updates
+        ``_result`` / ``_original_text`` if you pass them, then re-runs score display.
+        """
+        if os.environ.get("GUARDRAIL_DEBUG_REMEDIATION", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        ):
+            sp = list(spans) if spans is not None else []
+            print(
+                f"[panel] hold_mode spans={len(sp)} score={score} risk={risk!r} "
+                f"critical={critical}",
+                flush=True,
+            )
+            for s in sp[:3]:
+                print(f"  span: {s}", flush=True)
+
+        if original_text:
+            self._original_text = original_text
+        self._hold_mode = True
+        self._critical_hold = bool(critical)
+        if spans is not None:
+            self._spans = list(spans)
+            self._result["spans"] = self._spans
+            self._last_spans = list(self._spans)
+            self._has_issues = bool(self._spans) or bool(self._triggers)
+        self._update_score_display(int(score), risk)
+        self._update_issue_count()
+        self.show()
+
+    def _show_banner(self, text: str, text_color: str, bg_color: str) -> None:
+        """Top strip banner with configurable text and colors (warn / review)."""
+        self._hide_hold_banner()
+        self._safe_banner.setFixedHeight(0)
+        self._safe_banner.setVisible(False)
+        if not hasattr(self, "_banner_widget"):
+            self._banner_widget = QtWidgets.QWidget()
+            self._banner_widget.setFixedHeight(36)
+            banner_layout = QtWidgets.QHBoxLayout(self._banner_widget)
+            banner_layout.setContentsMargins(12, 0, 12, 0)
+            self._banner_icon = QtWidgets.QLabel()
+            self._banner_icon.setStyleSheet("font-size: 14px; background: transparent;")
+            self._banner_text = QtWidgets.QLabel()
+            self._banner_text.setWordWrap(True)
+            self._banner_text.setStyleSheet(
+                f"font-size: 12px; font-weight: 600; background: transparent; "
+                f"font-family: {FONT_FAMILY};"
+            )
+            banner_layout.addWidget(self._banner_icon)
+            banner_layout.addWidget(self._banner_text, 1)
+            banner_layout.addStretch()
+            self._main_layout.insertWidget(0, self._banner_widget)
+        self._banner_widget.setStyleSheet(
+            f"background: {bg_color}; border: none; border-radius: 0px;"
+        )
+        self._banner_icon.setText("⊘" if "blocked" in text.lower() else "⚠")
+        self._banner_icon.setStyleSheet(
+            f"color: {text_color}; font-size: 14px; background: transparent;"
+        )
+        self._banner_text.setText(text)
+        self._banner_text.setStyleSheet(
+            f"color: {text_color}; font-size: 12px; font-weight: 600; "
+            f"background: transparent; font-family: {FONT_FAMILY};"
+        )
+        self._banner_widget.setFixedHeight(36)
+        self._banner_widget.show()
+
+    def show_with_warn_mode(
+        self,
+        *,
+        spans: list | None = None,
+        score: int = 0,
+        risk: str = "low",
+    ) -> None:
+        """Paste already went through; show panel for review (non-hold): amber banner, no proceed row."""
+        self._warn_review_mode = True
+        self._hold_mode = False
+        self._critical_hold = False
+        if spans is not None:
+            self._spans = list(spans)
+            self._result["spans"] = self._spans
+            self._has_issues = bool(self._spans) or bool(self._triggers)
+        try:
+            sc = int(score)
+        except (TypeError, ValueError):
+            sc = 0
+        rk = str(risk or "low").lower()
+        self._update_score_display(sc, rk)
+        self._update_issue_count()
+        self._proceed_row.setVisible(False)
+        self._proceed_anyway_btn.setVisible(False)
+        if rk == "high" or sc >= 70:
+            self._show_banner(
+                "Review before sending — PII detected",
+                "#E65100",
+                "#FFF8E1",
+            )
+        else:
+            self._show_banner(
+                "Heads up — sensitive content detected",
+                "#F9A825",
+                "#FFFDE7",
+            )
+        if not hasattr(self, "_fix_all_btn_label_default"):
+            self._fix_all_btn_label_default = self._fix_all_btn.text()
+            self._fix_all_btn_tip_default = self._fix_all_btn.toolTip()
+        self._fix_all_btn.setText("Redact & Copy")
+        self._fix_all_btn.setToolTip(
+            "Redact PII and copy clean version to clipboard for manual paste"
+        )
+        self.show()
+
+    def _build_hold_banners(self) -> None:
+        if hasattr(self, "_banner_widget"):
+            self._banner_widget.hide()
+            self._banner_widget.setFixedHeight(0)
+        self._hold_banner.setFixedHeight(0)
+        self._hold_banner.setVisible(False)
+        self._safe_banner.setFixedHeight(0)
+        self._safe_banner.setVisible(False)
+        if not self._hold_mode:
+            return
+        critical = self._critical_hold
+        banner_bg = "#FFEBEE" if critical else "#FFF8E1"
+        banner_color = "#B71C1C" if critical else "#E65100"
+        banner_text = (
+            "Paste blocked — fix required"
+            if critical
+            else "High risk — fix before pasting"
+        )
+        self._hold_banner.setFixedHeight(36)
+        self._hold_banner.setVisible(True)
+        self._hold_banner.setStyleSheet(f"background: {banner_bg}; border: none; border-radius: 0px;")
+        hbl = QtWidgets.QHBoxLayout(self._hold_banner)
+        hbl.setContentsMargins(12, 0, 12, 0)
+        icon = QtWidgets.QLabel("⊘" if critical else "⚠")
+        icon.setStyleSheet(f"color:{banner_color};font-size:14px;")
+        text = QtWidgets.QLabel(banner_text)
+        text.setStyleSheet(
+            f"color:{banner_color};font-size:12px;font-weight:600;font-family: {FONT_FAMILY};"
+        )
+        hbl.addWidget(icon)
+        hbl.addWidget(text)
+        hbl.addStretch(1)
+
+        self._safe_banner.setStyleSheet("background: #E8F5E9; border: none; border-radius: 0px;")
+        sbl = QtWidgets.QHBoxLayout(self._safe_banner)
+        sbl.setContentsMargins(12, 0, 12, 0)
+        self._safe_banner_lbl = QtWidgets.QLabel("")
+        self._safe_banner_lbl.setStyleSheet(
+            f"color:#2E7D32;font-size:12px;font-weight:600;font-family: {FONT_FAMILY};"
+        )
+        sbl.addWidget(self._safe_banner_lbl)
+
+    def _copy_to_clipboard_str(self, text: str) -> None:
+        try:
+            import pyperclip
+
+            pyperclip.copy(text or "")
+        except Exception:
+            QtGui.QGuiApplication.clipboard().setText(text or "")
+
+    def _auto_paste(self) -> None:
+        try:
+            if sys.platform == "win32":
+                from win_paste_hook import replay_suppressed_paste
+
+                replay_suppressed_paste()
+                return
+        except Exception:
+            pass
+        try:
+            import pyautogui
+
+            pyautogui.hotkey("ctrl", "v")
+        except ImportError:
+            show_toast(
+                "Safe version in clipboard — paste now",
+                color="#02C39A",
+                parent=self,
+            )
+
+    def _hide_hold_banner(self) -> None:
+        if hasattr(self, "_banner_widget"):
+            self._banner_widget.hide()
+            self._banner_widget.setFixedHeight(0)
+        self._hold_banner.setFixedHeight(0)
+        self._hold_banner.setVisible(False)
+
+    def _show_safe_banner(self, message: str) -> None:
+        self._safe_banner_lbl.setText(message)
+        self._safe_banner.setFixedHeight(36)
+        self._safe_banner.setVisible(True)
+
+    def _hold_safe_text_from_fixed(self) -> str:
+        if self._fixed_spans:
+            return mask_pii_spans(
+                self._original_text,
+                self._fixed_spans,
+                mode=self._current_mask_mode(),
+            )
+        return remediate_text(self._original_text, "mask")
+
+    def _hold_all_issues_fixed(self) -> bool:
+        if not self._issue_cards:
+            return False
+        return all(c._resolved for c in self._issue_cards)
+
+    def _hold_complete_safe_flow(self, safe_text: str, toast_msg: str) -> None:
+        self._copy_to_clipboard_str(safe_text)
+        show_toast(toast_msg, color="#02C39A", parent=self)
+        self._hide_hold_banner()
+        self._show_safe_banner("Safe to paste now ✓")
+        b = self._bubble
+        if b is not None and hasattr(b, "set_hold_state"):
+            b.set_hold_state(False)
+        QtCore.QTimer.singleShot(800, self._auto_paste)
+
+    def _on_proceed_anyway_clicked(self) -> None:
+        if not self._hold_mode or self._critical_hold:
+            return
+        self._override_confirm.setVisible(True)
+        self._proceed_anyway_btn.setVisible(False)
+
+    def _on_override_cancelled(self) -> None:
+        self._override_confirm.setVisible(False)
+        self._proceed_anyway_btn.setVisible(True)
+
+    def _on_override_confirmed(self) -> None:
+        try:
+            log_remediation_event(
+                "user_override",
+                {
+                    "action": "user_override",
+                    "risk": str(self._result.get("risk", "unknown")),
+                    "risk_score": self._result.get("risk_score"),
+                },
+                text=self._original_text or "",
+            )
+        except Exception:
+            pass
+        self._copy_to_clipboard_str(self._original_text)
+        show_toast("Override — original content pasted", color="#E53935", parent=self)
+        if self._bubble is not None:
+            self._bubble.set_hold_state(False)
+        self._slide_out_pending_accept = False
+        QtCore.QTimer.singleShot(120, self._auto_paste)
+        self.slide_out_and_hide()
 
     def _apply_panel_height(self) -> None:
         screen = QtGui.QGuiApplication.screenAt(QtGui.QCursor.pos())
@@ -988,7 +2017,26 @@ class RemediationDialog(QtWidgets.QDialog):
     def _update_issue_count(self) -> None:
         if self._fix_all_running:
             return
-        if not self._has_issues or not self._issue_cards:
+        if not self._issue_cards:
+            try:
+                rs_ic = int(self._risk_score)
+            except (TypeError, ValueError):
+                rs_ic = 0
+            if getattr(self, "_no_literal_spans", False):
+                if rs_ic >= 70:
+                    self._lbl_issue_count.setText("Contextual risk")
+                    self._lbl_issue_count.setStyleSheet(
+                        "font-size: 11px; color: #FFB300; font-weight: 600; font-family: Segoe UI;"
+                    )
+                    self._restore_risk_badge_default()
+                    return
+                if rs_ic >= 40:
+                    self._lbl_issue_count.setText("Low-level signals")
+                    self._lbl_issue_count.setStyleSheet(
+                        "font-size: 11px; color: #1565C0; font-weight: 600; font-family: Segoe UI;"
+                    )
+                    self._restore_risk_badge_default()
+                    return
             self._lbl_issue_count.setText("No issues")
             self._lbl_issue_count.setStyleSheet(self._issue_count_default_style)
             self._restore_risk_badge_default()
@@ -1035,6 +2083,20 @@ class RemediationDialog(QtWidgets.QDialog):
     def _on_skip_all_clicked(self) -> None:
         if self._fix_all_running:
             return
+        if self._hold_mode and self._critical_hold:
+            return
+        if self._hold_mode and not self._critical_hold:
+            show_toast(
+                "Skipped — pasting original risky content",
+                color="#E53935",
+                duration=3000,
+            )
+            self._copy_to_clipboard_str(self._original_text)
+            if self._bubble is not None:
+                self._bubble.set_hold_state(False)
+            QtCore.QTimer.singleShot(150, self._auto_paste)
+            QtCore.QTimer.singleShot(400, self.slide_out_and_hide)
+            return
         todo = [c for c in self._issue_cards if c.is_actionable()]
         if not todo:
             return
@@ -1063,18 +2125,39 @@ class RemediationDialog(QtWidgets.QDialog):
     def _hide_undo_skip_link(self) -> None:
         self._undo_skip_link.setVisible(False)
 
-    def _on_mask_mode_changed(self, _index: int = 0) -> None:
-        keys = ("partial", "full", "stars", "type_only")
-        if not hasattr(self, "_combo_mask_mode"):
+    def _update_redact_preview(self) -> None:
+        if not getattr(self, "_preview_box", None) or not self._preview_box.isVisible():
             return
-        i = self._combo_mask_mode.currentIndex()
-        self._mask_mode = keys[i] if 0 <= i < len(keys) else "partial"
+        if not str(self._preview_title.text()).startswith("Masked version"):
+            return
+        raw = self._original_text or ""
+        spans = self._result.get("spans") if isinstance(self._result.get("spans"), list) else []
+        mode = self._current_mask_mode()
+        t = mask_pii_spans(raw, spans, mode=mode)
+        if t == raw:
+            t = remediate_text(raw, "mask")
+        self._preview_copy_text = t or ""
+        self._preview_content.setText((t or "")[:300])
+
+    def _on_mask_mode_changed(self, mode: str) -> None:
+        self._mask_mode = mode
+        self._update_redact_preview()
+        labels = {
+            "partial": "Partial — shows last digits",
+            "stars": "Stars — full replacement",
+            "full": "Full — type label only",
+            "type_only": "Type only — [CLASS]",
+        }
+        show_toast(
+            labels.get(mode, mode),
+            color=self._mask_slider.current_color(),
+            duration=1500,
+            parent=self,
+        )
 
     def _current_mask_mode(self) -> str:
-        if hasattr(self, "_combo_mask_mode"):
-            keys = ("partial", "full", "stars", "type_only")
-            i = self._combo_mask_mode.currentIndex()
-            return keys[i] if 0 <= i < len(keys) else "partial"
+        if hasattr(self, "_mask_slider"):
+            return self._mask_slider.current_mode()
         return getattr(self, "_mask_mode", "partial")
 
     def _clipboard_from_fixed_spans(self) -> None:
@@ -1109,10 +2192,29 @@ class RemediationDialog(QtWidgets.QDialog):
             self._clipboard_after_trigger_fix()
         card.set_fixed()
         self._update_issue_count()
+        if self._hold_mode:
+            if self._hold_all_issues_fixed():
+                t = self._hold_safe_text_from_fixed()
+                self._hold_complete_safe_flow(t, "All fixed — safe to paste")
+            return
         show_toast("Fixed — safe version copied", color="#02C39A")
 
     def _on_card_skip(self, card: _IssueCardWidget) -> None:
         if not card.is_actionable() or self._fix_all_running:
+            return
+        if self._hold_mode and self._critical_hold:
+            return
+        if self._hold_mode and not self._critical_hold:
+            show_toast(
+                "Skipped — pasting original risky content",
+                color="#E53935",
+                duration=3000,
+            )
+            self._copy_to_clipboard_str(self._original_text)
+            if self._bubble is not None:
+                self._bubble.set_hold_state(False)
+            QtCore.QTimer.singleShot(150, self._auto_paste)
+            QtCore.QTimer.singleShot(400, self.slide_out_and_hide)
             return
         card.set_skipped()
         self._update_issue_count()
@@ -1145,6 +2247,9 @@ class RemediationDialog(QtWidgets.QDialog):
         t = mask_pii_spans(raw, spans, mode="partial")
         if t == raw:
             t = remediate_text(raw, "mask")
+        if self._hold_mode and self._has_issues:
+            self._hold_complete_safe_flow(t, "Fixed — safe version ready to paste")
+            return
         self._show_preview(t, "Masked version (partial):")
 
     def _on_rephrase(self) -> None:
@@ -1286,15 +2391,21 @@ class RemediationDialog(QtWidgets.QDialog):
         self._fix_all_running = False
         self._set_footer_actions_enabled(True)
         self._update_issue_count()
-        show_toast("All issues fixed", color="#02C39A")
         if self._fixed_spans:
-            fixed_text = mask_pii_spans(
+            fixed_text = redact_for_clipboard(
                 self._original_text,
                 self._fixed_spans,
                 mode=self._current_mask_mode(),
             )
         else:
             fixed_text = remediate_text(self._original_text, "mask")
+        if self._hold_mode:
+            self._hold_complete_safe_flow(
+                fixed_text,
+                "Fixed — safe version ready to paste",
+            )
+            return
+        show_toast("All issues fixed", color="#02C39A")
         self._show_preview(fixed_text, "Fixed version:")
 
     def _show_snooze_menu(self) -> None:

@@ -6,11 +6,28 @@ from __future__ import annotations
 
 import json
 import os
-
-from google import genai
-from google.genai import types
+import time
 
 _GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
+
+_DEFAULT_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+
+# Try in order when one fails (first entry is _DEFAULT_MODEL, then fallbacks, deduped)
+_MODEL_FALLBACKS = [
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
+    "gemini-1.0-pro",
+]
+_seen_chain: set[str] = set()
+MODEL_CHAIN: list[str] = []
+for _m in [_DEFAULT_MODEL, *_MODEL_FALLBACKS]:
+    if _m not in _seen_chain:
+        _seen_chain.add(_m)
+        MODEL_CHAIN.append(_m)
+
+_quota_exhausted: dict[str, float] = {}
+_QUOTA_COOLDOWN = 3600  # 1 hour before retrying a quota-hit model
 
 PII_PROMPT = """
 You are a PII detection expert. Analyze the following
@@ -41,48 +58,100 @@ Text to analyze:
 """
 
 
-def scan_with_gemini(text: str, model_name: str = "gemini-2.0-flash") -> list:
-    """
-    Returns list of PII findings from Gemini.
-    Falls back to empty list if API unavailable.
-    """
+def scan_with_gemini(text: str, model_name: str | None = None) -> list:
     if not _GEMINI_KEY:
         print("[gemini] GEMINI_API_KEY not set — skipping")
         return []
 
-    try:
-        client = genai.Client(api_key=_GEMINI_KEY)
-        cfg = types.GenerateContentConfig(
-            temperature=0.1,
-            response_mime_type="application/json",
-        )
+    models_to_try = MODEL_CHAIN if model_name is None else [model_name]
 
+    for model in models_to_try:
+        result = _try_model(text, model)
+        if result is not None:
+            if result:
+                print(f"[gemini] {model} found {len(result)} PII items")
+            else:
+                print(f"[gemini] {model} found nothing")
+            return result
+        print(f"[gemini] {model} failed — trying next")
+
+    print("[gemini] all models exhausted — using local only")
+    return []
+
+
+def _try_model(text: str, model_name: str) -> list | None:
+    """
+    Returns list of findings on success (may be empty).
+    Returns None on quota/rate limit error (caller may try next model).
+    Returns [] on other fatal errors for this model (don't retry other models for same reason).
+    """
+    now = time.time()
+    if model_name in _quota_exhausted:
+        if now - _quota_exhausted[model_name] < _QUOTA_COOLDOWN:
+            print(f"[gemini] {model_name} in cooldown — skipping")
+            return None
+
+    try:
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=_GEMINI_KEY)
         chunks = _chunk_text(text, max_chars=30000)
-        all_findings = []
+        all_findings: list = []
 
         for i, chunk in enumerate(chunks):
             try:
                 response = client.models.generate_content(
                     model=model_name,
                     contents=PII_PROMPT + chunk,
-                    config=cfg,
+                    config=types.GenerateContentConfig(
+                        temperature=0.1,
+                        response_mime_type="application/json",
+                    ),
                 )
                 raw = (response.text or "").strip()
                 raw = raw.replace("```json", "").replace("```", "").strip()
                 findings = json.loads(raw)
                 if isinstance(findings, list):
                     all_findings.extend(findings)
+
             except json.JSONDecodeError:
                 print(f"[gemini] JSON parse error on chunk {i}")
                 continue
             except Exception as e:
+                err = str(e)
+                if any(
+                    x in err
+                    for x in (
+                        "429",
+                        "RESOURCE_EXHAUSTED",
+                        "quota",
+                        "rate_limit",
+                        "rate limit",
+                    )
+                ):
+                    print(f"[gemini] {model_name} quota hit")
+                    _quota_exhausted[model_name] = time.time()
+                    return None
                 print(f"[gemini] chunk {i} error: {e}")
                 continue
 
         return all_findings
 
     except Exception as e:
-        print(f"[gemini] scan failed: {e}")
+        err = str(e)
+        if any(
+            x in err
+            for x in (
+                "429",
+                "RESOURCE_EXHAUSTED",
+                "quota",
+                "rate_limit",
+            )
+        ):
+            _quota_exhausted[model_name] = time.time()
+            return None
+        print(f"[gemini] model {model_name} failed: {e}")
         return []
 
 

@@ -13,11 +13,16 @@ Detect whether the current foreground window looks like an LLM target.
   - Use get_active_llm_name() for a single string label or None.
 
   Non-browser windows use title matching only. cleaned_title from _clean_browser_title.
+
+  Debug (terminal / stderr):
+  - Set GUARDRAIL_DEBUG_WINDOW=1 or GUARDRAIL_DEBUG_LLM_DETECT=1 to log each Ctrl+V path
+    (see log_guardrail_active_window_banner). Uses stderr so lines show in `python main.py` consoles.
 """
 
 import json
 import os
 import re
+import sys
 import ctypes
 from ctypes import wintypes
 from typing import Optional
@@ -471,23 +476,55 @@ def is_active_window_llm(*, debug: bool = False) -> tuple[bool, str, Optional[st
     return (False, "", None, None)
 
 
+# When CDP / URL heuristics miss (e.g. no --remote-debugging-port), match common IDE & chat titles.
+LLM_TITLE_KEYWORDS: tuple[str, ...] = (
+    "claude",
+    "chatgpt",
+    "gemini",
+    "copilot",
+    "perplexity",
+    "grok",
+    "openai",
+    "anthropic",
+    "mistral",
+    "llama",
+    "poe",
+    "huggingface",
+    "cursor",
+    "vscode",
+    "visual studio code",
+    "windsurf",
+    "zed",
+    "comet",
+    "deepseek",
+    "ollama",
+)
+
+
+def detect_llm_window(*, debug: bool = False) -> tuple[bool, str, Optional[str], Optional[str]]:
+    """
+    Primary is_active_window_llm() plus raw title keyword fallback (IDEs, browsers without CDP).
+    Use this for hook gating, tray UI, and get_active_llm_name() so behavior stays consistent.
+    """
+    is_llm, agent_name, url, cleaned_title = is_active_window_llm(debug=debug)
+    if not is_llm:
+        raw_title = get_active_window_title().lower()
+        for kw in LLM_TITLE_KEYWORDS:
+            if kw in raw_title:
+                is_llm = True
+                agent_name = agent_name or kw.title()
+                break
+    return is_llm, agent_name, url, cleaned_title
+
+
 def get_active_llm_name() -> Optional[str]:
     """
     Return the detected LLM product name (e.g. \"ChatGPT\", \"Claude\") for the
     active foreground window, or None if it is not recognized as an LLM target.
     """
-    is_llm, agent, _, _ = is_active_window_llm()
+    is_llm, agent, _, _ = detect_llm_window()
     if is_llm and agent:
         return agent
-    hwnd = _get_foreground_window()
-    if not hwnd:
-        return None
-    title_raw = _get_window_title(hwnd)
-    title_lower = (title_raw or "").lower()
-    if "comet" in title_lower:
-        return "Comet"
-    if "perplexity" in title_lower:
-        return "Perplexity"
     return None
 
 
@@ -518,18 +555,57 @@ def get_foreground_app_label() -> str:
     return "unknown"
 
 
+def get_active_window_title() -> str:
+    """Raw title string of the foreground window (for debugging / scripts)."""
+    hwnd = _get_foreground_window()
+    if not hwnd:
+        return ""
+    return _get_window_title(hwnd) or ""
+
+
 def is_llm_window() -> bool:
     """True if the foreground window is treated as an LLM paste target."""
-    return bool(is_active_window_llm()[0])
+    return bool(detect_llm_window()[0])
+
+
+def _env_truthy(name: str) -> bool:
+    return os.environ.get(name, "0").strip().lower() in ("1", "true", "yes", "on")
+
+
+def llm_debug_enabled() -> bool:
+    """
+    True when terminal should show verbose LLM detection (agent, URL, title).
+    Same flags as log_guardrail_active_window_banner:
+    GUARDRAIL_DEBUG_WINDOW=1 or GUARDRAIL_DEBUG_LLM_DETECT=1
+    """
+    return _env_truthy("GUARDRAIL_DEBUG_WINDOW") or _env_truthy("GUARDRAIL_DEBUG_LLM_DETECT")
 
 
 def log_guardrail_active_window_banner(is_llm: bool, label: str) -> None:
     """
-    Optional debug line before clipboard scoring. Disabled when GUARDRAIL_DEBUG_WINDOW
-    is 0, false, or no.
+    Optional debug line before clipboard scoring (stderr, flushed).
+
+    Enable with either:
+      GUARDRAIL_DEBUG_WINDOW=1
+      GUARDRAIL_DEBUG_LLM_DETECT=1
     """
-    v = os.environ.get("GUARDRAIL_DEBUG_WINDOW", "1").strip().lower()
-    if v in ("0", "false", "no", ""):
+    if not llm_debug_enabled():
         return
-    suffix = "scoring paste" if is_llm else "skipping"
-    print(f"[guardrail] active window: {label} — {suffix}", flush=True)
+    title_snip = (get_active_window_title() or "")[:120]
+    suffix = "scoring paste" if is_llm else "skipping (LLM-only mode)"
+    print(
+        f"[guardrail] active window: {label} — {suffix} | title={title_snip!r}",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
+if __name__ == "__main__":
+    # Quick check (no env vars): python active_window_llm.py
+    is_llm, agent, url, ct = detect_llm_window(debug=True)
+    print("detect_llm_window():")
+    print(f"  is_llm={is_llm!r}")
+    print(f"  agent_name={agent!r}")
+    print(f"  url={url!r}")
+    print(f"  cleaned_title={ct!r}")
+    print(f"  raw_title={get_active_window_title()!r}")

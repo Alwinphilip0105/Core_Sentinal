@@ -27,6 +27,15 @@ _DEFAULTS: dict = {
     "panel_y": None,
     # Optional PNG/SVG/JPG path for the pill “idle” slot (when no score/critical). Env overrides.
     "bubble_idle_image": None,
+    # Daily streak for high-risk character messages (YYYY-MM-DD in last_date).
+    "high_pastes_today": 0,
+    "last_date": "",
+    # Safe-paste streak (persisted; reset if idle >48h on load — see RiskBubble._load_streak).
+    "streak_count": 0,
+    "streak_best": 0,
+    "streak_last_date": "",
+    "total_safe": 0,
+    "total_risky": 0,
 }
 
 
@@ -64,6 +73,18 @@ def _merge_defaults(data: dict | None) -> dict:
         out["bubble_idle_image"] = (
             str(bundled.resolve()) if bundled.is_file() else None
         )
+    for sk in (
+        "streak_count",
+        "streak_best",
+        "total_safe",
+        "total_risky",
+    ):
+        try:
+            out[sk] = max(0, int(out.get(sk, 0) or 0))
+        except (TypeError, ValueError):
+            out[sk] = int(_DEFAULTS[sk])
+    sld = out.get("streak_last_date")
+    out["streak_last_date"] = str(sld).strip() if isinstance(sld, str) else ""
     return out
 
 
@@ -76,6 +97,25 @@ def load() -> dict:
     except Exception:
         pass
     return _merge_defaults({})
+
+
+def record_high_risk_paste() -> int:
+    """
+    Increment today's high-risk paste count (resets when `last_date` != today).
+    Persists to user_settings.json. Returns the new count (>= 1).
+    """
+    from datetime import date
+
+    today = date.today().isoformat()
+    d = load()
+    last = str(d.get("last_date") or "")
+    if last != today:
+        d["high_pastes_today"] = 0
+        d["last_date"] = today
+    n = int(d.get("high_pastes_today") or 0) + 1
+    d["high_pastes_today"] = n
+    save(d)
+    return n
 
 
 def save_bubble_position(x: int, y: int) -> None:

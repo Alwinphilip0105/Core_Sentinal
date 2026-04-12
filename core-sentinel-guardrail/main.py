@@ -6,23 +6,18 @@ Usage:
   python main.py
 
 Flow:
-  - Keyboard hook runs in a background thread.
-  - On Ctrl+V: is_active_window_llm() first; if not LLM, no scoring/logging/UI (see GUARDRAIL_DEBUG_WINDOW).
-  - If active window is an LLM, we read clipboard; duplicate pastes (same text as one of
-    the last 3) skip scoring. Otherwise a \"__paste__\" job is queued for the GUI thread.
-  - score_clipboard_with_pii runs only on InferenceWorker (QThread); result_ready / failed are
-    handled on the main thread (bubble + tray/dialog). By default infer.preload_guardrail_model()
-    runs before the bubble is shown so the first paste pays inference only (not load). Set
-    GUARDRAIL_BLOCKING_PRELOAD=0 to skip that and use background warm-up instead. Paste queue
-    is polled every ~25ms. The pill spinner runs on the main thread.
-  - Floating pill (RiskBubble): Grammarly-style UI; monitoring refreshed ~1s; optional Win32 anchor to focused edit.
-  - While an LLM window is focused, a QTimer periodically reads the system clipboard (default every
-    2s; GUARDRAIL_CLIPBOARD_POLL_MS, 0 disables) and enqueues analysis when the text changed, so
-    risky copies are flagged before paste.
-  - Main thread (QTimer) polls the queue and uses result[\"action\"] from the scorer:
-    silent — updates pill only;
-    warn — QSystemTrayIcon.showMessage or non-blocking QToolTip (no modal);
-    block — non-modal RemediationDialog (slides in from right; REDACT/HASH/ENCRYPT/PROCEED + optional snooze).
+  - Windows: a low-level WH_KEYBOARD_LL hook suppresses Ctrl+V in LLM windows before the app sees it;
+    clipboard text is scored on a background worker thread; safe/warn replays synthetic Ctrl+V;
+    block opens remediation without replaying (see win_paste_hook).
+  - detect_llm_window() (in win_paste_hook) gates monitoring when \"Monitor LLM only\" is on.
+  - score_clipboard_with_pii runs on the paste worker thread; results are delivered to the GUI via
+    Qt signals. infer.preload_guardrail_model() at startup avoids load on first paste unless
+    GUARDRAIL_BLOCKING_PRELOAD=0.
+  - Floating pill (RiskBubble): Grammarly-style UI; monitoring refreshed ~1s.
+  - Main thread uses result[\"action\"] from the scorer:
+    silent — updates pill only; suppressed Ctrl+V is replayed after scoring.
+    warn — replay paste first, then RemediationDialog in review mode (amber banner; not hold).
+    block — remediation without replaying first; hold mode when high/critical.
 """
 from __future__ import annotations
 
@@ -38,12 +33,12 @@ del _os, _torch_lib
 import os as _os
 
 
+import copy
 import json
 import os
-import queue
+import random
 import subprocess
 import sys
-import threading
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -53,7 +48,7 @@ if str(_guardrail_dir) not in sys.path:
     sys.path.insert(0, str(_guardrail_dir))
 
 from PyQt6.QtCore import QObject, QRect, QThread, Qt, QTimer, pyqtSignal, pyqtSlot
-from PyQt6.QtGui import QCursor, QGuiApplication, QKeySequence, QShortcut
+from PyQt6.QtGui import QCursor, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
@@ -62,13 +57,7 @@ from PyQt6.QtWidgets import (
     QToolTip,
 )
 
-from active_window_llm import (
-    get_foreground_app_label,
-    is_active_window_llm,
-    log_guardrail_active_window_banner,
-)
 from guardrail_runtime import (
-    get_monitor_llm_only,
     is_guard_snoozed,
     is_monitoring_paused,
     is_recent_duplicate,
@@ -77,7 +66,7 @@ from guardrail_runtime import (
     set_monitoring_paused,
 )
 from feedback_store import get_feedback_stats, should_trigger_retrain
-from font_clamp import normalize_application_font
+from font_clamp import install_qt_message_filter, normalize_application_font
 import user_settings
 from guardrail_logs import export_scoring_events_csv, log_clipboard_event
 from infer import (
@@ -88,15 +77,41 @@ from infer import (
 from ui_remediation_dialog import RemediationDialog
 from ui_risk_bubble import RiskBubble
 
-from toast import show_toast
+from toast import show_toast, toast_safe
+from sentinel_sync_daemon import start_sync_thread
+
+# Low-risk silent feedback (CharacterEvent near pill; not full panel)
+_SAFE_MESSAGES: list[tuple[str, str, str]] = [
+    ("😌", "All clear!", "Nothing risky detected"),
+    ("😎", "Looking good!", "Safe to paste"),
+    ("🙌", "Nice one!", "No PII found"),
+    ("✅", "Green light!", "Paste approved"),
+    ("🛡️", "Sentinel approves!", "Safe content"),
+    ("😄", "You're on a roll!", "Keep it up"),
+    ("👍", "All good here!", "No issues found"),
+    ("🤖", "Scan complete!", "Nothing to report"),
+]
+_STREAK_MILESTONES: frozenset[int] = frozenset({5, 10, 25, 50, 100})
+
+if sys.platform == "win32":
+    from win_paste_hook import (
+        configure_paste_hook,
+        start_paste_hook_threads,
+        uninstall_paste_hook,
+    )
 
 _bubble_instance: RiskBubble | None = None
+
+
+class PasteHookBridge(QObject):
+    """Cross-thread delivery from the low-level keyboard hook worker to the Qt main thread."""
+
+    scored = pyqtSignal(str, object, str, object, object)
+    replay_only = pyqtSignal()
 
 # Optional: log to clipboard_events.jsonl (set to a path to enable)
 CLIPBOARD_EVENTS_JSONL = None  # or _guardrail_dir / "logs" / "clipboard_events.jsonl"
 
-# Queue: ("__paste__", text, agent_name, url_or_none, cleaned_title_or_none) from listener -> main
-_paste_queue = queue.Queue()
 # Set to True to print when paste is detected (or when Ctrl+V is not in an LLM window)
 DEBUG_PASTE = True
 
@@ -177,7 +192,9 @@ class InferenceWorker(QThread):
     def run(self) -> None:
         try:
             result = score_clipboard_with_pii(self.text)
-            payload = dict(result) if isinstance(result, dict) else {}
+            # Deep copy so nested spans/triggers are not shared with infer cache (clipboard clear
+            # or later scoring must not empty the list backing the remediation panel).
+            payload = copy.deepcopy(result) if isinstance(result, dict) else {}
             self.result_ready.emit(payload)
         except Exception as e:
             if DEBUG_PASTE:
@@ -237,6 +254,92 @@ class _PasteAnalysisController(QObject):
         self._pending: deque[tuple[str, str, object, object]] = deque()
         self._busy = False
         self._active_job: tuple[str, str, object, object] | None = None
+        self._blocked_text: str = ""
+        self._blocked_result: dict | None = None
+        self._replay_sent = False
+        self._safe_paste_count = 0
+        self._char_event = None
+
+    def _show_random_safe_character(self, score: int) -> None:
+        from ui_risk_bubble import CharacterEvent
+
+        emoji, title, base_sub = random.choice(_SAFE_MESSAGES)
+        subtitle = f"{base_sub} — score {score}/100"
+        w = CharacterEvent(
+            emoji=emoji,
+            title=title,
+            subtitle=subtitle,
+            color="#43A047",
+            duration=2000,
+        )
+        w._position_near_bubble(self._bubble)
+        self._char_event = w
+
+    @pyqtSlot()
+    def on_hook_replay_only(self) -> None:
+        """Snooze / duplicate skip / scorer error: allow the suppressed paste through."""
+        self._replay_sent = False
+        if sys.platform != "win32":
+            return
+        try:
+            from win_paste_hook import replay_suppressed_paste
+
+            if not self._replay_sent:
+                self._replay_sent = True
+                replay_suppressed_paste()
+        except Exception:
+            pass
+
+    @pyqtSlot(str, object, str, object, object)
+    def on_hook_scored(
+        self,
+        text: str,
+        result: object,
+        agent_name: str,
+        url,
+        cleaned_title,
+    ) -> None:
+        """Main thread: scoring finished after hook suppressed Ctrl+V; replay if safe/warn."""
+        self._replay_sent = False
+        try:
+            if not isinstance(result, dict):
+                result = {}
+            record_recent_text(text)
+            try:
+                rs = int(result.get("risk_score", 0))
+            except (TypeError, ValueError):
+                rs = 0
+            record_scored_clipboard_risk_score(
+                text, rs, risk_level=str(result.get("risk") or "")
+            )
+            action = self._normalize_action(result)
+            # Replay suppressed Ctrl+V only for silent — warn replays in _dispatch_result after scoring.
+            if action == "silent" and sys.platform == "win32":
+                try:
+                    from win_paste_hook import replay_suppressed_paste
+
+                    if not self._replay_sent:
+                        self._replay_sent = True
+                        replay_suppressed_paste()
+                except Exception:
+                    pass
+            self._dispatch_result(result, text, agent_name, url, cleaned_title)
+        except Exception as e:
+            if DEBUG_PASTE:
+                import traceback
+
+                traceback.print_exc()
+                print(f"[Paste] Hook dispatch error: {e}", flush=True)
+            self._bubble.set_idle()
+            if sys.platform == "win32":
+                try:
+                    from win_paste_hook import replay_suppressed_paste
+
+                    if not self._replay_sent:
+                        self._replay_sent = True
+                        replay_suppressed_paste()
+                except Exception:
+                    pass
 
     def on_paste_detected(
         self,
@@ -297,6 +400,70 @@ class _PasteAnalysisController(QObject):
                 action = "block"
         return action
 
+    @staticmethod
+    def _should_intercept_paste_hold(result: dict) -> bool:
+        """High / critical paste hold: clear clipboard and require remediation before paste."""
+        if not isinstance(result, dict):
+            return False
+        if bool(result.get("critical_secret_detected")):
+            return True
+        r = str(result.get("risk", "") or "").lower()
+        if r in ("critical", "high", "h"):
+            return True
+        try:
+            rs = int(result.get("risk_score", 0) or 0)
+        except (TypeError, ValueError):
+            rs = 0
+        return rs > 70
+
+    def _clear_paste_hold_state(self) -> None:
+        self._blocked_text = ""
+        self._blocked_result = None
+        self._bubble.set_hold_state(False)
+
+    def _clear_clipboard_for_hold(self) -> None:
+        try:
+            import pyperclip
+
+            pyperclip.copy("")
+        except Exception:
+            pass
+
+    def _show_warn_panel(
+        self,
+        text: str,
+        result: dict,
+        agent_name: str,
+        url,
+        cleaned_title,
+    ) -> None:
+        """Open remediation in review mode: paste already replayed; panel is non-blocking."""
+        try:
+            sp = result.get("spans")
+            spans_list = sp if isinstance(sp, list) else []
+            try:
+                sc = int(result.get("risk_score", 0) or 0)
+            except (TypeError, ValueError):
+                sc = 0
+            rk = str(result.get("risk", "low") or "low")
+            dialog = RemediationDialog(
+                text,
+                result,
+                agent_name,
+                self._bubble,
+                hold_mode=False,
+                critical_hold=False,
+            )
+            dialog.monitoring_toggled.connect(
+                lambda paused: self.kick_queue() if not paused else None
+            )
+            dialog.remediation_finished.connect(lambda _ok: None)
+            dialog.finished.connect(lambda _code: None)
+            dialog.show_with_warn_mode(spans=spans_list, score=sc, risk=rk)
+        except Exception as e:
+            if DEBUG_PASTE:
+                print(f"[Paste] Warn panel error: {e}", flush=True)
+
     def _dispatch_result(
         self,
         result: dict,
@@ -306,6 +473,7 @@ class _PasteAnalysisController(QObject):
         cleaned_title,
     ) -> None:
         action = self._normalize_action(result)
+        self._bubble._update_streak_from_action(action)
         score = result.get("risk_score", 0)
         critical = bool(result.get("critical_secret_detected", False))
         if DEBUG_PASTE and action != "silent":
@@ -315,9 +483,35 @@ class _PasteAnalysisController(QObject):
             )
 
         if action == "silent":
+            try:
+                sc = int(result.get("risk_score", 0) or 0)
+            except (TypeError, ValueError):
+                sc = 0
+            sc = max(0, min(100, sc))
+            if sys.platform == "win32":
+                try:
+                    from win_paste_hook import replay_suppressed_paste
+
+                    if not self._replay_sent:
+                        self._replay_sent = True
+                        replay_suppressed_paste()
+                except Exception:
+                    pass
             self._bubble.update_from_result(
                 result, agent_name or "LLM", text, url=url, cleaned_title=cleaned_title
             )
+            if sc <= 40:
+                streak = getattr(self._bubble, "_streak", {}) or {}
+                count = int(streak.get("streak_count", 0) or 0)
+                if count not in _STREAK_MILESTONES:
+                    self._safe_paste_count += 1
+                    if self._safe_paste_count % 3 == 1:
+                        QTimer.singleShot(
+                            400,
+                            lambda s=sc: self._show_random_safe_character(s),
+                        )
+                if sc > 20 and count not in _STREAK_MILESTONES:
+                    toast_safe(f"Safe — score {sc}/100")
             return
 
         if action == "warn":
@@ -326,26 +520,27 @@ class _PasteAnalysisController(QObject):
             )
             if is_guard_snoozed():
                 print(
-                    "[Silent Guard] Snooze active; warn tray notification suppressed.",
+                    "[Silent Guard] Snooze active; warn remediation suppressed.",
                     flush=True,
                 )
                 return
-            msg = (result.get("message") or "Review clipboard before pasting.").replace("\n", " ")
-            if self._tray.isVisible():
-                self._tray.showMessage(
-                    "Clipboard Guardrail",
-                    msg[:256],
-                    QSystemTrayIcon.MessageIcon.Warning,
-                    8000,
-                )
-            else:
-                QToolTip.showText(
-                    QCursor.pos(),
-                    msg[:500],
-                    None,
-                    QRect(),
-                    8000,
-                )
+            if sys.platform == "win32":
+                try:
+                    from win_paste_hook import replay_suppressed_paste
+
+                    if not self._replay_sent:
+                        self._replay_sent = True
+                        replay_suppressed_paste()
+                except Exception:
+                    pass
+            res_copy = dict(result)
+            ag = agent_name or "LLM"
+            QTimer.singleShot(
+                300,
+                lambda t=text, r=res_copy, a=ag, u=url, ct=cleaned_title: self._show_warn_panel(
+                    t, r, a, u, ct
+                ),
+            )
             return
 
         if action == "block":
@@ -366,11 +561,43 @@ class _PasteAnalysisController(QObject):
                     flush=True,
                 )
                 return
-            dialog = RemediationDialog(text, result, agent_name or "LLM", None)
+            hold_paste = self._should_intercept_paste_hold(result)
+            if hold_paste:
+                self._blocked_text = text
+                self._blocked_result = result
+                self._bubble.set_hold_state(True, critical=critical)
+                dialog = RemediationDialog(
+                    text,
+                    result,
+                    agent_name or "LLM",
+                    self._bubble,
+                    hold_mode=True,
+                    critical_hold=critical,
+                )
+            else:
+                dialog = RemediationDialog(text, result, agent_name or "LLM", None)
             dialog.monitoring_toggled.connect(
                 lambda paused: self.kick_queue() if not paused else None
             )
-            dialog.show()
+            dialog.remediation_finished.connect(lambda _ok: self._clear_paste_hold_state())
+            dialog.finished.connect(lambda _code: self._clear_paste_hold_state())
+            if hold_paste:
+                sp = result.get("spans")
+                spans_list = sp if isinstance(sp, list) else []
+                try:
+                    sc = int(result.get("risk_score", 0) or 0)
+                except (TypeError, ValueError):
+                    sc = 0
+                dialog.show_with_hold_mode(
+                    spans=spans_list,
+                    score=sc,
+                    risk=str(result.get("risk", "low")),
+                    critical=critical,
+                    original_text=text,
+                )
+                QTimer.singleShot(50, self._clear_clipboard_for_hold)
+            else:
+                dialog.show()
 
     @pyqtSlot(object)
     def on_inference_done(self, result: object) -> None:
@@ -434,109 +661,46 @@ class _PasteAnalysisController(QObject):
         worker.start()
 
 
-def _listener_thread_fn():
-    """Run keyboard hook; on Ctrl+V in LLM window, score and push to queue. Always allow paste."""
-    import keyboard
-
-    try:
-        import pyperclip
-    except Exception:
-        return
-
-    def on_key(event):
-        if getattr(event, "event_type", None) != "down":
-            return True
-        if getattr(event, "name", None) != "v":
-            return True
-        try:
-            if not keyboard.is_pressed("ctrl"):
-                return True
-            if is_monitoring_paused():
-                return True
-            is_llm, agent_name, url, cleaned_title = is_active_window_llm(debug=False)
-            banner_label = agent_name if is_llm else get_foreground_app_label()
-            log_guardrail_active_window_banner(is_llm, banner_label)
-            if get_monitor_llm_only() and not is_llm:
-                return True
-            text = pyperclip.paste()
-            if not text or not isinstance(text, str):
-                return True
-            text = text.strip()
-            if not text:
-                return True
-            if is_recent_duplicate(text) and not should_bypass_duplicate_skip_for_text(text):
-                if DEBUG_PASTE:
-                    print("[Silent Guard] Duplicate paste text, skipping analysis.", flush=True)
-                return True
-            _paste_queue.put(("__paste__", text, agent_name, url, cleaned_title))
-        except Exception as e:
-            if DEBUG_PASTE:
-                print(f"[Paste] Error: {e}", flush=True)
-        return True
-
-    keyboard.hook(on_key)
-    keyboard.wait()
-
-
 def on_paste_event(text: str):
-    """
-    Reserved hook; paste handling uses _PasteAnalysisController.on_paste_detected from
-    process_paste_queue / clipboard poll.
-    """
+    """Reserved; paste interception uses win_paste_hook on Windows."""
     del text
 
 
-def _start_clipboard_poll_timer(
-    bubble: RiskBubble,
-    paste_controller: _PasteAnalysisController,
-    parent: QObject,
-) -> QTimer | None:
-    """
-    When the focused window is an LLM, poll clipboard on an interval; enqueue scoring if text
-    changed (so users get warnings before Ctrl+V). GUARDRAIL_CLIPBOARD_POLL_MS=0 disables.
-    """
-    raw = os.environ.get("GUARDRAIL_CLIPBOARD_POLL_MS", "2000").strip()
+def _on_clipboard_preview_impl(text: str, result: dict, bubble: RiskBubble) -> None:
+    """Background clipboard poll: update traffic-light preview when not in an LLM window."""
+    if is_monitoring_paused():
+        return
     try:
-        interval_ms = int(raw)
-    except ValueError:
-        interval_ms = 2000
-    if interval_ms <= 0:
-        return None
+        score = int(result.get("risk_score", 0) or 0)
+    except (TypeError, ValueError):
+        score = 0
+    action = str(result.get("action", "silent"))
+    try:
+        from active_window_llm import is_llm_window
 
-    last_clip_text: list[str | None] = [None]
+        in_llm = bool(is_llm_window())
+    except Exception:
+        in_llm = False
+    if in_llm:
+        if action != "silent":
+            try:
+                from document_scanner import generate_paste_report
 
-    def tick() -> None:
-        try:
-            if is_monitoring_paused():
-                return
-            is_llm, agent_name, url, cleaned_title = is_active_window_llm(debug=False)
-            if get_monitor_llm_only() and not is_llm:
-                return
-            t = QGuiApplication.clipboard().text()
-            if not t or not isinstance(t, str):
-                return
-            t = t.strip()
-            if not t:
-                return
-            if last_clip_text[0] == t:
-                return
-            last_clip_text[0] = t
-            if is_recent_duplicate(t) and not should_bypass_duplicate_skip_for_text(t):
-                return
-            bubble.set_analysing(t)
-            paste_controller.on_paste_detected(t, agent_name or "", url, cleaned_title)
-        except Exception as e:
-            if DEBUG_PASTE:
-                print(f"[Clipboard poll] {e}", flush=True)
-
-    poll = QTimer(parent)
-    poll.timeout.connect(tick)
-    poll.start(interval_ms)
-    return poll
+                generate_paste_report(text, result)
+            except Exception:
+                pass
+        return
+    if action == "block":
+        bubble.set_clipboard_preview("high", score)
+    elif action == "warn":
+        bubble.set_clipboard_preview("med", score)
+    else:
+        bubble.set_clipboard_preview("safe", score)
 
 
 def main():
     app = QApplication(sys.argv)
+    install_qt_message_filter()
     app.setProperty("paste_controller", None)
 
     user_settings.apply_to_environment_and_runtime()
@@ -557,6 +721,8 @@ def main():
         except Exception as e:
             print(f"[Guardrail] Model preload failed (will load on first paste): {e}", flush=True)
 
+    start_sync_thread()
+
     global _bubble_instance
     if _bubble_instance is None:
         _bubble_instance = RiskBubble()
@@ -574,6 +740,18 @@ def main():
 
     paste_controller = _PasteAnalysisController(bubble, tray, app)
     app.setProperty("paste_controller", paste_controller)
+
+    if sys.platform == "win32":
+        _paste_hook_bridge = PasteHookBridge(app)
+        configure_paste_hook(_paste_hook_bridge.scored.emit, _paste_hook_bridge.replay_only.emit)
+        _paste_hook_bridge.scored.connect(
+            paste_controller.on_hook_scored, Qt.ConnectionType.QueuedConnection
+        )
+        _paste_hook_bridge.replay_only.connect(
+            paste_controller.on_hook_replay_only, Qt.ConnectionType.QueuedConnection
+        )
+        start_paste_hook_threads()
+        app.aboutToQuit.connect(uninstall_paste_hook)
 
     def _on_bubble_pause(checked: bool) -> None:
         set_monitoring_paused(checked)
@@ -611,6 +789,8 @@ def main():
         elif action == "quit":
             app.quit()
 
+    # Bubble tray/context menu is built in ui_risk_bubble.RiskBubble._show_context_menu
+    # (📊 My Privacy Dashboard + separator before Quit).
     bubble.context_menu_action.connect(_on_context_menu)
     bubble.monitoring_pause_changed.connect(_on_bubble_pause)
 
@@ -629,37 +809,31 @@ def main():
 
     bubble.show()
     bubble.raise_()
+    # Defer raise so the pill appears above other always-on-top tools after the event loop runs.
+    QTimer.singleShot(0, bubble.bring_to_front)
+    QTimer.singleShot(400, bubble.bring_to_front)
+
+    from clipboard_monitor import ClipboardMonitor
+
+    _clip_monitor = ClipboardMonitor()
+    _clip_monitor.clipboard_changed.connect(
+        lambda t, r, b=bubble: _on_clipboard_preview_impl(t, r, b),
+        Qt.ConnectionType.QueuedConnection,
+    )
+    _clip_monitor.start()
 
     if not preload_ok:
         warmup = _ModelWarmupThread(app)
         warmup.finished.connect(warmup.deleteLater)
         warmup.start()
 
-    def process_paste_queue():
-        try:
-            while True:
-                kind, a, b, c, d = _paste_queue.get_nowait()
-                if kind == "__paste__":
-                    if is_monitoring_paused():
-                        continue
-                    # Main-thread first response to paste (listener thread only enqueues).
-                    bubble.set_analysing(a)
-                    paste_controller.on_paste_detected(a, b, c, d)
-        except queue.Empty:
-            pass
-
-    timer = QTimer()
-    timer.timeout.connect(process_paste_queue)
-    timer.start(25)
-
-    _start_clipboard_poll_timer(bubble, paste_controller, app)
-
-    thread = threading.Thread(target=_listener_thread_fn, daemon=True)
-    thread.start()
-
     print(
-        "Risk-Aware Assistant running. Clipboard is scanned periodically while an LLM is focused; "
-        "Ctrl+V still triggers analysis. Close this window to exit."
+        "Risk-Aware Assistant running. "
+        + (
+            "Ctrl+V is intercepted in LLM windows before paste; text is scored then released or blocked."
+            if sys.platform == "win32"
+            else "Paste hook is Windows-only; run on Windows for full protection."
+        )
     )
 
     def _schedule_feedback_check() -> None:

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from PyQt6 import QtGui
+import sys
+
+from PyQt6 import QtCore, QtGui
 
 MIN_PX_BADGE = 7
 MIN_PX_BODY = 8
@@ -25,38 +27,36 @@ def clamp_font_pt(size: int | float, *, floor: int = MIN_PX_BADGE, ceiling: int 
 
 def normalize_application_font(app: QtGui.QGuiApplication) -> None:
     """
-    Ensure the application default font has a valid logical point size.
+    Force a valid default application font.
 
-    On some Windows + Qt6 setups the default QFont reports pointSize -1 (pixel-based font only).
-    Stylesheets and internal Qt code can then call setPointSize(-1) and spam:
+    On Windows + Qt6 the OS default QFont often has pointSize/pixelSize -1. Copying that font
+    into widgets or stylesheets can trigger:
     QFont::setPointSize: Point size <= 0 (-1), must be greater than 0
+    Always set an explicit positive point size; do not clone the broken default.
     """
-    f = app.font()
-    try:
-        if int(f.pointSize()) > 0:
-            return
-    except (TypeError, ValueError):
-        pass
-    psf = getattr(f, "pointSizeF", None)
-    if callable(psf):
-        try:
-            if float(psf()) > 0:
-                return
-        except (TypeError, ValueError):
-            pass
-    # Keep a concrete pt size; approximate from px when present (typical 96 dpi).
-    px = 0
-    try:
-        px = int(f.pixelSize())
-    except (TypeError, ValueError):
-        px = 0
-    nf = QtGui.QFont(f)
-    if px > 0:
-        pt = max(8, min(24, int(round(px * 72.0 / 96.0))))
-        nf.setPointSize(pt)
-    else:
-        nf.setPointSize(10)
+    nf = QtGui.QFont()
+    nf.setFamily("Segoe UI")
+    nf.setPointSize(10)
     app.setFont(nf)
+
+
+def install_qt_message_filter() -> None:
+    """Drop noisy Qt warnings about QFont::setPointSize(-1) after stylesheets / inherited fonts."""
+
+    def _handler(
+        mode: QtCore.QtMsgType,
+        context: QtCore.QMessageLogContext,
+        message: str,
+    ) -> None:
+        del mode, context
+        if "QFont::setPointSize" in message and "Point size" in message:
+            return
+        try:
+            sys.stderr.write(message + "\n")
+        except OSError:
+            pass
+
+    QtCore.qInstallMessageHandler(_handler)
 
 
 def paint_font_px(

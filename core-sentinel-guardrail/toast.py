@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -21,6 +22,7 @@ class Toast(QWidget):
         parent=None,
         color: str = "#02C39A",
         duration: int = 3000,
+        title: str | None = None,
     ):
         super().__init__(
             parent,
@@ -31,13 +33,24 @@ class Toast(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(16, 10, 16, 10)
-
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(16, 10, 16, 10)
         dot = QLabel("●")
         dot.setStyleSheet(f"color: {color}; font-size: 10px;")
-        layout.addWidget(dot)
+        dot.setAlignment(Qt.AlignmentFlag.AlignTop)
+        outer.addWidget(dot, alignment=Qt.AlignmentFlag.AlignTop)
 
+        text_col = QVBoxLayout()
+        text_col.setSpacing(4)
+        if title:
+            tl = QLabel(title)
+            tl.setWordWrap(True)
+            tl.setMaximumWidth(420)
+            tl.setStyleSheet(
+                "color: rgba(255,255,255,0.95); font-size: 12px; "
+                "font-weight: 700; background: transparent;"
+            )
+            text_col.addWidget(tl)
         lbl = QLabel(message)
         lbl.setWordWrap(True)
         lbl.setMaximumWidth(420)
@@ -45,7 +58,8 @@ class Toast(QWidget):
             "color: white; font-size: 12px; "
             "font-weight: 500; background: transparent;"
         )
-        layout.addWidget(lbl)
+        text_col.addWidget(lbl)
+        outer.addLayout(text_col)
 
         self.setStyleSheet(
             "background-color: rgba(28,28,30,240);"
@@ -103,5 +117,11 @@ def show_toast(
     color: str = "#02C39A",
     duration: int = 3000,
     parent=None,
+    title: str | None = None,
 ) -> None:
-    Toast(message, parent=parent, color=color, duration=duration)
+    Toast(message, parent=parent, color=color, duration=duration, title=title)
+
+
+def toast_safe(message: str, *, duration: int = 1500, parent=None) -> None:
+    """Quick green flash for safe / low-risk feedback."""
+    show_toast(message, color="#43A047", duration=duration, parent=parent)

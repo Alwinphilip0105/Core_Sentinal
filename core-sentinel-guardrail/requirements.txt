@@ -5,7 +5,7 @@ torch>=2.6
 torchvision>=0.19
 accelerate
 pyperclip
-keyboard
+pyautogui
 PyQt6
 pywin32
 pywinauto

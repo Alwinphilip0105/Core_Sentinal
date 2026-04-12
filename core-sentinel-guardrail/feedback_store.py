@@ -29,6 +29,9 @@ def record_feedback(
     predicted_label: str,
     correct_label: str,
     source: str = "user",
+    *,
+    risk_score: int | None = None,
+    feedback_type: str | None = None,
 ) -> None:
     """
     Save one feedback row. Writes hash_index (500-char preview) and feedback_fulltext
@@ -45,6 +48,13 @@ def record_feedback(
         "source": source,
         "used_for_training": False,
     }
+    if risk_score is not None:
+        try:
+            row["risk_score"] = int(risk_score)
+        except (TypeError, ValueError):
+            row["risk_score"] = 0
+    if feedback_type:
+        row["feedback_type"] = str(feedback_type)
     with open(FEEDBACK_PATH, "a", encoding="utf-8") as f:
         f.write(json.dumps(row) + "\n")
 
@@ -115,12 +125,35 @@ def should_trigger_retrain(min_count: int = 30) -> bool:
     return len(get_pending_feedback(min_count)) >= min_count
 
 
+def count_pending_wrong_feedback() -> int:
+    """Rows with feedback_type 'wrong' not yet used for training."""
+    if not FEEDBACK_PATH.exists():
+        return 0
+    n = 0
+    with open(FEEDBACK_PATH, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                r = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if r.get("used_for_training"):
+                continue
+            if str(r.get("feedback_type") or "") == "wrong":
+                n += 1
+    return n
+
+
 def _normalize_feedback_risk(raw: str) -> str | None:
     s = str(raw or "").strip().lower()
     if s in ("low", "med", "high"):
         return s
     if s in ("medium",):
         return "med"
+    if s in ("critical", "crit"):
+        return "high"
     return None
 
 

@@ -1,10 +1,12 @@
 """
 Grammarly-style floating pill for Core Sentinel guardrail.
-Single paint-only bubble (92×46) with pill drawn at (6,6,80×34); action cards / feedback are separate.
+Single paint-only bubble (height 46px; width 72 collapsed → 220 on hover) with pill: square left edge, rounded right; traffic light is flush to the pill’s left.
 """
 
 from __future__ import annotations
 
+import datetime
+import importlib.util
 import os
 import sys
 from pathlib import Path
@@ -15,40 +17,79 @@ if str(Path(__file__).resolve().parent) not in sys.path:
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from active_window_llm import get_active_llm_name
-from guardrail_runtime import is_monitoring_paused, set_monitoring_paused
+from active_window_llm import detect_llm_window, get_active_llm_name
+from guardrail_runtime import get_monitor_llm_only, is_monitoring_paused, set_monitoring_paused
 from pii_remediation import encrypt_pii, encrypt_text, hash_pii, mask_pii, mask_pii_spans, redact_all_literal
 
 import user_settings
+from character_widget import CharacterWidget
 from infer import score_clipboard_with_pii
 from toast import show_toast
+from traffic_light_indicator import COLOR_HOUSING, TrafficLightIndicator
 from ui_bubble_toolbar import BubbleToolbar, ToolbarTooltip
 from font_clamp import MIN_PX_BADGE, MIN_PX_BODY, MIN_PX_LABEL, paint_font_px
 
-# Outer widget (room for badge overflow)
-WIDGET_W = 92
+# Outer widget height; width animates (collapsed / expanded pill)
+COLLAPSED_W = 72
+EXPANDED_W = 200
+EXPANDED_W_NO_STREAK = 180
 WIDGET_H = 46
-# Pill geometry inside widget (64×34: power + shield + score)
+# Pill geometry inside widget (power + shield + score); width = widget - PILL_X - PILL_MARGIN_RIGHT
 PILL_X = 6
 PILL_Y = 6
-PILL_W = 64
+PILL_MARGIN_RIGHT = 22
 PILL_H = 34
 PILL_RX = 14
+
+# Matches traffic-light chrome; top + right + bottom on pill (no stroke on seam).
+COLOR_FUSED_BORDER = QtGui.QColor(200, 200, 200, 80)
+
+
+def _pill_body_path(pill_w: float) -> QtGui.QPainterPath:
+    """Pill fill: square left edge (flush with traffic light), rounded right corners only."""
+    x = float(PILL_X)
+    y = float(PILL_Y)
+    w = float(pill_w)
+    h = float(PILL_H)
+    r = float(PILL_RX)
+    path = QtGui.QPainterPath()
+    path.moveTo(x, y)
+    path.lineTo(x + w - r, y)
+    path.arcTo(QtCore.QRectF(x + w - 2.0 * r, y, 2.0 * r, 2.0 * r), 90.0, -90.0)
+    path.lineTo(x + w, y + h - r)
+    path.arcTo(QtCore.QRectF(x + w - 2.0 * r, y + h - 2.0 * r, 2.0 * r, 2.0 * r), 0.0, -90.0)
+    path.lineTo(x, y + h)
+    path.closeSubpath()
+    return path
+
+
+def _pill_border_path_no_left(pill_w: float) -> QtGui.QPainterPath:
+    """Outer border on top, right, and bottom only (no left — fused with traffic light)."""
+    x = float(PILL_X)
+    y = float(PILL_Y)
+    w = float(pill_w)
+    h = float(PILL_H)
+    r = float(PILL_RX)
+    border = QtGui.QPainterPath()
+    border.moveTo(x, y)
+    border.lineTo(x + w - r, y)
+    border.arcTo(QtCore.QRectF(x + w - 2.0 * r, y, 2.0 * r, 2.0 * r), 90.0, -90.0)
+    border.lineTo(x + w, y + h - r)
+    border.arcTo(QtCore.QRectF(x + w - 2.0 * r, y + h - 2.0 * r, 2.0 * r, 2.0 * r), 0.0, -90.0)
+    border.lineTo(x, y + h)
+    return border
+
 
 CARD_W = 280
 CARD_SLIDE_PX = 36
 
-COLOR_PILL_BORDER = QtGui.QColor(255, 255, 255, 30)
 COLOR_PILL_PAUSED = QtGui.QColor(88, 88, 90)
 COLOR_SHIELD_OFF = QtGui.QColor(0x96, 0x98, 0x9A)
 COLOR_SHIELD_ON = QtGui.QColor(0x02, 0xC3, 0x9A)
-COLOR_BADGE_OK = QtGui.QColor(0x2E, 0x7D, 0x32)
 COLOR_SPINNER = QtGui.QColor(0x02, 0xC3, 0x9A)
 COLOR_CHECK = QtGui.QColor(0x02, 0xC3, 0x9A)
-COLOR_BADGE = QtGui.QColor(0xE5, 0x39, 0x35)
 COLOR_CRITICAL_COUNT = QtGui.QColor(0xFF, 0x8A, 0x80)
 COLOR_IDLE_GLYPH = QtGui.QColor(0x02, 0xC3, 0x9A)
-
 CARD_QSS = (
     "QFrame#actionCard { background: rgba(26,26,26,230); border: 1px solid #3a3a3a; "
     "border-radius: 10px; }"
@@ -91,10 +132,105 @@ def _derive_critical_task_count(result: dict) -> int:
     return 0
 
 
+class CharacterEvent(QtWidgets.QWidget):
+    """Ephemeral celebration / info popup near the pill."""
+
+    def __init__(
+        self,
+        emoji: str,
+        title: str,
+        subtitle: str,
+        color: str,
+        duration: int = 4000,
+        parent: Optional[QtWidgets.QWidget] = None,
+    ) -> None:
+        super().__init__(
+            None,
+            QtCore.Qt.WindowType.FramelessWindowHint
+            | QtCore.Qt.WindowType.WindowStaysOnTopHint
+            | QtCore.Qt.WindowType.Tool,
+        )
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        self.setFixedWidth(160)
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(4)
+        layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+
+        emoji_lbl = QtWidgets.QLabel(emoji)
+        emoji_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        emoji_lbl.setStyleSheet("font-size: 32px; background: transparent;")
+        layout.addWidget(emoji_lbl)
+
+        title_lbl = QtWidgets.QLabel(title)
+        title_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        title_lbl.setStyleSheet(
+            f"color: {color}; font-size: 12px; font-weight: 600; background: transparent;"
+        )
+        title_lbl.setWordWrap(True)
+        layout.addWidget(title_lbl)
+
+        sub_lbl = QtWidgets.QLabel(subtitle)
+        sub_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        sub_lbl.setStyleSheet(
+            "color: rgba(255,255,255,0.5); font-size: 10px; background: transparent;"
+        )
+        layout.addWidget(sub_lbl)
+
+        self.adjustSize()
+        self.setStyleSheet(
+            "QWidget { background: rgba(22,22,24,235); border-radius: 12px; "
+            "border: 1px solid rgba(255,255,255,0.1); }"
+        )
+
+        self._eff = QtWidgets.QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(self._eff)
+
+        self._in_anim = QtCore.QPropertyAnimation(self._eff, b"opacity", self)
+        self._in_anim.setDuration(250)
+        self._in_anim.setStartValue(0.0)
+        self._in_anim.setEndValue(1.0)
+        self._in_anim.start()
+
+        QtCore.QTimer.singleShot(duration, self._dismiss)
+        self.show()
+        self.raise_()
+
+    def _dismiss(self) -> None:
+        self._out_anim = QtCore.QPropertyAnimation(self._eff, b"opacity", self)
+        self._out_anim.setDuration(300)
+        self._out_anim.setStartValue(1.0)
+        self._out_anim.setEndValue(0.0)
+        self._out_anim.finished.connect(self.close)
+        self._out_anim.start()
+
+    def _position_near_bubble(self, bubble: QtWidgets.QWidget) -> None:
+        bg = bubble.mapToGlobal(QtCore.QPoint(0, 0))
+        screen = QtWidgets.QApplication.primaryScreen()
+        g = screen.availableGeometry() if screen else QtCore.QRect(0, 0, 1920, 1080)
+        x = bg.x() + bubble.width() // 2 - self.width() // 2
+        y = bg.y() - self.height() - 10
+        if y < g.top() + 4:
+            y = bg.y() + bubble.height() + 10
+        x = max(g.left() + 4, min(x, g.right() - self.width() - 4))
+        self.move(x, y)
+
+
 class RiskBubble(QtWidgets.QWidget):
     """
     Grammarly-like pill: paint-only chrome; optional action card stack above; user-draggable position.
     """
+
+    STREAK_MILESTONES = {
+        5: ("😊", "5 safe pastes!", "#43A047"),
+        10: ("🎉", "10 in a row!", "#43A047"),
+        25: ("🔥", "25 streak — on fire!", "#FFB300"),
+        50: ("⭐", "50 streak — legend!", "#FFB300"),
+        100: ("🏆", "100 streak — master!", "#02C39A"),
+    }
 
     menu_action_clicked = QtCore.pyqtSignal(str)
     context_menu_action = QtCore.pyqtSignal(str)
@@ -133,7 +269,12 @@ class RiskBubble(QtWidgets.QWidget):
         self._last_result: dict = {}
         self._last_label = ""
         self._feedback_widget: Optional[QtWidgets.QWidget] = None
+        self._overlay_feedback_prompt: Optional[QtWidgets.QWidget] = None
+        self._feedback_prompt: Optional[QtWidgets.QWidget] = None
+        self._open_panel_callback: Optional[object] = None
         self._feedback_timer: Optional[QtCore.QTimer] = None
+        self._feedback_survey_active = False
+        self._feedback_survey_timer: Optional[QtCore.QTimer] = None
         self._action_card_reuse: Optional[QtWidgets.QFrame] = None
 
         self._spin_angle = 0.0
@@ -147,7 +288,36 @@ class RiskBubble(QtWidgets.QWidget):
         self._critical_task_count = 0
         self._idle_pixmap: Optional[QtGui.QPixmap] = None
         self._idle_pixmap_source: str = ""
-        self._current_bg = QtGui.QColor(28, 28, 30, 210)
+        self._current_bg = QtGui.QColor(COLOR_HOUSING)
+        # Background clipboard monitor preview (not a live paste)
+        self._clipboard_preview_active = False
+        self._preview_level = "safe"
+        self._preview_score = 0
+        self._preview_bg = QtGui.QColor(28, 28, 30, 0)
+
+        self._llm_name = ""
+        self._last_action = "silent"
+        self._last_score = 0
+        self._char_event: Optional[QtWidgets.QWidget] = None
+        self._milestone_widget: Optional[QtWidgets.QWidget] = None
+        self._streak = self._load_streak()
+
+        self._current_width = float(COLLAPSED_W)
+        self._target_width = COLLAPSED_W
+        self._expand_timer = QtCore.QTimer(self)
+        self._expand_timer.setInterval(12)
+        self._expand_timer.timeout.connect(self._tick_expand)
+
+        self._displayed_score = 0.0
+        self._target_score = 0
+        self._ring_timer = QtCore.QTimer(self)
+        self._ring_timer.setInterval(16)
+        self._ring_timer.timeout.connect(self._tick_ring)
+
+        self._hold_locked = False
+        self._hold_critical = False
+        self._hold_pulse = True
+        self._hold_timer: Optional[QtCore.QTimer] = None
 
         self._spinner_timer = QtCore.QTimer(self)
         self._spinner_timer.setInterval(100)
@@ -182,7 +352,7 @@ class RiskBubble(QtWidgets.QWidget):
         self._toolbar_anim: Optional[QtCore.QPropertyAnimation] = None
 
         self._is_hovered = False
-        self._target_opacity = 0.55
+        self._target_opacity = 0.72
         self._opacity_timer = QtCore.QTimer(self)
         self._opacity_timer.setInterval(16)
         self._opacity_timer.timeout.connect(self._tick_opacity)
@@ -205,7 +375,16 @@ class RiskBubble(QtWidgets.QWidget):
 
         self._tooltip_win: Optional[QtWidgets.QLabel] = None
 
-        self.setFixedSize(WIDGET_W, WIDGET_H)
+        self._character_widget: Optional[CharacterWidget] = None
+        self._character_first_scored_done = False
+
+        _pw0 = COLLAPSED_W - PILL_X - PILL_MARGIN_RIGHT
+        self._traffic_indicator = TrafficLightIndicator(
+            self, QtCore.QRect(PILL_X, PILL_Y, _pw0, PILL_H)
+        )
+        self._traffic_indicator.remediation_requested.connect(self._on_indicator_remediation_click)
+
+        self.setFixedSize(COLLAPSED_W, WIDGET_H)
 
         self._restore_pill_position()
 
@@ -216,11 +395,338 @@ class RiskBubble(QtWidgets.QWidget):
 
         self._refresh_monitoring()
         self.setWindowOpacity(self._ambient_opacity())
+        self._sync_traffic_indicator_opacity()
         self._opacity_timer.stop()
 
         self.document_scan_progress.connect(self._on_scan_progress)
         self.document_scan_finished.connect(self._on_scan_done)
         self.document_scan_failed.connect(self._on_scan_failed)
+
+        self._open_panel_callback = self._on_delayed_single_click
+
+    @property
+    def _state(self) -> str:
+        return str(getattr(self._traffic_indicator, "_state", "") or "")
+
+    def _pill_width_f(self) -> float:
+        w = float(self.width() - PILL_X - PILL_MARGIN_RIGHT)
+        return max(float(PILL_RX * 2 + 4), w)
+
+    def _apply_window_width_from_expand(self) -> None:
+        cw = int(round(self._current_width))
+        if self._action_card_wrap.height() > 0:
+            w = max(CARD_W, cw)
+        else:
+            w = cw
+        h = self._action_card_wrap.height() + WIDGET_H
+        self.setFixedSize(w, max(h, WIDGET_H))
+
+    def _tick_expand(self) -> None:
+        diff = float(self._target_width) - self._current_width
+        if abs(diff) < 0.5:
+            self._current_width = float(self._target_width)
+            self._expand_timer.stop()
+        else:
+            self._current_width += diff * 0.18
+        self._apply_window_width_from_expand()
+        self._reposition_traffic_light()
+        if self._toolbar is not None and self._toolbar.isVisible():
+            self._update_toolbar_position()
+        self.update()
+
+    def _reposition_traffic_light(self) -> None:
+        pw = max(PILL_RX * 2 + 1, int(self._pill_width_f()))
+        self._traffic_indicator.set_pill_rect(QtCore.QRect(PILL_X, PILL_Y, pw, PILL_H))
+
+    def _load_streak(self) -> dict:
+        d = user_settings.load()
+        last = str(d.get("streak_last_date") or "")
+        try:
+            if last:
+                ld = datetime.date.fromisoformat(last[:10])
+                cutoff = datetime.date.today() - datetime.timedelta(days=2)
+                if ld < cutoff:
+                    d["streak_count"] = 0
+                    user_settings.save(d)
+        except Exception:
+            pass
+        d = user_settings.load()
+        return {
+            "streak_count": int(d.get("streak_count", 0) or 0),
+            "streak_best": int(d.get("streak_best", 0) or 0),
+            "streak_last_date": str(d.get("streak_last_date") or ""),
+            "total_safe": int(d.get("total_safe", 0) or 0),
+            "total_risky": int(d.get("total_risky", 0) or 0),
+        }
+
+    def _save_streak(self) -> None:
+        d = user_settings.load()
+        d["streak_count"] = int(self._streak.get("streak_count", 0))
+        d["streak_best"] = int(self._streak.get("streak_best", 0))
+        d["streak_last_date"] = str(self._streak.get("streak_last_date") or "")
+        d["total_safe"] = int(self._streak.get("total_safe", 0))
+        d["total_risky"] = int(self._streak.get("total_risky", 0))
+        user_settings.save(d)
+
+    def _show_streak_milestone(self, count: int) -> None:
+        msgs = {
+            5: ("🎉", "5 safe in a row!", "Great habits forming!", "#43A047"),
+            10: ("🔥", "10 streak!", "You are on fire!", "#FFB300"),
+            25: ("⭐", "25 safe pastes!", "Incredible discipline!", "#FFB300"),
+            50: ("🏆", "50 streak!", "Legend status!", "#02C39A"),
+            100: ("👑", "100 in a row!", "Absolute master!", "#9C27B0"),
+        }
+        emoji, title, subtitle, color = msgs.get(
+            count,
+            ("✓", f"{count} safe!", "Keep it up!", "#43A047"),
+        )
+        w = CharacterEvent(
+            emoji=emoji,
+            title=title,
+            subtitle=subtitle,
+            color=color,
+            duration=5000,
+        )
+        w._position_near_bubble(self)
+        self._milestone_widget = w
+        show_toast(
+            f"{emoji} {title} {subtitle}",
+            color=color,
+            duration=4000,
+            parent=self,
+        )
+
+    def _update_streak_from_action(self, action: str) -> None:
+        """
+        Call from main for every scored paste result so streak state stays in sync
+        for silent / warn / block (including when the bubble only does a minimal UI path).
+        """
+        today = datetime.date.today().isoformat()
+        act = str(action)
+        if act == "silent":
+            self._streak["streak_count"] = int(self._streak.get("streak_count", 0)) + 1
+            self._streak["streak_last_date"] = today
+            self._streak["total_safe"] = int(self._streak.get("total_safe", 0)) + 1
+            if self._streak["streak_count"] > int(self._streak.get("streak_best", 0)):
+                self._streak["streak_best"] = self._streak["streak_count"]
+            count = self._streak["streak_count"]
+            print(f"[streak] safe paste #{count}", flush=True)
+            milestones = {5, 10, 25, 50, 100}
+            if count in milestones:
+                print(f"[streak] MILESTONE {count}!", flush=True)
+                self._show_streak_milestone(count)
+        elif act in ("warn", "block"):
+            old = int(self._streak.get("streak_count", 0))
+            self._streak["streak_count"] = 0
+            self._streak["total_risky"] = int(self._streak.get("total_risky", 0)) + 1
+            print(f"[streak] reset (was {old})", flush=True)
+            if old >= 3:
+                self._show_streak_broken(old)
+        self._save_streak()
+        self.update()
+
+    def _check_milestone(self, count: int) -> None:
+        if count in self.STREAK_MILESTONES:
+            emoji, msg, color = self.STREAK_MILESTONES[count]
+            self._show_streak_celebration(count, emoji, msg, color)
+
+    def _show_streak_celebration(
+        self, count: int, emoji: str, msg: str, color: str
+    ) -> None:
+        self._show_character_event(
+            emoji=emoji,
+            title=msg,
+            subtitle=f"Best: {self._streak['streak_best']}",
+            color=color,
+            duration=5000,
+        )
+        show_toast(
+            f"{emoji} {msg} Keep it up!",
+            color=color,
+            duration=4000,
+            parent=self,
+        )
+
+    def _show_streak_broken(self, old_streak: int) -> None:
+        self._show_character_event(
+            emoji="😢",
+            title=f"Streak of {old_streak} broken",
+            subtitle="Start a new one!",
+            color="#888888",
+            duration=3000,
+        )
+
+    def _show_character_event(
+        self,
+        emoji: str,
+        title: str,
+        subtitle: str,
+        color: str,
+        duration: int = 4000,
+    ) -> None:
+        w = CharacterEvent(emoji, title, subtitle, color, duration)
+        w._position_near_bubble(self)
+        self._char_event = w
+
+    def _tick_ring(self) -> None:
+        diff = float(self._target_score) - self._displayed_score
+        if abs(diff) < 1.0:
+            self._displayed_score = float(self._target_score)
+            self._ring_timer.stop()
+        else:
+            self._displayed_score += diff * 0.12
+        self.update()
+
+    def _should_paint_score_ring(self) -> bool:
+        if not self._show_badge_on_issues or self._analysing:
+            return False
+        if self._risk_score <= 0:
+            return False
+        st = self._state.lower()
+        if st in ("idle", "none", "not_monitoring"):
+            return False
+        return True
+
+    def _paint_risk_score_ring(self, painter: QtGui.QPainter) -> None:
+        if not self._should_paint_score_ring():
+            return
+        hold = getattr(self, "_hold_locked", False)
+        if hold:
+            painter.save()
+            painter.setOpacity(1.0 if self._hold_pulse else 0.5)
+        pill_rect = QtCore.QRectF(
+            float(PILL_X), float(PILL_Y), self._pill_width_f(), float(PILL_H)
+        )
+        ring_size = 28
+        ring_x = pill_rect.right() - ring_size + 6.0
+        ring_y = pill_rect.top() - 6.0
+        cx = ring_x + ring_size / 2.0
+        cy = ring_y + ring_size / 2.0
+        ring_r = ring_size / 2.0 - 2.0
+
+        ds = max(0.0, min(100.0, self._displayed_score))
+        sc = int(round(ds))
+        if sc <= 40:
+            ring_color = QtGui.QColor("#43A047")
+        elif sc <= 70:
+            ring_color = QtGui.QColor("#FFB300")
+        else:
+            ring_color = QtGui.QColor("#E53935")
+
+        track_pen = QtGui.QPen(QtGui.QColor(255, 255, 255, 25), 3.0)
+        track_pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+        painter.setPen(track_pen)
+        painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(QtCore.QPointF(cx, cy), ring_r, ring_r)
+
+        span = int(ds / 100.0 * 360.0 * 16.0)
+        if span > 0:
+            arc_pen = QtGui.QPen(ring_color, 3.0)
+            arc_pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+            painter.setPen(arc_pen)
+            arc_rect = QtCore.QRectF(
+                ring_x + 2.0,
+                ring_y + 2.0,
+                float(ring_size - 4),
+                float(ring_size - 4),
+            )
+            painter.drawArc(arc_rect, 90 * 16, -span)
+
+        fam = self.font().family() or "Segoe UI"
+        painter.setPen(ring_color)
+        painter.setFont(paint_font_px(fam, 10, bold=True, floor=MIN_PX_LABEL))
+        painter.drawText(
+            QtCore.QRectF(ring_x, ring_y, float(ring_size), float(ring_size)),
+            QtCore.Qt.AlignmentFlag.AlignCenter,
+            str(int(round(ds))),
+        )
+        if self._issue_count > 0:
+            painter.setPen(QtGui.QColor(255, 255, 255, 150))
+            painter.setFont(paint_font_px(fam, 7, floor=MIN_PX_BADGE))
+            painter.drawText(
+                QtCore.QRectF(ring_x, cy + 4.0, float(ring_size), 10.0),
+                QtCore.Qt.AlignmentFlag.AlignCenter,
+                f"x{self._issue_count}",
+            )
+        if hold:
+            painter.restore()
+
+    def _paint_expanded_hover_content(self, p: QtGui.QPainter, fam: str) -> None:
+        st = self._state.lower()
+        if st in ("idle", "none", "not_monitoring"):
+            self._target_width = COLLAPSED_W
+            self._expand_timer.start()
+            return
+        if self._current_width <= 100:
+            return
+        expand_pct = max(0.0, (self._current_width - 100.0) / 120.0)
+        text_alpha = int(expand_pct * 255.0)
+        pill_h = float(PILL_H)
+        div_x = 56.0
+        p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 30), 1.0))
+        p.drawLine(
+            QtCore.QLineF(div_x, float(PILL_Y + 2), div_x, float(PILL_Y + PILL_H - 2))
+        )
+        llm_color = QtGui.QColor(255, 255, 255, text_alpha)
+        p.setPen(llm_color)
+        p.setFont(paint_font_px(fam, 11, bold=True, floor=MIN_PX_LABEL))
+        llm_name = getattr(self, "_llm_name", "") or "Not monitoring"
+        p.drawText(
+            QtCore.QRectF(64.0, float(PILL_Y), 90.0, pill_h / 2.0),
+            QtCore.Qt.AlignmentFlag.AlignVCenter,
+            llm_name,
+        )
+        # SILENT=green, WARN=amber, BLOCK=red
+        action_colors = {
+            "silent": QtGui.QColor(0x43, 0xA0, 0x47, text_alpha),
+            "warn": QtGui.QColor(0xFF, 0xB3, 0x00, text_alpha),
+            "block": QtGui.QColor(0xE5, 0x39, 0x35, text_alpha),
+        }
+        action = str(getattr(self, "_last_action", "silent") or "silent").lower()
+        action_color = action_colors.get(
+            action, QtGui.QColor(150, 150, 150, text_alpha)
+        )
+        p.setPen(action_color)
+        p.setFont(paint_font_px(fam, 9, floor=MIN_PX_BODY))
+        p.drawText(
+            QtCore.QRectF(64.0, PILL_Y + pill_h / 2.0 - 2.0, 90.0, pill_h / 2.0),
+            QtCore.Qt.AlignmentFlag.AlignVCenter,
+            action.upper(),
+        )
+        count = int(self._streak.get("streak_count", 0) or 0)
+        if count > 0:
+            div2_x = 158.0
+            p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 30), 1.0))
+            p.drawLine(
+                QtCore.QLineF(div2_x, float(PILL_Y + 2), div2_x, float(PILL_Y + PILL_H - 2))
+            )
+            if count >= 10:
+                streak_color = QtGui.QColor("#FFB300")
+                streak_text = f"🔥{count}"
+                streak_label = "streak"
+            else:
+                streak_color = QtGui.QColor("#43A047")
+                streak_text = f"✓{count}"
+                streak_label = "safe"
+            p.setPen(streak_color)
+            big_font = QtGui.QFont()
+            big_font.setPixelSize(13)
+            big_font.setBold(True)
+            p.setFont(big_font)
+            p.drawText(
+                QtCore.QRectF(165.0, 4.0, 50.0, pill_h / 2.0),
+                QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft,
+                streak_text,
+            )
+            p.setPen(QtGui.QColor(255, 255, 255, 80))
+            small_font = QtGui.QFont()
+            small_font.setPixelSize(8)
+            p.setFont(small_font)
+            p.drawText(
+                QtCore.QRectF(165.0, pill_h / 2.0 - 2.0, 50.0, pill_h / 2.0),
+                QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft,
+                streak_label,
+            )
 
     # --- pill center in widget coordinates ---
     def _idle_image_path(self) -> str:
@@ -270,7 +776,8 @@ class RiskBubble(QtWidgets.QWidget):
         self.update()
 
     def _pill_center_local(self) -> QtCore.QPoint:
-        return QtCore.QPoint(PILL_X + PILL_W // 2, PILL_Y + PILL_H // 2)
+        pw = int(self._pill_width_f())
+        return QtCore.QPoint(PILL_X + pw // 2, PILL_Y + PILL_H // 2)
 
     def _pill_center_offset_from_window_top(self) -> int:
         return self._action_card_wrap.height() + self._pill_center_local().y()
@@ -280,10 +787,20 @@ class RiskBubble(QtWidgets.QWidget):
 
     def _resize_to_state(self) -> None:
         h = self._action_card_wrap.height() + WIDGET_H
-        self.setFixedSize(max(WIDGET_W, CARD_W), max(h, WIDGET_H))
+        cw = int(round(self._current_width))
+        if self._action_card_wrap.height() > 0:
+            w = max(CARD_W, cw)
+        else:
+            w = cw
+        self.setFixedSize(w, max(h, WIDGET_H))
 
     def _clamp_point_to_screen(self, top_left: QtCore.QPoint) -> QtCore.QPoint:
-        screen = QtGui.QGuiApplication.primaryScreen()
+        app = QtGui.QGuiApplication.instance()
+        screen = app.screenAt(top_left) if app else None
+        if screen is None:
+            screen = QtGui.QGuiApplication.screenAt(QtGui.QCursor.pos())
+        if screen is None:
+            screen = QtGui.QGuiApplication.primaryScreen()
         if screen is None:
             return top_left
         g = screen.availableGeometry()
@@ -292,7 +809,10 @@ class RiskBubble(QtWidgets.QWidget):
         return QtCore.QPoint(x, y)
 
     def _move_to_default_corner(self) -> None:
-        screen = QtGui.QGuiApplication.primaryScreen()
+        app = QtGui.QGuiApplication.instance()
+        screen = app.screenAt(QtGui.QCursor.pos()) if app else None
+        if screen is None:
+            screen = QtGui.QGuiApplication.primaryScreen()
         if not screen:
             return
         g = screen.availableGeometry()
@@ -519,6 +1039,9 @@ class RiskBubble(QtWidgets.QWidget):
     def _do_redact(self) -> None:
         self._on_toolbar_redact()
 
+    def _open_panel(self) -> None:
+        self._on_delayed_single_click()
+
     def _do_encrypt(self) -> None:
         self._on_toolbar_encrypt()
 
@@ -665,7 +1188,7 @@ class RiskBubble(QtWidgets.QWidget):
 
     def _pill_target_color(self) -> QtGui.QColor:
         if not self._has_risk_score:
-            return QtGui.QColor(28, 28, 30, 210)
+            return QtGui.QColor(COLOR_HOUSING)
         s = max(0, min(100, int(self._risk_score)))
         if s <= 40:
             return QtGui.QColor(27, 94, 32, 210)
@@ -676,13 +1199,61 @@ class RiskBubble(QtWidgets.QWidget):
     def _sync_pill_bg(self) -> None:
         self._current_bg = self._pill_target_color()
         self.update()
+        self._traffic_indicator.update()
+
+    def set_hold_state(self, locked: bool, critical: bool = False) -> None:
+        """Paste-hold: red pill, pulsing score ring, lock glyph until user remediates."""
+        self._hold_critical = bool(critical)
+        self._hold_locked = bool(locked)
+        if locked:
+            self._traffic_indicator.set_state("high")
+            self._hold_pulse = True
+            if self._hold_timer is None:
+                self._hold_timer = QtCore.QTimer(self)
+                self._hold_timer.setInterval(500)
+                self._hold_timer.timeout.connect(self._pulse_hold)
+            self._hold_timer.start()
+        else:
+            if self._hold_timer is not None:
+                self._hold_timer.stop()
+        self.update()
+        self._traffic_indicator.update()
+
+    def _pulse_hold(self) -> None:
+        self._hold_pulse = not self._hold_pulse
+        self.update()
 
     def _pill_fill_paint_color(self) -> QtGui.QColor:
+        if getattr(self, "_hold_locked", False):
+            return QtGui.QColor(183, 28, 28, 180)
         if is_monitoring_paused():
             return COLOR_PILL_PAUSED
+        base = None
         if self._is_hovered and not self._has_risk_score:
-            return QtGui.QColor(15, 15, 17, 245)
-        return self._current_bg
+            # Stay in the same family as traffic-light housing (avoid solid black vs charcoal)
+            h = QtGui.QColor(COLOR_HOUSING)
+            base = QtGui.QColor(
+                min(255, h.red() + 8),
+                min(255, h.green() + 8),
+                min(255, h.blue() + 8),
+                min(255, h.alpha() + 20),
+            )
+        else:
+            base = self._current_bg
+        if (
+            getattr(self, "_clipboard_preview_active", False)
+            and not self._analysing
+            and self._preview_bg.alpha() > 0
+        ):
+            tint = self._preview_bg
+            a = tint.alpha() / 255.0
+            return QtGui.QColor(
+                int(base.red() * (1 - a) + tint.red() * a),
+                int(base.green() * (1 - a) + tint.green() * a),
+                int(base.blue() * (1 - a) + tint.blue() * a),
+                min(255, int(base.alpha() * (1 - a) + tint.alpha() * a)),
+            )
+        return base
 
     def _shield_fill_color(self) -> QtGui.QColor:
         if is_monitoring_paused():
@@ -698,15 +1269,18 @@ class RiskBubble(QtWidgets.QWidget):
 
     def _sync_toolbar_opacity(self) -> None:
         tb = self._toolbar
-        if tb is None or not tb.isVisible():
-            return
-        tb.setWindowOpacity(self.windowOpacity())
+        if tb is not None and tb.isVisible():
+            tb.setWindowOpacity(self.windowOpacity())
+        self._traffic_indicator.setWindowOpacity(self.windowOpacity())
+
+    def _sync_traffic_indicator_opacity(self) -> None:
+        self._traffic_indicator.setWindowOpacity(self.windowOpacity())
 
     def _ambient_opacity(self) -> float:
-        """Slightly dimmer when critical items need attention (user asked for reduced opacity)."""
+        """Idle opacity (higher on hover). Kept readable on bright / HDR displays."""
         if self._critical_task_count > 0:
-            return 0.42
-        return 0.55
+            return 0.55
+        return 0.72
 
     def _tick_opacity(self) -> None:
         target = self._target_opacity
@@ -731,17 +1305,26 @@ class RiskBubble(QtWidgets.QWidget):
 
     def _tooltip_status_text(self) -> str:
         if is_monitoring_paused():
-            return "Monitoring paused"
-        if not self._in_llm:
-            return "Not monitoring"
-        if self._critical_task_count > 0:
+            base = "Monitoring paused"
+        elif not self._in_llm:
+            base = "Not monitoring"
+        elif self._critical_task_count > 0:
             c = self._critical_task_count
-            return f"{c} critical item{'s' if c != 1 else ''} — review clipboard"
-        if self._issue_count > 0:
+            base = f"{c} critical item{'s' if c != 1 else ''} — review clipboard"
+        elif self._issue_count > 0:
             n = self._issue_count
-            return f"{n} issue{'s' if n != 1 else ''} found — click to review"
-        name = get_active_llm_name() or self._llm_target or "LLM"
-        return f"Monitoring: {name}"
+            base = f"{n} issue{'s' if n != 1 else ''} found — click to review"
+        else:
+            name = get_active_llm_name() or self._llm_target or "LLM"
+            base = f"Monitoring: {name}"
+        count = int(self._streak.get("streak_count", 0) or 0)
+        if count >= 3:
+            streak_text = f"🔥 {count} safe streak"
+        elif count > 0:
+            streak_text = f"✓ {count} safe"
+        else:
+            streak_text = "Start a streak!"
+        return f"{base}\n{streak_text}"
 
     def _ensure_tooltip_win(self) -> QtWidgets.QLabel:
         if self._tooltip_win is None:
@@ -812,6 +1395,13 @@ class RiskBubble(QtWidgets.QWidget):
         self._toolbar_hide_timer.start(400)
 
     def enterEvent(self, event: QtCore.QEvent) -> None:
+        st = self._state.lower()
+        if st in ("idle", "none", "not_monitoring"):
+            self._target_width = COLLAPSED_W
+        else:
+            count = int(self._streak.get("streak_count", 0) or 0)
+            self._target_width = EXPANDED_W_NO_STREAK if count == 0 else EXPANDED_W
+        self._expand_timer.start()
         self._toolbar_hide_timer.stop()
         if self._status_hide_timer is not None:
             self._status_hide_timer.stop()
@@ -820,30 +1410,67 @@ class RiskBubble(QtWidgets.QWidget):
         self._opacity_timer.start()
         self._show_toolbar()
         self.update()
+        self._traffic_indicator.update()
         QtCore.QTimer.singleShot(0, self._on_hover_enter_deferred)
+        QtCore.QTimer.singleShot(0, self._maybe_show_overlay_if_hovered)
         super().enterEvent(event)
 
     def leaveEvent(self, event: QtCore.QEvent) -> None:
+        self._target_width = COLLAPSED_W
+        self._expand_timer.start()
         QtCore.QTimer.singleShot(0, self._on_hover_leave_deferred)
+        self._traffic_indicator.update()
         super().leaveEvent(event)
 
     def moveEvent(self, event: QtGui.QMoveEvent) -> None:
         super().moveEvent(event)
         if self._toolbar is not None and self._toolbar.isVisible():
             self._update_toolbar_position()
+        self._reposition_traffic_light()
+
+    def bring_to_front(self) -> None:
+        """Raise pill + traffic-light chrome (Windows multi-monitor / Z-order)."""
+        self.raise_()
+        if self._traffic_indicator is not None:
+            self._traffic_indicator.raise_()
+
+    def showEvent(self, event: QtGui.QShowEvent) -> None:
+        super().showEvent(event)
+        self._traffic_indicator.show()
+        self._reposition_traffic_light()
+        self._sync_traffic_indicator_opacity()
+
+    def hideEvent(self, event: QtGui.QHideEvent) -> None:
+        self._traffic_indicator.hide()
+        super().hideEvent(event)
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         del event
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
 
-        pill = QtCore.QRectF(float(PILL_X), float(PILL_Y), float(PILL_W), float(PILL_H))
+        pw = self._pill_width_f()
+        body = _pill_body_path(pw)
         p.setPen(QtCore.Qt.PenStyle.NoPen)
         p.setBrush(self._pill_fill_paint_color())
-        p.drawRoundedRect(pill, float(PILL_RX), float(PILL_RX))
+        p.drawPath(body)
         p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-        p.setPen(QtGui.QPen(COLOR_PILL_BORDER, 1.0))
-        p.drawRoundedRect(pill, float(PILL_RX), float(PILL_RX))
+        p.setPen(QtGui.QPen(COLOR_FUSED_BORDER, 1.0))
+        p.drawPath(_pill_border_path_no_left(pw))
+
+        p.save()
+        sc_badge = int(self._streak.get("streak_count", 0) or 0)
+        if sc_badge >= 10:
+            p.setPen(QtGui.QColor("#FFB300"))
+            fire_font = QtGui.QFont()
+            fire_font.setPixelSize(8)
+            p.setFont(fire_font)
+            p.drawText(
+                QtCore.QRectF(float(PILL_X) + 4, float(PILL_Y) - 8, 20.0, 10.0),
+                QtCore.Qt.AlignmentFlag.AlignCenter,
+                f"🔥{sc_badge}",
+            )
+        p.restore()
 
         dot_r = QtCore.QRectF(float(PILL_X + 4), float(PILL_Y + 4), 8.0, 8.0)
         dc = self._status_dot_color()
@@ -870,15 +1497,42 @@ class RiskBubble(QtWidgets.QWidget):
         sy = PILL_Y + (PILL_H - 16) // 2
         sx = PILL_X + 14
         shield_fill = self._shield_fill_color()
-        p.setPen(shield_fill)
-        p.setFont(paint_font_px(fam, 14, floor=MIN_PX_LABEL))
-        p.drawText(
-            QtCore.QRectF(float(sx), float(sy), 16.0, 16.0),
-            QtCore.Qt.AlignmentFlag.AlignCenter,
-            "◈",
-        )
-
-        score_slot = QtCore.QRectF(float(sx + 16), float(PILL_Y + 2), 28.0, float(PILL_H - 4))
+        if self._current_width > 100:
+            p.setPen(shield_fill)
+            p.setFont(paint_font_px(fam, 14, floor=MIN_PX_LABEL))
+            p.drawText(
+                QtCore.QRectF(float(sx), float(sy), 16.0, 16.0),
+                QtCore.Qt.AlignmentFlag.AlignCenter,
+                "◈",
+            )
+            score_slot = QtCore.QRectF(float(sx + 16), float(PILL_Y + 2), 28.0, float(PILL_H - 4))
+        else:
+            score_slot = QtCore.QRectF(
+                float(PILL_X + 14),
+                float(PILL_Y + 2),
+                float(pw) - 18.0,
+                float(PILL_H - 4),
+            )
+        if getattr(self, "_hold_locked", False) and not self._analysing:
+            lock_w = 13.0
+            p.setPen(shield_fill)
+            p.setFont(paint_font_px(fam, 10, floor=MIN_PX_LABEL))
+            p.drawText(
+                QtCore.QRectF(
+                    float(score_slot.x()),
+                    float(score_slot.y()),
+                    lock_w,
+                    float(score_slot.height()),
+                ),
+                QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
+                "🔒",
+            )
+            score_slot = QtCore.QRectF(
+                float(score_slot.x() + lock_w),
+                float(score_slot.y()),
+                max(4.0, float(score_slot.width() - lock_w)),
+                float(score_slot.height()),
+            )
         if not self._analysing:
             if self._critical_task_count > 0:
                 p.setPen(COLOR_CRITICAL_COUNT)
@@ -909,15 +1563,7 @@ class RiskBubble(QtWidgets.QWidget):
                     )
                     x = int(score_slot.x() + (score_slot.width() - scaled.width()) / 2.0)
                     y = int(score_slot.y() + (score_slot.height() - scaled.height()) / 2.0)
-                    dest = QtCore.QRectF(float(x), float(y), float(scaled.width()), float(scaled.height()))
-                    clip = QtGui.QPainterPath()
-                    w, h = dest.width(), dest.height()
-                    if w > 0 and h > 0 and abs(w - h) < 1.5:
-                        clip.addEllipse(dest)
-                    else:
-                        rr = min(8.0, min(w, h) * 0.35)
-                        clip.addRoundedRect(dest, rr, rr)
-                    p.setClipPath(clip)
+                    p.setClipPath(_pill_body_path(pw))
                     p.drawPixmap(x, y, scaled)
                     p.restore()
                 else:
@@ -932,7 +1578,7 @@ class RiskBubble(QtWidgets.QWidget):
                     )
                     p.restore()
 
-        pcx = PILL_X + PILL_W // 2
+        pcx = PILL_X + int(pw) // 2
         pcy = PILL_Y + PILL_H // 2
 
         if self._analysing and self._spinner_opacity > 0.01:
@@ -958,62 +1604,96 @@ class RiskBubble(QtWidgets.QWidget):
                 "✓",
             )
 
-        if self._show_badge_on_issues and not self._analysing:
-            by = PILL_Y - 2
-            bh = 18
-            if self._issue_count > 0:
-                raw = self._issue_count
-                if raw > 99:
-                    badge = "99+"
-                    bw = 24
-                else:
-                    badge = str(raw)
-                    bw = 18 if raw < 10 else 22
-                bx = PILL_X + PILL_W - bw + 2
-                p.setPen(QtCore.Qt.PenStyle.NoPen)
-                p.setBrush(COLOR_BADGE)
-                p.drawEllipse(QtCore.QRectF(float(bx), float(by), float(bw), float(bh)))
-                p.setPen(QtGui.QColor(255, 255, 255))
-                p.setFont(
-                    paint_font_px(
-                        fam,
-                        9 if raw >= 10 else 10,
-                        bold=True,
-                        floor=MIN_PX_BADGE,
-                    )
-                )
-                p.drawText(
-                    QtCore.QRectF(float(bx), float(by), float(bw), float(bh)),
-                    QtCore.Qt.AlignmentFlag.AlignCenter,
-                    badge,
-                )
-            elif (
-                self._has_risk_score
-                and self._risk_score > 0
-                and self._issue_count == 0
-            ):
-                bw = 18
-                bx = PILL_X + PILL_W - bw + 2
-                p.setPen(QtCore.Qt.PenStyle.NoPen)
-                p.setBrush(COLOR_BADGE_OK)
-                p.drawEllipse(QtCore.QRectF(float(bx), float(by), float(bw), float(bh)))
-                p.setPen(QtGui.QColor(255, 255, 255))
-                p.setFont(paint_font_px(fam, 10, bold=True, floor=MIN_PX_BADGE))
-                p.drawText(
-                    QtCore.QRectF(float(bx), float(by), float(bw), float(bh)),
-                    QtCore.Qt.AlignmentFlag.AlignCenter,
-                    "✓",
-                )
+        self._paint_expanded_hover_content(p, fam)
+        self._paint_risk_score_ring(p)
+
+        if (
+            getattr(self, "_clipboard_preview_active", False)
+            and int(getattr(self, "_preview_score", 0) or 0) > 0
+            and not self._analysing
+            and str(self._state).lower() in ("idle", "none", "not_monitoring")
+        ):
+            preview_color = {
+                "high": QtGui.QColor("#E53935"),
+                "med": QtGui.QColor("#FFB300"),
+                "safe": QtGui.QColor("#43A047"),
+            }.get(
+                str(getattr(self, "_preview_level", "safe")).lower(),
+                QtGui.QColor("#43A047"),
+            )
+            p.setPen(preview_color)
+            prev_font = QtGui.QFont()
+            prev_font.setPixelSize(8)
+            p.setFont(prev_font)
+            pr = QtCore.QRectF(
+                float(pw) + float(PILL_X) - 28.0,
+                float(PILL_Y) - 10.0,
+                28.0,
+                10.0,
+            )
+            p.drawText(
+                pr,
+                QtCore.Qt.AlignmentFlag.AlignCenter,
+                f"📋{int(self._preview_score)}",
+            )
+
+    def set_clipboard_preview(self, level: str, score: int) -> None:
+        """
+        Updates traffic light and pill tint from background clipboard scoring (not a paste event).
+        """
+        self._clipboard_preview_active = True
+        self._preview_level = str(level or "safe").lower()
+        try:
+            self._preview_score = max(0, min(100, int(score)))
+        except (TypeError, ValueError):
+            self._preview_score = 0
+        color_map = {
+            "high": QtGui.QColor(229, 57, 53, 120),
+            "med": QtGui.QColor(255, 179, 0, 100),
+            "safe": QtGui.QColor(67, 160, 71, 80),
+        }
+        self._preview_bg = color_map.get(self._preview_level, QtGui.QColor(28, 28, 30, 0))
+        state_map = {"high": "high", "med": "med", "safe": "safe"}
+        if self._traffic_indicator is not None:
+            self._traffic_indicator.set_state(state_map.get(self._preview_level, "safe"))
+        self.update()
+
+    def clear_clipboard_preview(self) -> None:
+        """End preview tint / restore normal monitoring-driven traffic light."""
+        self._clipboard_preview_active = False
+        self._preview_level = "safe"
+        self._preview_score = 0
+        self._preview_bg = QtGui.QColor(28, 28, 30, 0)
+        self._refresh_monitoring()
+
+    def _reapply_clipboard_preview_tl(self) -> None:
+        if not getattr(self, "_clipboard_preview_active", False):
+            return
+        if self._in_llm or is_monitoring_paused() or self._analysing:
+            return
+        sm = {"high": "high", "med": "med", "safe": "safe"}
+        if self._traffic_indicator is not None:
+            self._traffic_indicator.set_state(sm.get(self._preview_level, "safe"))
 
     def _refresh_monitoring(self) -> None:
         was = self._in_llm
-        self._in_llm = bool(get_active_llm_name())
+        # Match paste hook: same title keyword fallback; if "monitor all windows" is off in settings,
+        # treat as in-context when not LLM-only so the pill does not stay stuck on "not monitoring".
+        if get_monitor_llm_only():
+            self._in_llm = bool(detect_llm_window()[0])
+        else:
+            self._in_llm = True
         want_ms = 800 if self._in_llm else 3000
         if self._monitor_timer.interval() != want_ms:
             self._monitor_timer.setInterval(want_ms)
         if was != self._in_llm:
             if not self._in_llm:
                 self.set_idle()
+            elif not is_monitoring_paused():
+                self._traffic_indicator.set_state("idle")
+        if not self._in_llm or is_monitoring_paused():
+            self._traffic_indicator.set_state("not_monitoring")
+            self._reapply_clipboard_preview_tl()
         self.update()
         if self._hover_tooltip_visible and self._tooltip_win is not None:
             self._tooltip_win.setText(self._tooltip_status_text())
@@ -1022,6 +1702,7 @@ class RiskBubble(QtWidgets.QWidget):
             self._apply_opacity_target()
 
     def set_analysing(self, text: str = "") -> None:
+        self.clear_clipboard_preview()
         self._spinner_timer.stop()
         self._hide_feedback_buttons()
         if text:
@@ -1037,6 +1718,7 @@ class RiskBubble(QtWidgets.QWidget):
         self._start_dot_pulse()
         self._spinner_timer.start()
         self.update()
+        self._traffic_indicator.set_state("analysing")
         self._apply_opacity_target()
 
     def set_idle(self) -> None:
@@ -1051,6 +1733,8 @@ class RiskBubble(QtWidgets.QWidget):
         self._issue_count = 0
         self._critical_task_count = 0
         self._all_clear_timer.stop()
+        self._traffic_indicator.set_state("not_monitoring")
+        self._reapply_clipboard_preview_tl()
         self.update()
         self._apply_opacity_target()
 
@@ -1064,6 +1748,7 @@ class RiskBubble(QtWidgets.QWidget):
         self._all_clear_timer.stop()
         self._spinner_opacity = 0.0
         self._all_clear_timer.start(3000)
+        self._traffic_indicator.set_state("safe")
         self.update()
         self.show_feedback_buttons(self._last_text, self._last_label)
         self._apply_opacity_target()
@@ -1081,6 +1766,14 @@ class RiskBubble(QtWidgets.QWidget):
         self._all_clear_timer.stop()
         self._issue_count = n
         self._spinner_opacity = 0.0
+        rl = str(self._last_label or "low").lower()
+        action = str(self._result.get("action", "") or "")
+        if rl in ("high", "block") or action == "block":
+            self._traffic_indicator.set_state("high")
+        elif rl == "med":
+            self._traffic_indicator.set_state("med")
+        else:
+            self._traffic_indicator.set_state("safe")
         self.update()
         self.show_feedback_buttons(self._last_text, self._last_label)
         self._apply_opacity_target()
@@ -1101,12 +1794,37 @@ class RiskBubble(QtWidgets.QWidget):
         self._critical_task_count = 0
         if not self._analysing:
             self._spinner_timer.stop()
+        self._traffic_indicator.set_state("safe")
         self.update()
         self._apply_opacity_target()
 
     def set_show_badge_on_issues(self, show: bool) -> None:
         self._show_badge_on_issues = bool(show)
         self.update()
+
+    def _open_user_dashboard(self) -> None:
+        """Generate logs/user_dashboard.html via reports/user_dashboard_gen.py and open it."""
+        root = Path(__file__).resolve().parent
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "user_dashboard_gen",
+                root / "reports" / "user_dashboard_gen.py",
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("user_dashboard_gen spec missing")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            path = mod.generate(
+                db_path=str(root / "logs" / "guardrail.db"),
+                settings_path=str(root / "config" / "user_settings.json"),
+                output_path=str(root / "logs" / "user_dashboard.html"),
+            )
+            os.startfile(os.path.abspath(path))
+        except Exception as e:
+            print(f"[dashboard] {e}")
+            p = root / "logs" / "user_dashboard.html"
+            if p.exists():
+                os.startfile(str(p.resolve()))
 
     def _show_context_menu(self, global_pos: QtCore.QPoint) -> None:
         menu = QtWidgets.QMenu(self)
@@ -1132,8 +1850,13 @@ class RiskBubble(QtWidgets.QWidget):
         act_report = menu.addAction("View report")
         act_report.triggered.connect(lambda: self.context_menu_action.emit("view_report"))
         menu.addSeparator()
-        act_quit = menu.addAction("Quit")
-        act_quit.triggered.connect(lambda: self.context_menu_action.emit("quit"))
+        quit_action = QtGui.QAction("Quit", menu)
+        quit_action.triggered.connect(lambda: self.context_menu_action.emit("quit"))
+        menu.addAction(quit_action)
+        dash_action = QtGui.QAction("📊 My Privacy Dashboard", menu)
+        dash_action.triggered.connect(self._open_user_dashboard)
+        menu.insertAction(quit_action, dash_action)
+        menu.insertSeparator(quit_action)
 
         menu.exec(global_pos)
 
@@ -1145,6 +1868,7 @@ class RiskBubble(QtWidgets.QWidget):
         url: Optional[str] = None,
         cleaned_title: Optional[str] = None,
     ) -> None:
+        self.clear_clipboard_preview()
         r: dict = result if isinstance(result, dict) else {}
         self._result = r
         self._last_result = dict(r)
@@ -1171,168 +1895,295 @@ class RiskBubble(QtWidgets.QWidget):
         self._last_text = (original_text or "") or self._last_text
         self._last_label = str(risk) if risk else "low"
 
+        self._llm_name = (
+            str(r.get("llm_name") or "").strip()
+            or str(get_active_llm_name() or "").strip()
+            or (self._llm_name or "")
+            or "Not monitoring"
+        )
+        self._last_action = str(action)
+
         clear_path = action == "silent" and not critical and score < 30 and not triggers
+        span_len = len(spans)
         if clear_path:
             self.set_clear()
         else:
             n = len(triggers)
             if n <= 0 and (action in ("warn", "block") or critical or score >= 30):
                 n = 1
-            self.set_issues(n)
+            # Badge count must not drop to 0 when the model omitted `spans` but flagged risk via triggers/action.
+            self.set_issues(max(span_len, n))
             self._critical_task_count = _derive_critical_task_count(r)
 
         self._risk_score = int(r.get("risk_score", 0) or 0)
-        self._issue_count = len(spans)
+        self._last_score = self._risk_score
         self._has_risk_score = True
         self._sync_pill_bg()
 
+        self._target_score = self._risk_score
+        if abs(self._displayed_score - float(self._target_score)) > 0.01:
+            self._ring_timer.start()
+
         self.update()
+        self.show_character(str(risk) if risk is not None else "low", score, spans)
+
+    def _ensure_character_widget(self) -> CharacterWidget:
+        if self._character_widget is None:
+            self._character_widget = CharacterWidget()
+        return self._character_widget
+
+    def show_character(self, risk_label: str, score: int, spans: list) -> None:
+        """
+        Character reaction after each scored paste. Does not alter risk / pill state.
+        """
+        del spans
+        r = self._result if isinstance(self._result, dict) else {}
+        risk = str(risk_label or "low").lower()
+        critical = bool(r.get("critical_secret_detected", False))
+        try:
+            sc = int(r.get("risk_score", 0) or 0)
+        except (TypeError, ValueError):
+            sc = int(score) if isinstance(score, int) else 0
+        triggers = r.get("triggers") or []
+        if not isinstance(triggers, (list, tuple)):
+            triggers = []
+        action = r.get("action", "")
+        if action not in ("silent", "warn", "block"):
+            d = r.get("decision", "allow")
+            action = {"allow": "silent", "warn": "warn", "block": "block"}.get(d, "silent")
+        clear_path = action == "silent" and not critical and sc < 30 and not triggers
+
+        # Silent score 0–40: main shows CharacterEvent near the pill; skip CharacterWidget here.
+        if action == "silent" and not critical and sc <= 40 and not triggers:
+            return
+
+        if not self._character_first_scored_done:
+            self._character_first_scored_done = True
+            if clear_path and risk == "low":
+                ch = self._ensure_character_widget()
+                ch.configure(
+                    "😌",
+                    "All clear! Safe to paste.",
+                    "#2E7D32",
+                )
+                ch.show_near_traffic_light(self)
+                return
+
+        if clear_path and risk == "low":
+            return
+
+        if critical:
+            ch = self._ensure_character_widget()
+            ch.configure(
+                "🤦",
+                "This would expose your credentials!",
+                "#C62828",
+                large_text=True,
+            )
+            ch.show_near_traffic_light(self)
+            return
+
+        if risk == "high":
+            n = user_settings.record_high_risk_paste()
+            if n == 1:
+                msg = "Stop! Sensitive data detected."
+            elif n == 2:
+                msg = "Again? Please review before pasting."
+            else:
+                msg = f"That's {n} times today — be careful!"
+            badge = f"x{n} today" if n >= 2 else None
+            ch = self._ensure_character_widget()
+            ch.configure(
+                "😱",
+                msg,
+                "#C62828",
+                streak_badge=badge,
+            )
+            ch.show_near_traffic_light(self)
+            return
+
+        if risk == "med" or (not clear_path and risk == "low"):
+            ch = self._ensure_character_widget()
+            ch.configure(
+                "😬",
+                "Heads up — check this before pasting.",
+                "#E65100",
+            )
+            ch.show_near_traffic_light(self)
+            return
 
     def show_feedback_buttons(self, original_text: str, predicted_label: str) -> None:
-        if not (original_text or "").strip():
+        if original_text:
+            self._last_text = original_text
+        if predicted_label:
+            self._last_label = predicted_label
+        if not (self._last_text or self._original_text or "").strip():
             return
-        if self._feedback_widget is None:
-            self._build_feedback_widget()
+        if self._feedback_survey_timer is None:
+            self._feedback_survey_timer = QtCore.QTimer(self)
+            self._feedback_survey_timer.setSingleShot(True)
+            self._feedback_survey_timer.timeout.connect(self._end_feedback_survey)
+        self._feedback_survey_timer.stop()
+        self._dismiss_overlay_feedback_prompt()
+        self._feedback_survey_active = True
+        self._feedback_survey_timer.start(8000)
+        QtCore.QTimer.singleShot(0, self._maybe_show_overlay_if_hovered)
 
-        self._feedback_text = original_text
-        self._feedback_predicted = predicted_label
+    def _maybe_show_overlay_if_hovered(self) -> None:
+        """During the 8s post-detection window, show the prompt when the pill is hovered."""
+        if not self._feedback_survey_active:
+            return
+        if not self._is_hovered:
+            return
+        if self._overlay_feedback_prompt is not None:
+            return
+        self._show_overlay_feedback_prompt()
 
-        bubble_global = self.mapToGlobal(QtCore.QPoint(0, 0))
-        fb_x = bubble_global.x()
-        fb_y = bubble_global.y() + self.height() + 8
+    def _end_feedback_survey(self) -> None:
+        self._feedback_survey_active = False
+        self._dismiss_overlay_feedback_prompt()
+
+    def _stop_feedback_survey(self) -> None:
+        self._feedback_survey_active = False
+        if self._feedback_survey_timer is not None:
+            self._feedback_survey_timer.stop()
+
+    def _show_overlay_feedback_prompt(self) -> None:
+        """Compact Correct/Wrong prompt below the pill (shown on hover during post-detection window)."""
+        if not (self._last_text or self._original_text or "").strip():
+            return
+        self._dismiss_overlay_feedback_prompt()
+        w = QtWidgets.QWidget(
+            None,
+            QtCore.Qt.WindowType.FramelessWindowHint
+            | QtCore.Qt.WindowType.WindowStaysOnTopHint
+            | QtCore.Qt.WindowType.Tool,
+        )
+        w.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        w.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        layout = QtWidgets.QHBoxLayout(w)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(6)
+
+        lbl = QtWidgets.QLabel("Correct?")
+        lbl.setStyleSheet(
+            "color: rgba(255,255,255,0.6);"
+            "font-size: 10px; background: transparent;"
+        )
+        layout.addWidget(lbl)
+
+        for txt, color, action in (
+            ("✓", "#43A047", "correct"),
+            ("✗", "#E53935", "wrong"),
+        ):
+            btn = QtWidgets.QPushButton(txt)
+            btn.setFixedSize(24, 24)
+            btn.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+            btn.setStyleSheet(
+                f"""
+                QPushButton {{
+                    background: {color}33;
+                    color: {color};
+                    border: 1px solid {color}66;
+                    border-radius: 5px;
+                    font-size: 12px;
+                    font-weight: 700;
+                }}
+                QPushButton:hover {{
+                    background: {color}66;
+                }}
+                """
+            )
+            btn.clicked.connect(
+                lambda _c=False, a=action, ww=w: self._handle_overlay_feedback(a, ww)
+            )
+            layout.addWidget(btn)
+
+        w.setStyleSheet(
+            "QWidget { background: rgba(22,22,24,235); border-radius: 8px; "
+            "border: 1px solid rgba(255,255,255,0.12); }"
+        )
+        w.adjustSize()
+        pill_global = self.mapToGlobal(QtCore.QPoint(0, 0))
+        w.move(pill_global.x(), pill_global.y() + self.height() + 6)
         screen = QtWidgets.QApplication.primaryScreen()
         if screen is not None:
             ag = screen.availableGeometry()
-            fb_x = max(ag.left(), min(fb_x, ag.right() - 180))
-            fb_y = min(fb_y, ag.bottom() - 50)
+            x = w.x()
+            y = w.y()
+            x = max(ag.left() + 4, min(x, ag.right() - w.width() - 4))
+            y = min(y, ag.bottom() - w.height() - 8)
+            w.move(x, y)
+        w.show()
+        w.raise_()
+        self._overlay_feedback_prompt = w
+        self._feedback_prompt = w
 
-        self._feedback_widget.move(fb_x, fb_y)
-        self._feedback_widget.show()
-        self._feedback_widget.raise_()
-        self._feedback_widget.activateWindow()
+    def _dismiss_overlay_feedback_prompt(self) -> None:
+        ow = self._overlay_feedback_prompt
+        if ow is not None:
+            ow.hide()
+            ow.deleteLater()
+            self._overlay_feedback_prompt = None
+            self._feedback_prompt = None
 
-        if self._feedback_timer is None:
-            self._feedback_timer = QtCore.QTimer()
-            self._feedback_timer.setSingleShot(True)
-            self._feedback_timer.timeout.connect(self._feedback_widget.hide)
+    def _handle_overlay_feedback(self, action: str, widget: QtWidgets.QWidget) -> None:
+        self._stop_feedback_survey()
+        widget.hide()
+        widget.deleteLater()
+        if self._overlay_feedback_prompt is widget:
+            self._overlay_feedback_prompt = None
+            self._feedback_prompt = None
+        if action == "correct":
+            self._record_overlay_feedback("correct")
+            from toast import toast_safe
+
+            toast_safe("Confirmed — model noted!")
         else:
-            self._feedback_timer.stop()
-        self._feedback_timer.start(8000)
+            self._record_overlay_feedback("wrong")
+            cb = self._open_panel_callback
+            if callable(cb):
+                cb()
+            else:
+                self._on_delayed_single_click()
+
+    def _record_overlay_feedback(self, kind: str) -> None:
+        from feedback_store import record_feedback
+
+        text = (self._last_text or self._original_text or "").strip()
+        if not text:
+            return
+        pred = str(self._last_label or "low").lower()
+        try:
+            rs = int(self._result.get("risk_score", 0) or 0)
+        except (TypeError, ValueError):
+            rs = 0
+        if kind == "correct":
+            record_feedback(
+                text,
+                pred,
+                pred,
+                source="overlay_correct",
+                risk_score=rs,
+                feedback_type="correct",
+            )
+        elif kind == "wrong":
+            record_feedback(
+                text,
+                pred,
+                pred,
+                source="overlay_wrong",
+                risk_score=rs,
+                feedback_type="wrong_intent",
+            )
 
     def _hide_feedback_buttons(self) -> None:
         if self._feedback_timer is not None:
             self._feedback_timer.stop()
         if self._feedback_widget is not None:
             self._feedback_widget.hide()
-
-    def _build_feedback_widget(self) -> None:
-        self._feedback_widget = QtWidgets.QWidget(
-            None,
-            QtCore.Qt.WindowType.FramelessWindowHint
-            | QtCore.Qt.WindowType.WindowStaysOnTopHint
-            | QtCore.Qt.WindowType.Tool,
-        )
-        self._feedback_widget.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
-        self._feedback_widget.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
-
-        self._feedback_widget.setStyleSheet(
-            """
-            QWidget {
-                background-color: rgba(28, 28, 30, 230);
-                border-radius: 10px;
-                border: 1px solid rgba(255,255,255,0.1);
-            }
-            """
-        )
-
-        layout = QtWidgets.QHBoxLayout()
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
-
-        btn_correct = QtWidgets.QPushButton("Correct")
-        btn_correct.setFixedSize(80, 32)
-        btn_correct.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        btn_correct.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #2E7D32;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                font-size: 13px;
-                font-weight: 600;
-                padding: 6px 16px;
-            }
-            QPushButton:hover {
-                background-color: #388E3C;
-            }
-            QPushButton:pressed {
-                background-color: #1B5E20;
-            }
-            """
-        )
-        btn_correct.clicked.connect(self._on_feedback_correct)
-
-        btn_wrong = QtWidgets.QPushButton("Wrong")
-        btn_wrong.setFixedSize(80, 32)
-        btn_wrong.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        btn_wrong.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #C62828;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                font-size: 13px;
-                font-weight: 600;
-                padding: 6px 16px;
-            }
-            QPushButton:hover {
-                background-color: #D32F2F;
-            }
-            QPushButton:pressed {
-                background-color: #B71C1C;
-            }
-            """
-        )
-        btn_wrong.clicked.connect(self._on_feedback_wrong)
-
-        layout.addWidget(btn_correct)
-        layout.addWidget(btn_wrong)
-        self._feedback_widget.setLayout(layout)
-        self._feedback_widget.adjustSize()
-
-    def _on_feedback_correct(self) -> None:
-        from feedback_store import record_feedback
-
-        record_feedback(
-            self._feedback_text,
-            self._feedback_predicted,
-            self._feedback_predicted,
-            source="user_correct",
-        )
-        self._hide_feedback_buttons()
-
-    def _on_feedback_wrong(self) -> None:
-        from feedback_store import record_feedback
-
-        labels = ["low", "med", "high"]
-        label, ok = QtWidgets.QInputDialog.getItem(
-            self,
-            "Correct label",
-            "What should this be classified as?",
-            labels,
-            0,
-            False,
-        )
-        if ok and label:
-            record_feedback(
-                self._feedback_text,
-                self._feedback_predicted,
-                label,
-                source="user_correction",
-            )
-        self._hide_feedback_buttons()
+        self._stop_feedback_survey()
+        self._dismiss_overlay_feedback_prompt()
 
     def show_near_bottom_right(self) -> None:
         self._move_to_default_corner()
@@ -1348,8 +2199,24 @@ class RiskBubble(QtWidgets.QWidget):
             y = max(g.top(), min(y, g.bottom() - self.height()))
         self.move(x, y)
 
+    def _on_indicator_remediation_click(self) -> None:
+        self._on_delayed_single_click()
+
     def _on_delayed_single_click(self) -> None:
-        if self._issue_count <= 0 and int(self._result.get("risk_score", 0)) <= 0:
+        r = self._result if isinstance(self._result, dict) else {}
+        try:
+            rs = int(r.get("risk_score", 0) or 0)
+        except (TypeError, ValueError):
+            rs = 0
+        has_text = bool((self._original_text or self._last_text or "").strip())
+        has_triggers_or_spans = bool(r.get("triggers")) or bool(r.get("spans"))
+        if (
+            self._issue_count <= 0
+            and rs <= 0
+            and not has_text
+            and not has_triggers_or_spans
+            and str(r.get("action", "") or "") not in ("warn", "block")
+        ):
             return
         from ui_remediation_dialog import RemediationDialog
 

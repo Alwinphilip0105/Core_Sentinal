@@ -16,6 +16,8 @@ from typing import Any
 
 # Full defaults when risk_policy.json is missing or partial.
 DEFAULT_RISK_POLICY: dict[str, Any] = {
+    # If risk_score >= this (1..100), force block despite allow_warn_instead (infer.py). 0 = disabled.
+    "block_threshold": 95,
     "min_prob_high_block": 0.80,
     "min_prob_high_warn": 0.50,
     "min_prob_med_warn": 0.60,

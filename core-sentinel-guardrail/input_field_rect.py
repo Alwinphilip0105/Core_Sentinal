@@ -41,13 +41,13 @@ def get_input_field_rect() -> Optional[Rect]:
         return None
 
     # Local import avoids loading active_window_llm on non-Windows stubs
-    from active_window_llm import is_active_window_llm
+    from active_window_llm import detect_llm_window
 
     fg_hwnd = int(win32gui.GetForegroundWindow())
     if not fg_hwnd:
         return None
 
-    is_llm, _, _, _ = is_active_window_llm()
+    is_llm, _, _, _ = detect_llm_window()
     if not is_llm:
         return None
 
