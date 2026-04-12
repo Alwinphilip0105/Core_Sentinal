@@ -3,303 +3,33 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>My Privacy Dashboard — Core Sentinel</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<title>Core Sentinel — Docs hub</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
-     sans-serif;background:#0d0d1a;color:#e0e0e0;min-height:100vh}
-.hdr{background:#12122a;padding:16px 28px;display:flex;
-      align-items:center;justify-content:space-between;
-      border-bottom:1px solid rgba(255,255,255,0.07)}
-.hdr-title{font-size:17px;font-weight:700;color:#fff}
-.hdr-sub{font-size:11px;color:rgba(255,255,255,0.35);margin-top:1px}
-.wrap{max-width:1100px;margin:0 auto;padding:20px 24px}
-.stats-row{display:grid;grid-template-columns:repeat(5,1fr);
-            gap:12px;margin-bottom:20px}
-.stat{background:#12122a;border-radius:10px;padding:14px;
-       border:1px solid rgba(255,255,255,0.06);text-align:center}
-.stat-num{font-size:26px;font-weight:700;line-height:1;margin-bottom:3px}
-.stat-lbl{font-size:10px;color:rgba(255,255,255,0.35);
-           text-transform:uppercase;letter-spacing:.06em}
-.grid2{display:grid;grid-template-columns:1fr 1fr;
-        gap:16px;margin-bottom:16px}
-.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;
-        gap:14px;margin-bottom:16px}
-.card{background:#12122a;border-radius:12px;padding:18px;
-       border:1px solid rgba(255,255,255,0.06)}
-.card-title{font-size:12px;font-weight:600;
-             color:rgba(255,255,255,0.5);
-             margin-bottom:14px}
-canvas{max-height:200px}
-.persona{display:flex;gap:16px;align-items:flex-start}
-.persona-face{font-size:56px;line-height:1;flex-shrink:0}
-.persona-right{flex:1}
-.persona-name{font-size:16px;font-weight:700;
-               color:#fff;margin-bottom:4px}
-.persona-badge{display:inline-block;padding:2px 10px;
-                border-radius:10px;font-size:11px;
-                font-weight:700;margin-bottom:8px}
-.persona-msg{font-size:12px;line-height:1.6;
-              color:rgba(255,255,255,0.7);margin-bottom:10px}
-.tip{font-size:11px;color:rgba(255,255,255,0.6);
-      padding:6px 10px;background:rgba(255,255,255,0.04);
-      border-radius:6px;margin-bottom:5px;line-height:1.4}
-.hm-grid{display:grid;grid-template-columns:repeat(24,1fr);
-           gap:3px;margin-top:8px}
-.hm-cell{height:20px;border-radius:3px;cursor:default}
-.hm-xl{display:flex;justify-content:space-between;
-         font-size:9px;color:rgba(255,255,255,0.25);
-         margin-top:4px}
-.score-circle{width:80px;height:80px;border-radius:50%;
-               border:4px solid #2E7D32;
-               display:flex;align-items:center;
-               justify-content:center;margin:0 auto 8px;
-               flex-direction:column}
-.score-num{font-size:24px;font-weight:700;
-            color:#2E7D32;line-height:1}
-.score-lbl{font-size:9px;color:rgba(255,255,255,0.4);
-            text-transform:uppercase;letter-spacing:.05em}
-table{width:100%;border-collapse:collapse;font-size:12px}
-th{color:rgba(255,255,255,0.3);padding:6px 8px;
-    text-align:left;border-bottom:1px solid
-    rgba(255,255,255,0.07);font-size:10px;
-    text-transform:uppercase;font-weight:600;
-    letter-spacing:.04em}
-td{padding:7px 8px;border-bottom:1px solid
-    rgba(255,255,255,0.04);color:rgba(255,255,255,0.7)}
-.pill{padding:2px 8px;border-radius:10px;
-       font-size:10px;font-weight:700}
-.streak-bar{height:8px;background:rgba(255,255,255,0.08);
-             border-radius:4px;overflow:hidden;margin-top:6px}
-.streak-fill{height:100%;border-radius:4px;
-              background:#FFB300;transition:width .5s}
-.footer{text-align:center;color:rgba(255,255,255,0.2);
-          font-size:11px;padding:20px 0;margin-top:8px}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  background:#0d0d1a;color:#e0e0e0;min-height:100vh;display:flex;
+  flex-direction:column;align-items:center;justify-content:center;
+  padding:24px}
+h1{font-size:22px;font-weight:700;color:#fff;margin-bottom:8px}
+p{font-size:13px;color:rgba(255,255,255,0.45);margin-bottom:28px;text-align:center;max-width:420px}
+nav{display:flex;flex-direction:column;gap:10px;width:100%;max-width:360px}
+a{display:block;padding:14px 18px;border-radius:10px;text-decoration:none;
+  font-size:14px;font-weight:600;border:1px solid rgba(255,255,255,0.1);
+  background:#12122a;color:#02C39A;transition:background .15s,border-color .15s}
+a:hover{background:#1a1a30;border-color:rgba(2,195,154,0.4)}
+a span{display:block;font-size:11px;font-weight:500;color:rgba(255,255,255,0.35);margin-top:4px}
+.badge{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,0.25);
+  margin-bottom:20px}
 </style>
 </head>
 <body>
-<div class="hdr">
-  <div>
-    <div class="hdr-title">🛡 My Privacy Dashboard</div>
-    <div class="hdr-sub">Core Sentinel · Generated 2026-04-12 17:27</div>
-  </div>
-  <div style="font-size:11px;color:rgba(255,255,255,0.3)">
-    Local data only · Nothing leaves your machine
-  </div>
-</div>
-
-<div class="wrap">
-
-  <!-- STATS ROW -->
-  <div class="stats-row">
-    <div class="stat">
-      <div class="stat-num" style="color:#2E7D32">
-        100</div>
-      <div class="stat-lbl">Privacy score</div>
-    </div>
-    <div class="stat">
-      <div class="stat-num" style="color:#02C39A">
-        0</div>
-      <div class="stat-lbl">Pastes this week</div>
-    </div>
-    <div class="stat">
-      <div class="stat-num" style="color:#E53935">
-        0</div>
-      <div class="stat-lbl">Blocked this week</div>
-    </div>
-    <div class="stat">
-      <div class="stat-num" style="color:#FFB300">
-        0</div>
-      <div class="stat-lbl">Current streak</div>
-    </div>
-    <div class="stat">
-      <div class="stat-num" style="color:#43A047">
-        4</div>
-      <div class="stat-lbl">Best streak ever</div>
-    </div>
-  </div>
-
-  <!-- PERSONA + STREAK -->
-  <div class="grid2">
-    <div class="card">
-      <div class="card-title">🎭 Your security persona</div>
-      <div class="persona">
-        <div class="persona-face">🤔</div>
-        <div class="persona-right">
-          <div class="persona-name">Cautious Chris</div>
-          <span class="persona-badge"
-            style="background:#1565C022;
-                   color:#1565C0">
-            Moderate
-          </span>
-          <div class="persona-msg">Doing reasonably well with <strong>0% safe pastes</strong>. Some contact info slips through occasionally. Privacy score: <strong>100/100</strong>.</div>
-          <div class="tip">💡 Quick scan before pasting — names? emails? phones?</div><div class="tip">🔄 Use Redact on warnings instead of dismissing</div><div class="tip">🎯 Go for a 10-paste safe streak — you can do it!</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">🔥 Safe paste streak</div>
-      <div style="text-align:center;padding:10px 0">
-        <div class="score-circle">
-          <div class="score-num">0</div>
-          <div class="score-lbl">streak</div>
-        </div>
-        <div style="font-size:12px;color:rgba(255,255,255,0.5);
-                    margin-bottom:6px">
-          Best ever: <strong style="color:#FFB300">
-            4</strong> safe pastes in a row
-        </div>
-        <div style="font-size:11px;color:rgba(255,255,255,0.35);
-                    margin-bottom:8px">
-          Next milestone: 5 pastes
-        </div>
-        <div class="streak-bar">
-          <div class="streak-fill" style="width:0%"></div>
-        </div>
-        <div style="display:flex;justify-content:space-between;
-                    font-size:9px;color:rgba(255,255,255,0.2);
-                    margin-top:4px">
-          <span>0</span>
-          <span>5</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- TREND + PII -->
-  <div class="grid2">
-    <div class="card">
-      <div class="card-title">📅 7-day paste trend</div>
-      <canvas id="trendChart"></canvas>
-    </div>
-    <div class="card">
-      <div class="card-title">🔍 Top PII types I paste</div>
-      <div style="text-align:center;padding:40px;color:rgba(255,255,255,0.3)">No PII detected this week 🎉</div>
-    </div>
-  </div>
-
-  <!-- HEATMAP -->
-  <div class="card" style="margin-bottom:16px">
-    <div class="card-title">
-      🌡️ Risky hours heatmap
-      
-    </div>
-    <div class="hm-grid"><div class="hm-cell" title="0am: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="1am: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="2am: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="3am: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="4am: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="5am: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="6am: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="7am: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="8am: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="9am: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="10am: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="11am: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="12pm: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="1pm: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="2pm: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="3pm: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="4pm: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="5pm: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="6pm: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="7pm: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="8pm: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="9pm: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="10pm: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="11pm: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div></div>
-    <div class="hm-xl">
-      <span>12am</span><span>3am</span><span>6am</span>
-      <span>9am</span><span>12pm</span><span>3pm</span>
-      <span>6pm</span><span>9pm</span><span>11pm</span>
-    </div>
-  </div>
-
-  <!-- RECENT EVENTS -->
-  <div class="card">
-    <div class="card-title">🕐 Recent paste events (last 20)</div>
-    <table>
-      <thead>
-        <tr>
-          <th>Time</th><th>Action</th><th>Score</th>
-          <th>PII detected</th><th>LLM</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </div>
-
-  <div class="footer">
-    Core Sentinel · Local data · Privacy protected ·
-    github.com/Alwinphilip0105/Core_Sentinal
-  </div>
-
-</div>
-
-<script>
-const TREND_LABELS = ["04-06", "04-07", "04-08", "04-09", "04-10", "04-11", "04-12"];
-const TREND_BLOCK  = [0, 0, 0, 0, 0, 0, 0];
-const TREND_WARN   = [0, 0, 0, 0, 0, 0, 0];
-const TREND_SAFE   = [0, 0, 0, 0, 0, 0, 0];
-const PII_LABELS   = [];
-const PII_VALUES   = [];
-
-const CHART_DEFAULTS = {
-  responsive: true,
-  maintainAspectRatio: true,
-  plugins: {
-    legend: {
-      labels: {
-        color: 'rgba(255,255,255,0.5)',
-        font: { size: 11 },
-        boxWidth: 12
-      }
-    }
-  },
-  scales: {
-    x: {
-      ticks: { color: 'rgba(255,255,255,0.35)',
-                font: { size: 10 } },
-      grid:  { color: 'rgba(255,255,255,0.04)' }
-    },
-    y: {
-      ticks: { color: 'rgba(255,255,255,0.35)',
-                font: { size: 10 } },
-      grid:  { color: 'rgba(255,255,255,0.04)' }
-    }
-  }
-};
-
-// Trend chart
-new Chart(document.getElementById('trendChart'), {
-  type: 'bar',
-  data: {
-    labels: TREND_LABELS,
-    datasets: [
-      { label: 'Block', data: TREND_BLOCK,
-         backgroundColor: '#E53935', borderRadius: 2 },
-      { label: 'Warn',  data: TREND_WARN,
-         backgroundColor: '#FFB300', borderRadius: 2 },
-      { label: 'Safe',  data: TREND_SAFE,
-         backgroundColor: '#43A047', borderRadius: 2 },
-    ]
-  },
-  options: {
-    ...CHART_DEFAULTS,
-    plugins: {
-      ...CHART_DEFAULTS.plugins,
-      legend: { ...CHART_DEFAULTS.plugins.legend,
-                 position: 'bottom' }
-    },
-    scales: {
-      ...CHART_DEFAULTS.scales,
-      x: { ...CHART_DEFAULTS.scales.x, stacked: true },
-      y: { ...CHART_DEFAULTS.scales.y, stacked: true }
-    }
-  }
-});
-
-// PII chart
-if (PII_LABELS.length > 0) {
-  new Chart(document.getElementById('piiChart'), {
-    type: 'bar',
-    data: {
-      labels: PII_LABELS,
-      datasets: [{
-        label: 'Times detected',
-        data: PII_VALUES,
-        backgroundColor: 'rgba(229,57,53,0.65)',
-        borderRadius: 3
-      }]
-    },
-    options: {
-      ...CHART_DEFAULTS,
-      indexAxis: 'y',
-      plugins: {
-        legend: { display: false }
-      }
-    }
-  });
-}
-</script>
+  <div class="badge">Core Sentinel</div>
+  <h1>Documentation hub</h1>
+  <p>Local dashboards and tools. Choose a destination below.</p>
+  <nav>
+    <a href="dashboard/">Privacy dashboard <span>Embedded JSON · charts &amp; streaks</span></a>
+    <a href="admin/">Admin dashboard <span>Supabase fleet analytics</span></a>
+    <a href="ml/">ML live dashboard <span>Risk telemetry charts</span></a>
+  </nav>
 </body>
 </html>

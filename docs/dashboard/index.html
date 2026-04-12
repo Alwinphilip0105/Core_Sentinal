@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>My Privacy Dashboard — Core Sentinel</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
+     sans-serif;background:#0d0d1a;color:#e0e0e0;min-height:100vh}
+.hdr{background:#12122a;padding:16px 28px;display:flex;
+      align-items:center;justify-content:space-between;
+      border-bottom:1px solid rgba(255,255,255,0.07)}
+.hdr-title{font-size:17px;font-weight:700;color:#fff}
+.hdr-sub{font-size:11px;color:rgba(255,255,255,0.35);margin-top:1px}
+.wrap{max-width:1100px;margin:0 auto;padding:20px 24px}
+.rbtn{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);
+  border-radius:6px;padding:5px 12px;font-size:11px;color:rgba(255,255,255,0.6);
+  cursor:pointer}
+.rbtn:hover{background:rgba(255,255,255,0.1)}
+.rbtn.active{background:rgba(2,195,154,0.2);border-color:#02C39A;color:#02C39A}
+.stats-row{display:grid;grid-template-columns:repeat(5,1fr);
+            gap:12px;margin-bottom:20px}
+.stat{background:#12122a;border-radius:10px;padding:14px;
+       border:1px solid rgba(255,255,255,0.06);text-align:center}
+.stat-num{font-size:26px;font-weight:700;line-height:1;margin-bottom:3px}
+.stat-lbl{font-size:10px;color:rgba(255,255,255,0.35);
+           text-transform:uppercase;letter-spacing:.06em}
+.grid2{display:grid;grid-template-columns:1fr 1fr;
+        gap:16px;margin-bottom:16px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;
+        gap:14px;margin-bottom:14px}
+.card{background:#12122a;border-radius:12px;padding:18px;
+       border:1px solid rgba(255,255,255,0.06);margin-bottom:16px}
+.card-title{font-size:12px;font-weight:600;
+             color:rgba(255,255,255,0.5);
+             margin-bottom:14px}
+.card-head{display:flex;align-items:center;justify-content:space-between;
+  gap:12px;flex-wrap:wrap;margin-bottom:0}
+canvas{max-height:200px}
+.persona{display:flex;gap:16px;align-items:flex-start}
+.persona-face{font-size:56px;line-height:1;flex-shrink:0}
+.persona-right{flex:1}
+.persona-name{font-size:16px;font-weight:700;
+               color:#fff;margin-bottom:4px}
+.persona-badge{display:inline-block;padding:2px 10px;
+                border-radius:10px;font-size:11px;
+                font-weight:700;margin-bottom:8px}
+.persona-msg{font-size:12px;line-height:1.6;
+              color:rgba(255,255,255,0.7);margin-bottom:10px}
+.tip{font-size:11px;color:rgba(255,255,255,0.6);
+      padding:6px 10px;background:rgba(255,255,255,0.04);
+      border-radius:6px;margin-bottom:5px;line-height:1.4}
+.hm-grid{display:grid;grid-template-columns:repeat(24,1fr);
+           gap:3px;margin-top:8px}
+.hm-cell{height:20px;border-radius:3px;cursor:default}
+.hm-xl{display:flex;justify-content:space-between;
+         font-size:9px;color:rgba(255,255,255,0.25);
+         margin-top:4px}
+.score-circle{width:80px;height:80px;border-radius:50%;
+               border:4px solid #2E7D32;
+               display:flex;align-items:center;
+               justify-content:center;margin:0 auto 8px;
+               flex-direction:column}
+.score-circle--click{cursor:pointer;transition:transform .15s,box-shadow .15s}
+.score-circle--click:hover{transform:scale(1.03);box-shadow:0 0 0 2px rgba(2,195,154,0.35)}
+.score-num{font-size:24px;font-weight:700;
+            color:#2E7D32;line-height:1}
+.score-lbl{font-size:9px;color:rgba(255,255,255,0.4);
+            text-transform:uppercase;letter-spacing:.05em}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{color:rgba(255,255,255,0.3);padding:6px 8px;
+    text-align:left;border-bottom:1px solid
+    rgba(255,255,255,0.07);font-size:10px;
+    text-transform:uppercase;font-weight:600;
+    letter-spacing:.04em}
+td{padding:7px 8px;border-bottom:1px solid
+    rgba(255,255,255,0.04);color:rgba(255,255,255,0.7)}
+.pill{padding:2px 8px;border-radius:10px;
+       font-size:10px;font-weight:700}
+.streak-bar{height:8px;background:rgba(255,255,255,0.08);
+             border-radius:4px;overflow:hidden;margin-top:6px}
+.streak-fill{height:100%;border-radius:4px;
+              background:#FFB300;transition:width .5s}
+.footer{text-align:center;color:rgba(255,255,255,0.2);
+          font-size:11px;padding:20px 0;margin-top:8px}
+.fpill{padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;
+  cursor:pointer;background:rgba(255,255,255,0.06);
+  border:1px solid rgba(255,255,255,0.1);display:inline-block}
+.fpill.active{background:rgba(255,255,255,0.15);
+  border-color:rgba(255,255,255,0.3)}
+#eventsCard{margin-bottom:0}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <div>
+    <div class="hdr-title">🛡 My Privacy Dashboard</div>
+    <div class="hdr-sub">Core Sentinel · Generated 2026-04-12 17:27</div>
+  </div>
+  <div style="font-size:11px;color:rgba(255,255,255,0.3)">
+    Local data only · Nothing leaves your machine
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div id="range-btns" style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
+    <button type="button" onclick="setRange('today')" class="rbtn" id="r-today">Today</button>
+    <button type="button" onclick="setRange('week')" class="rbtn active" id="r-week">This week</button>
+    <button type="button" onclick="setRange('month')" class="rbtn" id="r-month">This month</button>
+    <button type="button" onclick="setRange('all')" class="rbtn" id="r-all">All time</button>
+  </div>
+
+  <!-- STATS ROW -->
+  <div class="stats-row">
+    <div class="stat">
+      <div class="score-circle score-circle--click" style="width:72px;height:72px;border-width:3px;margin-bottom:6px" onclick="showScoreBreakdown()" title="Privacy score breakdown">
+        <div class="score-num" id="stat-privacy" style="color:#2E7D32">100</div>
+        <div class="score-lbl">score</div>
+      </div>
+      <div class="stat-lbl">Privacy score</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num" id="stat-pastes" style="color:#02C39A">0</div>
+      <div class="stat-lbl">Pastes</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num" id="stat-blocks" style="color:#E53935">0</div>
+      <div class="stat-lbl">Blocked</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num" id="stat-streak" style="color:#FFB300">0</div>
+      <div class="stat-lbl">Current streak</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num" id="stat-best" style="color:#43A047">0</div>
+      <div class="stat-lbl">Best streak ever</div>
+    </div>
+  </div>
+
+  <!-- PERSONA + STREAK -->
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">🎭 Your security persona</div>
+      <div class="persona">
+        <div class="persona-face" id="personaFace">🤔</div>
+        <div class="persona-right">
+          <div class="persona-name" id="personaName">Cautious Chris</div>
+          <span class="persona-badge" id="personaBadge" style="background:#1565C022;color:#1565C0">Moderate</span>
+          <div class="persona-msg" id="personaMsg">Connect data to see your persona.</div>
+          <div id="tipsContainer"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🔥 Safe paste streak</div>
+      <div style="text-align:center;padding:10px 0">
+        <div class="score-circle">
+          <div class="score-num" id="streakNum">0</div>
+          <div class="score-lbl">streak</div>
+        </div>
+        <div style="font-size:12px;color:rgba(255,255,255,0.5);margin-bottom:6px">
+          Best ever: <strong style="color:#FFB300" id="streakBest">0</strong> safe pastes in a row
+        </div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.35);margin-bottom:8px" id="streakNext">
+          Next milestone: 5 pastes
+        </div>
+        <div class="streak-bar">
+          <div class="streak-fill" id="streakFill" style="width:0%"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:9px;color:rgba(255,255,255,0.2);margin-top:4px">
+          <span>0</span>
+          <span id="streakMaxLabel">5</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TREND + PII -->
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">📅 7-day paste trend</div>
+      <canvas id="trendChart"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-title">🔍 Top PII types I paste</div>
+      <canvas id="piiChart" style="display:none"></canvas>
+      <div id="piiEmpty" style="text-align:center;padding:40px;color:rgba(255,255,255,0.3)">No PII detected in this range 🎉</div>
+    </div>
+  </div>
+
+  <!-- HEATMAP -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title" id="hmTitle">🌡️ Risky hours heatmap</div>
+    <div class="hm-grid" id="hmGrid"></div>
+    <div class="hm-xl">
+      <span>12am</span><span>3am</span><span>6am</span>
+      <span>9am</span><span>12pm</span><span>3pm</span>
+      <span>6pm</span><span>9pm</span><span>11pm</span>
+    </div>
+  </div>
+
+  <!-- RECENT EVENTS -->
+  <div class="card" id="eventsCard">
+    <div class="card-head">
+      <div class="card-title" style="margin:0">🕐 Recent paste events (last 20)</div>
+      <button type="button" onclick="exportCSV()" style="
+        background:rgba(2,195,154,0.15);color:#02C39A;border:1px solid #02C39A33;
+        border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer">
+        ↓ Export CSV
+      </button>
+    </div>
+    <input id="searchBox" placeholder="Filter by action, PII type, LLM..."
+      oninput="filterTable(this.value)"
+      style="width:100%;background:#1a1a30;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:8px 12px;color:white;font-size:12px;margin-bottom:8px">
+    <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+      <span class="fpill active" onclick="filterAction('', this)">All</span>
+      <span class="fpill" onclick="filterAction('block', this)" style="color:#ef9a9a">Block</span>
+      <span class="fpill" onclick="filterAction('warn', this)" style="color:#ffe082">Warn</span>
+      <span class="fpill" onclick="filterAction('silent', this)" style="color:#a5d6a7">Safe</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th><th>Action</th><th>Score</th>
+          <th>PII detected</th><th>LLM</th>
+        </tr>
+      </thead>
+      <tbody id="eventsBody"></tbody>
+    </table>
+  </div>
+
+  <div class="footer">
+    Core Sentinel · Local data · Privacy protected ·
+    github.com/Alwinphilip0105/Core_Sentinal
+  </div>
+
+</div>
+
+<script>
+/** Embedded event rows (short keys: t = ISO timestamp). Replace or inject via generator. */
+const DATA = [];
+
+let currentData = DATA;
+let TREND_LABELS = [];
+let privacyScore = 100;
+let activeAction = '';
+
+const CHART_DEFAULTS = {
+  responsive: true,
+  maintainAspectRatio: true,
+  plugins: {
+    legend: {
+      labels: {
+        color: 'rgba(255,255,255,0.5)',
+        font: { size: 11 },
+        boxWidth: 12
+      }
+    }
+  },
+  scales: {
+    x: {
+      ticks: { color: 'rgba(255,255,255,0.35)', font: { size: 10 } },
+      grid:  { color: 'rgba(255,255,255,0.04)' }
+    },
+    y: {
+      ticks: { color: 'rgba(255,255,255,0.35)', font: { size: 10 } },
+      grid:  { color: 'rgba(255,255,255,0.04)' }
+    }
+  }
+};
+
+function rowTime(r){
+  return r.t != null ? r.t : r.timestamp;
+}
+
+function normalizeRow(r){
+  return {
+    t: rowTime(r),
+    action: r.action,
+    risk_score: r.risk_score,
+    pii_classes: r.pii_classes,
+    llm_name: r.llm_name
+  };
+}
+
+function setRange(range){
+  const now = new Date();
+  let cutoff = new Date(0);
+  if(range === 'today')
+    cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  else if(range === 'week')
+    cutoff = new Date(now.getTime() - 7 * 86400000);
+  else if(range === 'month')
+    cutoff = new Date(now.getTime() - 30 * 86400000);
+
+  currentData = DATA.filter(r => {
+    const ts = rowTime(r);
+    if(!ts) return range === 'all';
+    return new Date(ts) >= cutoff;
+  });
+
+  ['today','week','month','all'].forEach(r => {
+    const el = document.getElementById('r-'+r);
+    if(el) el.classList.toggle('active', r === range);
+  });
+
+  renderAll(currentData);
+}
+
+function filterTable(query){
+  const q = (query || '').toLowerCase();
+  document.querySelectorAll('#eventsBody tr').forEach(row => {
+    const text = row.textContent.toLowerCase();
+    row.style.display = !q || text.includes(q) ? '' : 'none';
+  });
+}
+
+function filterAction(action, el){
+  activeAction = action;
+  document.querySelectorAll('#eventsCard .fpill').forEach(p => p.classList.remove('active'));
+  if(el) el.classList.add('active');
+  renderEventsTable();
+}
+
+function exportCSV(){
+  const rows = [
+    ['Time','Action','Score','PII Class','LLM'],
+    ...currentData.map(r => [
+      rowTime(r) || '',
+      r.action || '',
+      r.risk_score || 0,
+      (r.pii_classes != null ? r.pii_classes : '') + '',
+      (r.llm_name != null ? r.llm_name : '') + ''
+    ])
+  ];
+  const csv = rows.map(r => r.map(escCSV).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'sentinel_events.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function escCSV(cell){
+  const s = String(cell ?? '');
+  if(/[",\r\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+function showScoreBreakdown(){
+  const blocks = currentData.filter(r => r.action === 'block').length;
+  const warns  = currentData.filter(r => r.action === 'warn').length;
+  const total  = currentData.length || 1;
+  alert(
+    'Privacy Score Breakdown\n\n' +
+    'Base score: 100\n' +
+    'Block penalty: -' +
+      Math.round(blocks / total * 60) +
+      ' (' + blocks + ' blocks × 60%)\n' +
+    'Warn penalty: -' +
+      Math.round(warns / total * 20) +
+      ' (' + warns + ' warns × 20%)\n\n' +
+    'Final score: ' + privacyScore
+  );
+}
+
+function computeStreaks(data){
+  const withT = data.filter(r => rowTime(r));
+  const sorted = [...withT].sort((a,b) => new Date(rowTime(a)) - new Date(rowTime(b)));
+  let best = 0, run = 0;
+  for(const r of sorted){
+    if(r.action === 'silent'){ run++; best = Math.max(best, run); }
+    else run = 0;
+  }
+  let currentStreak = 0;
+  for(let i = sorted.length - 1; i >= 0; i--){
+    if(sorted[i].action === 'silent') currentStreak++;
+    else break;
+  }
+  best = Math.max(best, currentStreak);
+  return { currentStreak, best };
+}
+
+function fmtDayLabel(iso){
+  if(!iso) return '';
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return '';
+  const mm = String(d.getMonth() + 1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return mm + '-' + dd;
+}
+
+function fmtTimeCell(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return String(iso).slice(0, 19).replace('T', ' ');
+  const day = fmtDayLabel(iso);
+  const hm = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+  return day + ' ' + hm;
+}
+
+const HOUR_LBL = ['12am','1am','2am','3am','4am','5am','6am','7am','8am','9am','10am','11am',
+  '12pm','1pm','2pm','3pm','4pm','5pm','6pm','7pm','8pm','9pm','10pm','11pm'];
+
+function buildTrendFromData(data){
+  const labels = [];
+  const block = []; const warn = []; const safe = [];
+  const now = new Date();
+  for(let i = 6; i >= 0; i--){
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    d.setDate(d.getDate() - i);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2,'0');
+    const day = String(d.getDate()).padStart(2,'0');
+    const key = y + '-' + m + '-' + day;
+    labels.push(m + '-' + day);
+    let b = 0, w = 0, s = 0;
+    data.forEach(r => {
+      const t = rowTime(r);
+      if(!t) return;
+      const ds = String(t).slice(0, 10);
+      if(ds === key){
+        if(r.action === 'block') b++;
+        else if(r.action === 'warn') w++;
+        else if(r.action === 'silent') s++;
+      }
+    });
+    block.push(b); warn.push(w); safe.push(s);
+  }
+  return { labels, block, warn, safe };
+}
+
+function renderTrendChart(block, warn, safe, labels){
+  TREND_LABELS = labels;
+  const canvas = document.getElementById('trendChart');
+  const existing = Chart.getChart(canvas);
+  if(existing) existing.destroy();
+  new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Block', data: block, backgroundColor: '#E53935', borderRadius: 2 },
+        { label: 'Warn',  data: warn,  backgroundColor: '#FFB300', borderRadius: 2 },
+        { label: 'Safe',  data: safe,  backgroundColor: '#43A047', borderRadius: 2 },
+      ]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      onClick: (evt, elements) => {
+        if(!elements.length) return;
+        const idx = elements[0].index;
+        const day = TREND_LABELS[idx];
+        const sb = document.getElementById('searchBox');
+        if(sb){ sb.value = day; filterTable(day); }
+        const tbl = document.querySelector('#eventsCard table');
+        if(tbl) tbl.scrollIntoView({ behavior: 'smooth' });
+      },
+      plugins: {
+        ...CHART_DEFAULTS.plugins,
+        legend: { ...CHART_DEFAULTS.plugins.legend, position: 'bottom' }
+      },
+      scales: {
+        ...CHART_DEFAULTS.scales,
+        x: { ...CHART_DEFAULTS.scales.x, stacked: true },
+        y: { ...CHART_DEFAULTS.scales.y, stacked: true }
+      }
+    }
+  });
+}
+
+function renderPIIChart(data){
+  const piiCounts = {};
+  data.forEach(r => {
+    const p = (r.pii_classes || '').trim();
+    if(p && p !== 'low') piiCounts[p] = (piiCounts[p] || 0) + 1;
+  });
+  const top = Object.entries(piiCounts).sort((a,b) => b[1] - a[1]).slice(0, 8);
+  const canvas = document.getElementById('piiChart');
+  const emptyEl = document.getElementById('piiEmpty');
+  const existing = Chart.getChart(canvas);
+  if(existing) existing.destroy();
+  if(!top.length){
+    canvas.style.display = 'none';
+    emptyEl.style.display = 'block';
+    return;
+  }
+  emptyEl.style.display = 'none';
+  canvas.style.display = 'block';
+  new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: top.map(([k]) => k.length > 20 ? k.slice(0, 20) + '…' : k),
+      datasets: [{
+        label: 'Times detected',
+        data: top.map(([,v]) => v),
+        backgroundColor: 'rgba(229,57,53,0.65)',
+        borderRadius: 3
+      }]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      indexAxis: 'y',
+      plugins: { legend: { display: false } }
+    }
+  });
+}
+
+function heatColor(avg){
+  if(avg <= 0) return 'rgba(255,255,255,0.06)';
+  const t = Math.min(1, avg / 100);
+  const r = Math.round(80 + t * 175);
+  const g = Math.round(30 + (1-t) * 100);
+  const b = Math.round(40 + (1-t) * 80);
+  return 'rgba('+r+','+g+','+b+',0.85)';
+}
+
+function renderHeatmap(data){
+  const hourly = new Array(24).fill(0);
+  const hourlyC = new Array(24).fill(0);
+  data.forEach(r => {
+    const t = rowTime(r);
+    if(!t) return;
+    try{
+      const h = new Date(t.replace('Z','')).getHours();
+      hourlyC[h]++;
+      if(r.action === 'block' || r.action === 'warn')
+        hourly[h] += (+r.risk_score || 0);
+    }catch(e){}
+  });
+  const hourlyAvg = hourly.map((v,i) =>
+    hourlyC[i] ? Math.round(v / hourlyC[i]) : 0);
+  let riskiest = -1;
+  let maxA = 0;
+  hourlyAvg.forEach((a,i) => { if(a > maxA){ maxA = a; riskiest = i; } });
+  const grid = document.getElementById('hmGrid');
+  grid.innerHTML = hourlyAvg.map((avg, h) =>
+    '<div class="hm-cell" title="'+HOUR_LBL[h]+': avg risk '+avg+'" style="background:'+
+    heatColor(avg)+';border:none"></div>'
+  ).join('');
+  const hmTitle = document.getElementById('hmTitle');
+  if(riskiest >= 0 && maxA > 0)
+    hmTitle.innerHTML = '🌡️ Risky hours heatmap — you are riskiest at <strong style="color:#E53935">'+
+      HOUR_LBL[riskiest]+'</strong>';
+  else
+    hmTitle.textContent = '🌡️ Risky hours heatmap';
+}
+
+function actionPillHTML(a){
+  const c = { block:'#FFEBEE', warn:'#FFF8E1', silent:'#E8F5E9' };
+  const tc = { block:'#B71C1C', warn:'#E65100', silent:'#1B5E20' };
+  return '<span class="pill" style="background:'+(c[a]||'#eee')+';color:'+(tc[a]||'#333')+'">'+(a||'—')+'</span>';
+}
+
+function renderEventsTable(){
+  const tbody = document.getElementById('eventsBody');
+  let rows = currentData.map(normalizeRow);
+  if(activeAction) rows = rows.filter(r => r.action === activeAction);
+  rows.sort((a,b) => {
+    const ta = new Date(a.t||0).getTime();
+    const tb = new Date(b.t||0).getTime();
+    return tb - ta;
+  });
+  rows = rows.slice(0, 20);
+  tbody.innerHTML = rows.map(r => {
+    const ts = fmtTimeCell(r.t || rowTime(r));
+    const act = r.action || '?';
+    const sc = +r.risk_score || 0;
+    const pii = ((r.pii_classes || '—') + '').slice(0, 30);
+    const llm = ((r.llm_name || '—') + '').slice(0, 20);
+    const scColor = sc >= 70 ? '#C62828' : sc >= 40 ? '#E65100' : '#2E7D32';
+    return '<tr><td style="color:#888;font-size:11px">'+escapeHtml(ts)+'</td><td>'+
+      actionPillHTML(act)+'</td><td style="font-weight:600;color:'+scColor+'">'+sc+'</td>'+
+      '<td style="font-size:11px">'+escapeHtml(pii)+'</td><td style="font-size:11px;color:#888">'+
+      escapeHtml(llm)+'</td></tr>';
+  }).join('');
+  const q = document.getElementById('searchBox');
+  filterTable(q ? q.value : '');
+}
+
+function escapeHtml(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderPersona(data){
+  const total = Math.max(data.length, 1);
+  const blocks = data.filter(r => r.action === 'block').length;
+  const warns = data.filter(r => r.action === 'warn').length;
+  const safes = data.filter(r => r.action === 'silent').length;
+  const bp = blocks / total * 100;
+  const wp = warns / total * 100;
+  const sp = safes / total * 100;
+  let emoji, pname, badge, badgeColor, msg, tips;
+  if(bp >= 30){
+    emoji = '😱'; pname = 'Danger Dave'; badge = 'High risk'; badgeColor = '#E53935';
+    msg = '<strong>'+Math.round(bp)+'% of your pastes are blocked</strong> — you frequently paste sensitive data. Privacy score: <strong>'+privacyScore+'/100</strong>.';
+    tips = ['🔑 Never paste API keys or passwords — use a secrets manager','📋 Scan before pasting: credentials? SSNs?','🔒 Use Redact on warnings'];
+  } else if(bp >= 15 || wp >= 40){
+    emoji = '😬'; pname = 'Careless Carl'; badge = 'Needs work'; badgeColor = '#FFB300';
+    msg = '<strong>'+Math.round(wp)+'% of pastes trigger warnings</strong>. Privacy score: <strong>'+privacyScore+'/100</strong>.';
+    tips = ['✉️ Use placeholder emails when asking LLMs','🔄 Click Redact instead of dismissing','⏰ Check your risky hours heatmap'];
+  } else if(sp >= 70){
+    emoji = '😎'; pname = 'Safe Sam'; badge = 'Excellent'; badgeColor = '#43A047';
+    msg = '<strong>'+Math.round(sp)+'% of your pastes are safe</strong>. Privacy score: <strong>'+privacyScore+'/100</strong>.';
+    tips = ['🏆 Keep your streak going','👥 Share good habits with your team','🔧 Try Strict mode for extra protection'];
+  } else {
+    emoji = '🤔'; pname = 'Cautious Chris'; badge = 'Moderate'; badgeColor = '#1565C0';
+    msg = 'Doing reasonably well with <strong>'+Math.round(sp)+'% safe pastes</strong>. Privacy score: <strong>'+privacyScore+'/100</strong>.';
+    tips = ['💡 Quick scan before pasting — names? emails?','🔄 Use Redact on warnings','🎯 Build a longer safe streak'];
+  }
+  document.getElementById('personaFace').textContent = emoji;
+  document.getElementById('personaName').textContent = pname;
+  const b = document.getElementById('personaBadge');
+  b.textContent = badge;
+  b.style.background = badgeColor + '22';
+  b.style.color = badgeColor;
+  document.getElementById('personaMsg').innerHTML = msg;
+  document.getElementById('tipsContainer').innerHTML = tips.map(t =>
+    '<div class="tip">'+t+'</div>').join('');
+}
+
+function renderAll(data){
+  const total = Math.max(data.length, 1);
+  const blocks = data.filter(r => r.action === 'block').length;
+  const warns = data.filter(r => r.action === 'warn').length;
+  const blockRate = blocks / total;
+  const warnRate = warns / total;
+  privacyScore = Math.max(0, Math.min(100, Math.round(100 - blockRate * 60 - warnRate * 20)));
+
+  const streaks = computeStreaks(data);
+  const { labels, block, warn, safe } = buildTrendFromData(data);
+
+  document.getElementById('stat-privacy').textContent = privacyScore;
+  document.getElementById('stat-pastes').textContent = data.length;
+  document.getElementById('stat-blocks').textContent = blocks;
+  document.getElementById('stat-streak').textContent = streaks.currentStreak;
+  document.getElementById('stat-best').textContent = streaks.best;
+
+  const sc = document.querySelector('#stat-privacy').parentElement;
+  if(sc){
+    const col = privacyScore >= 70 ? '#2E7D32' : privacyScore >= 40 ? '#FFB300' : '#E53935';
+    sc.style.borderColor = col;
+    document.getElementById('stat-privacy').style.color = col;
+  }
+
+  document.getElementById('streakNum').textContent = streaks.currentStreak;
+  document.getElementById('streakBest').textContent = streaks.best;
+  const nextMs = (Math.floor(streaks.currentStreak / 5) + 1) * 5;
+  document.getElementById('streakNext').textContent =
+    'Next milestone: ' + nextMs + ' pastes';
+  document.getElementById('streakMaxLabel').textContent = String(nextMs);
+  const pct = Math.min(100, streaks.currentStreak / Math.max(nextMs, 1) * 100);
+  document.getElementById('streakFill').style.width = pct + '%';
+
+  renderPersona(data);
+  renderTrendChart(block, warn, safe, labels);
+  renderPIIChart(data);
+  renderHeatmap(data);
+  renderEventsTable();
+}
+
+setRange('week');
+</script>
+</body>
+</html>

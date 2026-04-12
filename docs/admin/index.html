@@ -51,6 +51,17 @@ td{padding:7px 8px;border-bottom:1px solid rgba(255,255,255,0.04);color:rgba(255
 .drift-indicator{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .spin{width:14px;height:14px;border:2px solid rgba(255,255,255,0.1);border-top-color:#02C39A;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+.range-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+.trbtn{background:#1a1a30;border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.65);padding:6px 14px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer}
+.trbtn:hover{background:#252540}
+.trbtn.active{background:rgba(2,195,154,0.2);border-color:#02C39A;color:#02C39A}
+.stack-col{display:flex;flex-direction:column;gap:16px}
+.action-pills{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
+.apbtn{background:#1a1a30;border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.55);padding:4px 12px;border-radius:999px;font-size:10px;font-weight:700;cursor:pointer}
+.apbtn:hover{border-color:rgba(255,255,255,0.25)}
+.apbtn.active{background:rgba(2,195,154,0.15);border-color:#02C39A;color:#02C39A}
+th.sortable{user-select:none}
+th.sortable:hover{color:rgba(255,255,255,0.55)}
 </style>
 </head>
 <body>
@@ -72,8 +83,12 @@ td{padding:7px 8px;border-bottom:1px solid rgba(255,255,255,0.04);color:rgba(255
     <div class="hdr-title">🛡 Core Sentinel — Admin Dashboard</div>
     <div class="hdr-sub">Model health · Fleet analytics · Error detection · Drift monitoring</div>
   </div>
-  <div style="display:flex;align-items:center;gap:8px">
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <span id="syncTime" style="font-size:11px;color:rgba(255,255,255,0.3)">Not synced — enter Supabase below</span>
+    <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;color:rgba(255,255,255,0.5)">
+      <input type="checkbox" id="autoRefresh" checked onchange="toggleAutoRefresh(this.checked)">
+      Auto-refresh (2 min)
+    </label>
     <button class="btn btn-sm" onclick="loadData()" id="refreshBtn">⟳ Refresh</button>
   </div>
 </div>
@@ -100,14 +115,21 @@ td{padding:7px 8px;border-bottom:1px solid rgba(255,255,255,0.04);color:rgba(255
     <div class="stat"><div class="stat-num" id="s-pending" style="color:#1565C0">—</div><div class="stat-lbl">Pending retrain</div><div class="stat-sub">corrections</div></div>
   </div>
 
+  <div class="range-row">
+    <span style="font-size:11px;color:rgba(255,255,255,0.35);white-space:nowrap">Time range</span>
+    <div id="rangeBtns" class="range-row" style="margin:0"></div>
+  </div>
+  <div id="userBanner"></div>
+
   <!-- ALERTS -->
   <div class="card">
     <div class="card-title">🚨 Active alerts</div>
     <div id="alertsContainer"><div style="color:rgba(255,255,255,0.3);font-size:12px">Connect to Supabase to load alerts</div></div>
   </div>
 
-  <!-- MODEL HEALTH -->
+  <!-- MODEL HEALTH + THRESHOLD SIM -->
   <div class="grid2">
+    <div class="stack-col">
     <div class="card">
       <div class="card-title">📊 Model performance (from training)</div>
       <div class="model-metric">
@@ -140,6 +162,17 @@ td{padding:7px 8px;border-bottom:1px solid rgba(255,255,255,0.04);color:rgba(255
         <div class="metric-bar"><div class="metric-fill" style="width:79%;background:#02C39A"></div></div>
         <span class="metric-val" style="color:#02C39A">0.790</span>
       </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">⚡ Threshold simulator</div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+        <span style="font-size:12px;min-width:100px">Block threshold</span>
+        <input type="range" id="blockSlider" min="50" max="95" value="70" step="5" oninput="simulateThreshold(this.value)" style="flex:1">
+        <span id="blockVal" style="font-size:13px;font-weight:700;color:#E53935;min-width:30px">70</span>
+      </div>
+      <div id="simResult" style="font-size:12px;color:rgba(255,255,255,0.6)">Move slider to simulate threshold change</div>
+    </div>
     </div>
 
     <div class="card">
@@ -187,10 +220,14 @@ td{padding:7px 8px;border-bottom:1px solid rgba(255,255,255,0.04);color:rgba(255
   <!-- RECENT EVENTS TABLE -->
   <div class="card">
     <div class="card-title">🕐 Recent events (all users)</div>
+    <div id="actionPills" class="action-pills"></div>
     <table>
       <thead><tr>
-        <th>Time</th><th>User</th><th>Action</th>
-        <th>Score</th><th>PII class</th><th>LLM</th>
+        <th class="sortable" onclick="sortTable('timestamp')" title="Sort">Time ↕</th>
+        <th>User</th>
+        <th class="sortable" onclick="sortTable('action')" title="Sort">Action ↕</th>
+        <th class="sortable" onclick="sortTable('risk_score')" title="Sort">Score ↕</th>
+        <th>PII class</th><th>LLM</th>
       </tr></thead>
       <tbody id="recentBody"></tbody>
     </table>
@@ -231,6 +268,171 @@ function checkKey(){
 let C = {};
 let allData = [];
 let fbData  = [];
+
+let timeRange = '7d';
+let filteredData = [];
+let drillUserId = null;
+let actionFilter = 'all';
+let sortCol = 'timestamp';
+let sortDir = -1;
+let refreshTimer = null;
+
+function initRangeButtons(){
+  const el = document.getElementById('rangeBtns');
+  if(!el || el.dataset.inited) return;
+  el.dataset.inited = '1';
+  el.innerHTML = '';
+  ['1h','24h','7d','30d','All'].forEach(r=>{
+    const btn = document.createElement('button');
+    btn.className = 'trbtn' + (r==='7d' ? ' active' : '');
+    btn.dataset.range = r.toLowerCase();
+    btn.textContent = r;
+    btn.onclick = ()=> setTimeRange(r.toLowerCase());
+    el.appendChild(btn);
+  });
+}
+
+function initActionPills(){
+  const el = document.getElementById('actionPills');
+  if(!el || el.dataset.inited) return;
+  el.dataset.inited = '1';
+  el.innerHTML = '';
+  [['all','All'],['block','Block'],['warn','Warn'],['silent','Silent']].forEach(([k,label])=>{
+    const b = document.createElement('button');
+    b.className = 'apbtn' + (k==='all' ? ' active' : '');
+    b.dataset.act = k;
+    b.textContent = label;
+    b.onclick = ()=> setActionFilter(k);
+    el.appendChild(b);
+  });
+}
+
+function setTimeRange(range){
+  drillUserId = null;
+  const ub = document.getElementById('userBanner');
+  if(ub) ub.innerHTML = '';
+  timeRange = range;
+  const now = Date.now();
+  const cutoffs = {
+    '1h':  now - 3600000,
+    '24h': now - 86400000,
+    '7d':  now - 7*86400000,
+    '30d': now - 30*86400000,
+    'all': 0
+  };
+  const cutoff = cutoffs[range] ?? 0;
+  filteredData = allData.filter(r=>{
+    if(!r.timestamp) return range==='all';
+    if(range==='all') return true;
+    return new Date(r.timestamp).getTime() >= cutoff;
+  });
+  document.querySelectorAll('.trbtn').forEach(b=>
+    b.classList.toggle('active', b.dataset.range===range));
+  if(allData.length) renderAll(filteredData, fbData);
+  const sl = document.getElementById('blockSlider');
+  if(sl) simulateThreshold(sl.value);
+}
+
+function getViewData(){
+  if(drillUserId) return allData.filter(r=>r.user_id===drillUserId);
+  return filteredData;
+}
+
+function setActionFilter(k){
+  actionFilter = k;
+  document.querySelectorAll('.apbtn').forEach(b=>
+    b.classList.toggle('active', b.dataset.act===k));
+  refreshEventTable();
+}
+
+function drillUser(userId){
+  if(!userId || userId==='—') return;
+  drillUserId = userId;
+  const userEvents = allData.filter(r=>r.user_id===userId);
+  document.getElementById('userBanner').innerHTML =
+    `<div style="background:rgba(156,39,176,0.15);border:1px solid #9C27B0;border-radius:8px;padding:10px 14px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+      <span style="color:#CE93D8;font-size:12px"><strong>Filtered: user ${String(userId).slice(0,12)}</strong> — ${userEvents.length} events</span>
+      <button type="button" onclick="clearDrill()" style="background:transparent;border:1px solid #9C27B0;color:#CE93D8;border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer">✕ Clear filter</button>
+    </div>`;
+  renderAll(userEvents, fbData);
+  const sl = document.getElementById('blockSlider');
+  if(sl) simulateThreshold(sl.value);
+}
+
+function clearDrill(){
+  drillUserId = null;
+  document.getElementById('userBanner').innerHTML = '';
+  renderAll(filteredData, fbData);
+  const sl = document.getElementById('blockSlider');
+  if(sl) simulateThreshold(sl.value);
+}
+
+function simulateThreshold(val){
+  const bv = document.getElementById('blockVal');
+  const sr = document.getElementById('simResult');
+  if(!bv || !sr) return;
+  bv.textContent = val;
+  const threshold = parseInt(val, 10);
+  const wouldBlock = allData.filter(r=>(r.risk_score||0) >= threshold).length;
+  const wouldWarn  = allData.filter(r=>(r.risk_score||0) >= 40 && (r.risk_score||0) < threshold).length;
+  const wouldSafe  = allData.filter(r=>(r.risk_score||0) < 40).length;
+  const currentBlock = allData.filter(r=>r.action==='block').length;
+  const diff = wouldBlock - currentBlock;
+  const diffStr = diff > 0 ? '+'+diff+' more blocks' : (diff<0 ? Math.abs(diff)+' fewer blocks' : '0 change');
+  sr.innerHTML = `At threshold <strong>${threshold}</strong>:
+    <span style="color:#E53935">${wouldBlock} blocks</span> ·
+    <span style="color:#FFB300">${wouldWarn} warns</span> ·
+    <span style="color:#43A047">${wouldSafe} safe</span>
+    &nbsp;·&nbsp;
+    <span style="color:${diff>0?'#E53935':(diff<0?'#43A047':'#888')}">${diffStr} vs current</span>`;
+}
+
+function sortTable(col){
+  if(sortCol===col) sortDir *= -1;
+  else { sortCol = col; sortDir = -1; }
+  refreshEventTable();
+}
+
+function sortRowsInPlace(rows){
+  const col = sortCol;
+  const dir = sortDir;
+  return [...rows].sort((a,b)=>{
+    if(col==='risk_score'){
+      const av = +a.risk_score||0, bv = +b.risk_score||0;
+      if(av===bv) return 0;
+      return av < bv ? dir : -dir;
+    }
+    if(col==='timestamp'){
+      const av = new Date(a.timestamp||0).getTime();
+      const bv = new Date(b.timestamp||0).getTime();
+      if(av===bv) return 0;
+      return av < bv ? dir : -dir;
+    }
+    const av = String(a[col]??'');
+    const bv = String(b[col]??'');
+    if(av===bv) return 0;
+    return av < bv ? dir : -dir;
+  });
+}
+
+function refreshEventTable(){
+  let rows = [...getViewData()];
+  if(actionFilter!=='all') rows = rows.filter(r=>r.action===actionFilter);
+  rows = sortRowsInPlace(rows);
+  renderTable(rows.slice(0,20));
+}
+
+function toggleAutoRefresh(on){
+  if(refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = null;
+  if(on){
+    refreshTimer = setInterval(()=>{
+      const url = localStorage.getItem('sb_url');
+      const key = localStorage.getItem('sb_key');
+      if(url && key) loadData();
+    }, 120000);
+  }
+}
 
 function connect(){
   const url = document.getElementById('cfgUrl').value.trim();
@@ -280,7 +482,18 @@ async function loadData(){
       if(r2.ok) fbData = await r2.json();
     } catch(e){}
 
-    renderAll(allData, fbData);
+    initRangeButtons();
+    initActionPills();
+    if(allData.length) setTimeRange(timeRange);
+    else {
+      filteredData = [];
+      drillUserId = null;
+      const ub = document.getElementById('userBanner');
+      if(ub) ub.innerHTML = '';
+      renderAll([], fbData);
+      const sl = document.getElementById('blockSlider');
+      if(sl) simulateThreshold(sl.value);
+    }
     setStatus('Connected — ' + allData.length + ' events', '#43A047');
     document.getElementById('syncTime').textContent =
       'Updated ' + new Date().toLocaleTimeString();
@@ -292,7 +505,20 @@ async function loadData(){
 }
 
 function renderAll(data, fb){
-  if(!data.length) return;
+  if(!data.length) {
+    document.getElementById('s-total').textContent = '0';
+    document.getElementById('s-users').textContent = '0';
+    document.getElementById('s-fpr').textContent = '0%';
+    document.getElementById('s-block').textContent = '0%';
+    document.getElementById('s-correction').textContent = '0%';
+    document.getElementById('s-pending').textContent = '0';
+    const banner = document.getElementById('modelBanner');
+    if(banner){ banner.style.display = 'none'; banner.innerHTML = ''; }
+    document.getElementById('alertsContainer').innerHTML =
+      '<div style="color:rgba(255,255,255,0.3);font-size:12px">No events in this selection</div>';
+    refreshEventTable();
+    return;
+  }
   const total  = data.length;
   const blocks = data.filter(r=>r.action==='block').length;
   const warns  = data.filter(r=>r.action==='warn').length;
@@ -344,7 +570,7 @@ function renderAll(data, fb){
   renderPII(data);
   renderHour(data);
   renderFeedback(fb);
-  renderTable(data.slice(0,20));
+  refreshEventTable();
 }
 
 function renderAlerts(data, fpr, corr, blockRate){
@@ -539,13 +765,14 @@ function renderTable(rows){
       const t = r.timestamp ?
         new Date(r.timestamp).toLocaleString() : '—';
       const uid = (r.user_id||'—').slice(0,12);
+      const uidEsc = JSON.stringify(r.user_id != null ? String(r.user_id) : '');
       const pillCls = r.action==='block'?'pill-block':
                       r.action==='warn' ?'pill-warn':'pill-silent';
       const sc = r.risk_score || 0;
       const sc_color = sc>=70?'#ef9a9a':sc>=40?'#ffe082':'#a5d6a7';
       return `<tr>
         <td style="font-size:10px;color:#888">${t}</td>
-        <td style="font-family:monospace;font-size:10px;color:rgba(255,255,255,0.4)">${uid}</td>
+        <td onclick="drillUser(${uidEsc})" style="cursor:pointer;color:#CE93D8;font-family:monospace;font-size:10px" title="Filter charts to this user">${uid}</td>
         <td><span class="pill ${pillCls}">${r.action||'—'}</span></td>
         <td style="font-weight:700;color:${sc_color}">${sc}</td>
         <td style="font-size:11px">${(r.pii_classes||'—').slice(0,25)}</td>
@@ -554,13 +781,9 @@ function renderTable(rows){
     }).join('');
 }
 
-// auto-refresh every 2 minutes
-setInterval(()=>{
-  const url=localStorage.getItem('sb_url');
-  const key=localStorage.getItem('sb_key');
-  if(url&&key) loadData();
-}, 120000);
-
+toggleAutoRefresh(true);
+initRangeButtons();
+initActionPills();
 checkAuth();
 </script>
 </body>
