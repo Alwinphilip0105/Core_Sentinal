@@ -1,480 +1,526 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8">
+<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Core Sentinel â€” Live Dashboard</title>
+<title>Core Sentinel - ML Health Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0d0d1a;color:#e0e0e0;min-height:100vh}
-
-/* HEADER */
 .hdr{background:#12122a;padding:16px 28px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.07);position:sticky;top:0;z-index:100}
-.hdr-left{display:flex;align-items:center;gap:12px}
-.shield{width:38px;height:38px;background:#02C39A;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px}
 .hdr-title{font-size:17px;font-weight:700;color:#fff}
-.hdr-sub{font-size:11px;color:rgba(255,255,255,0.35);margin-top:1px}
-.hdr-right{display:flex;align-items:center;gap:12px}
-.live-dot{width:8px;height:8px;border-radius:50%;background:#43A047;animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.3)}}
-.live-label{font-size:11px;color:#43A047;font-weight:600}
-.sync-time{font-size:11px;color:rgba(255,255,255,0.3)}
-.btn{background:#02C39A;color:#fff;border:none;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+.hdr-sub{font-size:11px;color:rgba(255,255,255,0.4);margin-top:2px}
+.hdr-note{font-size:11px;color:#ffb300;font-weight:600}
+.top-row{display:flex;align-items:center;gap:12px}
+.btn{background:#02C39A;color:#fff;border:none;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer}
 .btn:hover{background:#019B7A}
-.btn:disabled{background:#333;cursor:not-allowed}
-.btn-ghost{background:transparent;border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.6)}
-.btn-ghost:hover{border-color:rgba(255,255,255,0.35);color:#fff;background:transparent}
-
-/* LAYOUT */
-.wrap{max-width:1280px;margin:0 auto;padding:20px 24px}
-.stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}
-.stat{background:#12122a;border-radius:10px;padding:16px;border:1px solid rgba(255,255,255,0.06);position:relative;overflow:hidden}
-.stat-num{font-size:28px;font-weight:700;line-height:1}
-.stat-lbl{font-size:10px;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:.06em;margin-top:4px}
-.stat-bar{position:absolute;bottom:0;left:0;height:3px;transition:width .6s}
-
-/* CHARACTER */
-.char-section{background:#12122a;border-radius:12px;padding:22px;border:1px solid rgba(255,255,255,0.06);margin-bottom:20px;display:flex;gap:20px;align-items:flex-start}
-.char-face{font-size:72px;line-height:1;flex-shrink:0;filter:drop-shadow(0 4px 12px rgba(0,0,0,0.4))}
-.char-right{flex:1}
-.char-name-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-.char-name{font-size:18px;font-weight:700;color:#fff}
-.char-badge{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
-.speech{background:#1c1c32;border-radius:12px;padding:14px 18px;font-size:13px;line-height:1.7;color:rgba(255,255,255,0.85);border:1px solid rgba(255,255,255,0.07);margin-bottom:14px;position:relative}
-.speech::before{content:'';position:absolute;left:-10px;top:16px;border:8px solid transparent;border-right-color:#1c1c32}
-.habits{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
-.hb{padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600}
-.sugs{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.sug{display:flex;gap:10px;background:#1a1a30;border-radius:8px;padding:10px 12px;border-left:3px solid}
-.sug-ico{font-size:16px;flex-shrink:0;margin-top:1px}
-.sug-body{font-size:11px;color:rgba(255,255,255,0.65);line-height:1.5}
-.sug-body strong{color:#fff;display:block;margin-bottom:2px}
-
-/* CHARTS */
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
-.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px}
-.card{background:#12122a;border-radius:12px;padding:18px;border:1px solid rgba(255,255,255,0.06)}
-.card-title{font-size:12px;font-weight:600;color:rgba(255,255,255,0.5);margin-bottom:14px;display:flex;align-items:center;gap:7px}
-.card-title i{font-style:normal;font-size:15px}
-canvas{max-height:200px}
-
-/* HEATMAP */
-.hm-grid{display:grid;grid-template-columns:repeat(24,1fr);gap:3px;margin-top:8px}
-.hm-cell{height:18px;border-radius:3px;cursor:default;transition:opacity .15s}
-.hm-cell:hover{opacity:.7}
-.hm-xl{display:flex;justify-content:space-between;font-size:9px;color:rgba(255,255,255,0.25);margin-top:3px}
-
-/* TABLE */
-.table-wrap{overflow-x:auto;margin-top:8px}
-table{width:100%;border-collapse:collapse;font-size:12px}
-th{text-align:left;padding:8px 10px;color:rgba(255,255,255,0.35);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid rgba(255,255,255,0.07)}
-td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.04);color:rgba(255,255,255,0.7)}
-tr:last-child td{border-bottom:none}
-.pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700}
-.pill-block{background:rgba(229,57,53,.2);color:#ef9a9a}
-.pill-warn{background:rgba(255,179,0,.2);color:#ffe082}
-.pill-silent{background:rgba(67,160,71,.2);color:#a5d6a7}
-
-/* LOADING */
-.loading{display:flex;align-items:center;justify-content:center;gap:10px;padding:48px;color:rgba(255,255,255,0.3);font-size:13px}
-@keyframes spin{to{transform:rotate(360deg)}}
-.spin{width:18px;height:18px;border:2px solid rgba(255,255,255,0.1);border-top-color:#02C39A;border-radius:50%;animation:spin .7s linear infinite}
+.btn:disabled{background:#394050;cursor:not-allowed}
+.status-banner{margin:16px 24px 0;border:1px solid;border-radius:12px;padding:14px 16px;font-size:13px;font-weight:600}
+.wrap{max-width:1400px;margin:0 auto;padding:16px 24px 28px}
+.grid6{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px}
+.metric{background:#12122a;border-radius:10px;border:1px solid rgba(255,255,255,0.07);padding:12px;text-align:center}
+.metric-v{font-size:22px;font-weight:700}
+.metric-l{font-size:10px;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:.06em;margin-top:4px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px}
+.card{background:#12122a;border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:16px}
+.card-title{font-size:12px;font-weight:700;color:rgba(255,255,255,0.65);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
+.badge{font-size:10px;padding:3px 8px;border-radius:999px;background:rgba(2,195,154,.15);color:#9be7d8}
+canvas{max-height:240px}
+.matrix{display:grid;grid-template-columns:110px repeat(3,1fr);gap:6px}
+.mx-h{font-size:11px;color:rgba(255,255,255,0.6);text-align:center;padding:6px 4px}
+.mx-r{font-size:11px;color:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center}
+.mx-c{border-radius:8px;padding:12px 8px;text-align:center;font-weight:700}
+.note{font-size:11px;color:rgba(255,255,255,0.5);margin-top:10px}
+.fpr-box{display:flex;gap:14px;align-items:center}
+.fpr-stats{display:grid;grid-template-columns:1fr;gap:6px;font-size:12px}
+.fpr-stats span{color:rgba(255,255,255,0.75)}
+.hm-wrap{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.hm-title{font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:8px}
+.hm-row{display:grid;grid-template-columns:repeat(10,1fr);gap:6px}
+.hm-cell{height:46px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+.hm-lbl{display:grid;grid-template-columns:repeat(10,1fr);gap:6px;margin-top:4px}
+.hm-lbl span{font-size:9px;color:rgba(255,255,255,0.35);text-align:center}
+.sim-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;margin:10px 0}
+.sim-row input[type="range"]{width:100%}
+.sim-chip{font-size:11px;padding:4px 8px;border-radius:8px;background:rgba(255,255,255,0.08)}
+.sim-result{font-size:12px;line-height:1.6;color:rgba(255,255,255,0.8)}
+.prog{height:10px;background:rgba(255,255,255,0.08);border-radius:999px;overflow:hidden}
+.prog > div{height:100%;background:#02C39A}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:rgba(255,255,255,0.4);text-align:left;padding:8px;border-bottom:1px solid rgba(255,255,255,0.08)}
+td{padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);color:rgba(255,255,255,0.8)}
+.pill{padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700}
+.pill-red{background:rgba(229,57,53,.2);color:#ef9a9a}
+.pill-amber{background:rgba(255,179,0,.2);color:#ffe082}
+.pill-green{background:rgba(67,160,71,.2);color:#a5d6a7}
+#cfgPrompt{display:none;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1c1c32;border:1px solid rgba(255,179,0,0.4);border-radius:10px;padding:14px 20px;z-index:999;align-items:center;gap:12px;min-width:420px;flex-wrap:wrap}
+#cfgPrompt input{background:#12122a;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:6px 10px;color:white;font-size:11px;flex:1;min-width:140px}
 </style>
 </head>
 <body>
-
 <div class="hdr">
-  <div class="hdr-left">
-    <div class="shield">ðŸ›¡</div>
-    <div>
-      <div class="hdr-title">Core Sentinel</div>
-      <div class="hdr-sub">Live Behavior Analytics</div>
-    </div>
+  <div>
+    <div class="hdr-title">Core Sentinel - ML Health Dashboard</div>
+    <div class="hdr-sub">Model reliability, drift, thresholds, active learning</div>
   </div>
-  <div class="hdr-right">
-    <div class="live-dot"></div>
-    <span class="live-label">LIVE</span>
-    <span class="sync-time" id="syncTime">Not loaded</span>
-    <span id="loadStatus" style="font-size:11px;max-width:200px"></span>
-    <button class="btn btn-ghost" onclick="loadData()" id="refreshBtn">âŸ³ Refresh</button>
+  <div class="top-row">
+    <span class="hdr-note">Admin access required - model internals</span>
+    <span id="syncTime" style="font-size:11px;color:rgba(255,255,255,0.35)">Not loaded</span>
+    <button id="refreshBtn" class="btn" onclick="loadData()">Refresh</button>
   </div>
 </div>
+
+<div id="modelStatusBanner" class="status-banner"></div>
 
 <div class="wrap">
-
-  <div class="stats-row" id="statsRow">
-    <div class="stat"><div class="stat-num" id="sTotal" style="color:#02C39A">â€”</div><div class="stat-lbl">Total pastes</div><div class="stat-bar" id="barTotal" style="background:#02C39A;width:0%"></div></div>
-    <div class="stat"><div class="stat-num" id="sBlock" style="color:#E53935">â€”</div><div class="stat-lbl">Blocked</div><div class="stat-bar" id="barBlock" style="background:#E53935;width:0%"></div></div>
-    <div class="stat"><div class="stat-num" id="sWarn"  style="color:#FFB300">â€”</div><div class="stat-lbl">Warned</div><div class="stat-bar" id="barWarn" style="background:#FFB300;width:0%"></div></div>
-    <div class="stat"><div class="stat-num" id="sSafe"  style="color:#43A047">â€”</div><div class="stat-lbl">Safe</div><div class="stat-bar" id="barSafe" style="background:#43A047;width:0%"></div></div>
-    <div class="stat"><div class="stat-num" id="sAvg"   style="color:#9C27B0">â€”</div><div class="stat-lbl">Avg risk score</div><div class="stat-bar" id="barAvg" style="background:#9C27B0;width:0%"></div></div>
+  <div class="grid6">
+    <div class="metric"><div class="metric-v" style="color:#43A047">0.976</div><div class="metric-l">High Precision</div></div>
+    <div class="metric"><div class="metric-v" style="color:#43A047">0.987</div><div class="metric-l">High Recall</div></div>
+    <div class="metric"><div class="metric-v" style="color:#43A047">0.982</div><div class="metric-l">High F1</div></div>
+    <div class="metric"><div class="metric-v" style="color:#FFB300">0.387</div><div class="metric-l">Medium F1</div></div>
+    <div class="metric"><div class="metric-v" style="color:#02C39A">97.0%</div><div class="metric-l">Overall Accuracy</div></div>
+    <div class="metric"><div class="metric-v" style="color:#02C39A">0.790</div><div class="metric-l">Macro F1</div></div>
   </div>
-
-  <div id="charSection"><div class="loading"><div class="spin"></div>Loading behavior profileâ€¦</div></div>
 
   <div class="grid2">
-    <div class="card"><div class="card-title"><i>ðŸŽ¯</i> Action breakdown</div><canvas id="donut"></canvas></div>
-    <div class="card"><div class="card-title"><i>ðŸ“Š</i> Risk score distribution</div><canvas id="hist"></canvas></div>
+    <div class="card"><div class="card-title">Precision-Recall Curve <span class="badge">Operating point: R=0.987, P=0.976</span></div><canvas id="prChart"></canvas></div>
+    <div class="card"><div class="card-title">ROC Curve <span class="badge">AUC 0.998</span></div><canvas id="rocChart"></canvas></div>
   </div>
 
-  <div class="grid3">
-    <div class="card"><div class="card-title"><i>ðŸ”</i> Top PII types detected</div><canvas id="pii"></canvas></div>
-    <div class="card"><div class="card-title"><i>â°</i> Pastes by hour of day</div><canvas id="hour"></canvas></div>
-    <div class="card"><div class="card-title"><i>ðŸ“…</i> 7-day risk trend</div><canvas id="trend"></canvas></div>
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">Confusion Matrix</div>
+      <div class="matrix" id="cmatrix"></div>
+      <div class="note">Zero low<->high crossings - safe text never gets hard blocked.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Live FPR Monitor</div>
+      <div class="fpr-box">
+        <div style="width:180px"><canvas id="fprGauge"></canvas></div>
+        <div class="fpr-stats">
+          <div><span>FPR proxy:</span> <strong id="fprVal">-</strong></div>
+          <div><span>Total blocks:</span> <strong id="fprBlocks">-</strong></div>
+          <div><span>Total snoozed:</span> <strong id="fprSnoozed">-</strong></div>
+          <div><span>Override rate:</span> <strong id="fprOverride">-</strong></div>
+          <div class="note">Target &lt; 5%, alert &gt; 10%</div>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <div class="card" style="margin-bottom:16px">
-    <div class="card-title"><i>ðŸŒ¡ï¸</i> Today's risk heatmap by hour</div>
-    <div class="hm-grid" id="heatmap"></div>
-    <div class="hm-xl"><span>12am</span><span>3am</span><span>6am</span><span>9am</span><span>12pm</span><span>3pm</span><span>6pm</span><span>9pm</span><span>11pm</span></div>
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-title">Score Distribution Heatmap (Current vs Previous Week)</div>
+    <div class="hm-wrap">
+      <div><div class="hm-title">Current week</div><div id="hmCurrent"></div></div>
+      <div><div class="hm-title">Previous week</div><div id="hmPrev"></div></div>
+    </div>
   </div>
 
-  <div class="card">
-    <div class="card-title"><i>ðŸ•</i> Recent events</div>
-    <div class="table-wrap"><table id="recentTable">
-      <thead><tr><th>Time</th><th>Action</th><th>Score</th><th>PII class</th><th>LLM</th></tr></thead>
-      <tbody id="recentBody"></tbody>
-    </table></div>
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">Drift Detection (Weekly correction rate)</div>
+      <canvas id="driftChart"></canvas>
+      <div id="driftNote" class="note"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Threshold Simulator</div>
+      <div class="sim-row">
+        <div>Warn threshold: <strong id="warnVal">40</strong></div>
+        <span class="sim-chip">Range 20-60</span>
+      </div>
+      <input id="warnRange" type="range" min="20" max="60" value="40">
+      <div class="sim-row">
+        <div>Block threshold: <strong id="blockVal">70</strong></div>
+        <span class="sim-chip">Range 50-95</span>
+      </div>
+      <input id="blockRange" type="range" min="50" max="95" value="70">
+      <div class="sim-result" id="simResult" style="margin-top:10px"></div>
+      <button class="btn" style="margin-top:10px" onclick="copyThresholdConfig()">Apply to config</button>
+      <div class="note">Copies suggested values for `risk_policy.json`</div>
+    </div>
   </div>
 
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">Active Learning Status</div>
+      <div class="sim-result" id="alStats"></div>
+      <div class="prog" style="margin:10px 0"><div id="alProg" style="width:0%"></div></div>
+      <div class="note" id="alTop"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">False Positive Log (Recent 20)</div>
+      <table>
+        <thead><tr><th>Time</th><th>Score</th><th>PII class</th><th>Action</th><th>Feedback</th></tr></thead>
+        <tbody id="fpBody"></tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
-<div id="cfgPrompt" style="display:none;
-  position:fixed;bottom:20px;left:50%;
-  transform:translateX(-50%);
-  background:#1c1c32;border:1px solid
-  rgba(255,179,0,0.4);border-radius:10px;
-  padding:14px 20px;z-index:999;
-  align-items:center;gap:12px;
-  min-width:400px;flex-wrap:wrap">
-  <span style="font-size:13px;color:#ffe082">
-    âš™ï¸ Enter Supabase credentials to load data
-  </span>
-  <input id="quickUrl" placeholder="Project URL"
-    style="background:#12122a;border:1px solid
-    rgba(255,255,255,0.1);border-radius:6px;
-    padding:6px 10px;color:white;font-size:11px;
-    flex:1;min-width:140px">
-  <input id="quickKey" placeholder="Anon key"
-    type="password"
-    style="background:#12122a;border:1px solid
-    rgba(255,255,255,0.1);border-radius:6px;
-    padding:6px 10px;color:white;font-size:11px;
-    flex:1;min-width:140px">
-  <button onclick="saveAndLoad()" style="
-    background:#02C39A;color:#fff;border:none;
-    border-radius:6px;padding:6px 14px;
-    font-size:12px;font-weight:600;cursor:pointer;
-    white-space:nowrap">
-    Connect
-  </button>
+<div id="cfgPrompt">
+  <span style="font-size:13px;color:#ffe082">Enter Supabase credentials to load ML health data</span>
+  <input id="quickUrl" placeholder="Project URL">
+  <input id="quickKey" placeholder="Anon key" type="password">
+  <button class="btn" onclick="saveAndLoad()">Connect</button>
 </div>
 
 <script>
+const PR_RECALL = [0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.987,1.0];
+const PR_PRECISION = [1,1,1,0.999,0.998,0.997,0.995,0.992,0.988,0.983,0.979,0.976,0.5];
+const ROC_FPR = [0,0.002,0.005,0.01,0.02,0.05,0.1,0.2,0.5,1.0];
+const ROC_TPR = [0,0.85,0.92,0.95,0.97,0.982,0.99,0.995,0.999,1.0];
+const CM = [[500,0,0],[0,56,116],[0,61,4767]];
+const charts = {};
+let eventsData = [];
+let feedbackData = [];
+
 function saveAndLoad(){
-  var u = document.getElementById('quickUrl')
-    .value.trim();
-  var k = document.getElementById('quickKey')
-    .value.trim();
+  var u = document.getElementById('quickUrl').value.trim();
+  var k = document.getElementById('quickKey').value.trim();
   if(!u || !k) return;
   localStorage.setItem('sb_url', u);
   localStorage.setItem('sb_key', k);
-  // small delay to ensure localStorage is written
   setTimeout(function(){ location.reload(); }, 100);
 }
 
 window.addEventListener('load', function(){
   var u = localStorage.getItem('sb_url') || '';
   var k = localStorage.getItem('sb_key') || '';
-  
   var prompt = document.getElementById('cfgPrompt');
-  
   if(u && k){
-    // hide prompt immediately
     if(prompt) prompt.style.display = 'none';
-    // load data
     if(typeof loadData === 'function') loadData();
     else if(typeof connect === 'function') connect();
   } else {
-    // show prompt
     if(prompt) prompt.style.display = 'flex';
   }
 });
 
-let C = {};
-let data = [];
-
-function setStatus(msg, color){
-  const el = document.getElementById('loadStatus');
-  if(!el) return;
-  el.textContent = msg || '';
-  el.style.color = color || 'rgba(255,255,255,0.35)';
-}
-
 async function loadData(){
-  const url = (localStorage.getItem('sb_url') || '').trim();
+  const url = (localStorage.getItem('sb_url') || '').trim().replace(/\/$/,'');
   const key = (localStorage.getItem('sb_key') || '').trim();
-  if(!url || !key){
-    setStatus('Not configured', '#FFB300');
-    return;
-  }
+  if(!url || !key) return;
   const btn = document.getElementById('refreshBtn');
   btn.disabled = true;
   btn.textContent = 'Loading...';
   try{
-    const endpoint = url + '/rest/v1/guardrail_events?select=*&order=timestamp.desc&limit=1000';
-    const r = await fetch(endpoint, {
-      headers:{ apikey:key, Authorization:'Bearer ' + key }
-    });
-    if(!r.ok) throw new Error(await r.text());
-    data = await r.json();
-    renderAll(data);
-    setStatus('Connected - ' + data.length + ' rows', '#43A047');
-    document.getElementById('syncTime').textContent =
-      'Updated ' + new Date().toLocaleTimeString();
+    const h = { apikey:key, Authorization:'Bearer ' + key };
+    const ev = await fetch(url + '/rest/v1/guardrail_events?select=*&order=timestamp.desc&limit=5000', {headers:h});
+    if(!ev.ok) throw new Error('events fetch failed');
+    eventsData = await ev.json();
+    const fb = await fetch(url + '/rest/v1/feedback_corrections?select=*&order=timestamp.desc&limit=5000', {headers:h});
+    feedbackData = fb.ok ? await fb.json() : [];
+    renderAll();
+    document.getElementById('syncTime').textContent = 'Updated ' + new Date().toLocaleTimeString();
   }catch(e){
-    setStatus('Error: ' + String(e.message || '').slice(0,40), '#E53935');
+    document.getElementById('modelStatusBanner').style.background = 'rgba(229,57,53,0.12)';
+    document.getElementById('modelStatusBanner').style.borderColor = 'rgba(229,57,53,0.45)';
+    document.getElementById('modelStatusBanner').style.color = '#ef9a9a';
+    document.getElementById('modelStatusBanner').textContent = 'Failed to load live data: ' + String(e.message || e);
   }
   btn.disabled = false;
   btn.textContent = 'Refresh';
 }
 
-function renderAll(rows){
-  if(!rows.length) return;
-  const total = rows.length;
-  const blocks = rows.filter(function(r){ return r.action === 'block'; }).length;
-  const warns = rows.filter(function(r){ return r.action === 'warn'; }).length;
-  const silent = rows.filter(function(r){ return r.action === 'silent'; }).length;
-  const avg = Math.round(rows.reduce(function(s,r){ return s + (r.risk_score || 0); }, 0) / total);
-
-  const blockPct = Math.round(blocks / total * 100);
-  const warnPct = Math.round(warns / total * 100);
-  const safePct = Math.round(silent / total * 100);
-
-  document.getElementById('sTotal').textContent = total;
-  document.getElementById('sBlock').textContent = blocks;
-  document.getElementById('sWarn').textContent = warns;
-  document.getElementById('sSafe').textContent = silent;
-  document.getElementById('sAvg').textContent = avg;
-
-  setTimeout(function(){
-    document.getElementById('barBlock').style.width = blockPct + '%';
-    document.getElementById('barWarn').style.width = warnPct + '%';
-    document.getElementById('barSafe').style.width = safePct + '%';
-    document.getElementById('barAvg').style.width = avg + '%';
-    document.getElementById('barTotal').style.width = '100%';
-  }, 100);
-
-  renderCharacter(blockPct, warnPct, safePct, avg, rows);
-  renderDonut(blocks, warns, silent);
-  renderHist(rows);
-  renderPII(rows);
-  renderHour(rows);
-  renderTrend(rows);
-  renderHeatmap(rows);
-  renderTable(rows.slice(0,15));
+function renderAll(){
+  renderStatusBanner();
+  renderPR();
+  renderROC();
+  renderConfusion();
+  renderFPRGauge();
+  renderHeatmaps();
+  renderDrift();
+  renderThresholdSim();
+  renderActiveLearning();
+  renderFalsePositives();
 }
 
-function getTopPII(rows){
-  const c = {};
-  rows.forEach(function(r){
-    const p = (r.pii_classes || '').trim();
-    if(p && p !== 'low') c[p] = (c[p] || 0) + 1;
-  });
-  return Object.entries(c).sort(function(a,b){ return b[1] - a[1]; }).slice(0,3);
+function renderStatusBanner(){
+  const wrong = feedbackData.filter(function(r){ return String(r.predicted) !== String(r.correct); }).length;
+  const total = eventsData.length || 1;
+  const rate = wrong / total;
+  const b = document.getElementById('modelStatusBanner');
+  let color = '#a5d6a7';
+  let bg = 'rgba(67,160,71,0.15)';
+  let border = 'rgba(67,160,71,0.45)';
+  let text = 'Model healthy';
+  if(rate > 0.15){ color = '#ef9a9a'; bg = 'rgba(229,57,53,0.15)'; border='rgba(229,57,53,0.45)'; text = 'Retrain required'; }
+  else if(rate > 0.08){ color = '#ffe082'; bg = 'rgba(255,179,0,0.15)'; border='rgba(255,179,0,0.45)'; text = 'Drift detected'; }
+  b.style.color = color; b.style.background = bg; b.style.borderColor = border;
+  b.textContent = text + ' - correction rate ' + (rate * 100).toFixed(1) + '% (' + wrong + ' wrong feedback / ' + (eventsData.length || 0) + ' events)';
 }
 
-function renderCharacter(blockPct, warnPct, safePct, avg, rows){
-  let name = 'Safe Sam';
-  let emoji = 'OK';
-  let badge = '#43A047';
-  let msg = 'Great job. Safe: ' + safePct + '%, Warn: ' + warnPct + '%, Block: ' + blockPct + '%. Avg score: ' + avg + '.';
-  if(blockPct >= 30){
-    name = 'Danger Dave';
-    emoji = '!!';
-    badge = '#E53935';
-    msg = 'High risk behavior detected. Blocked pastes: ' + blockPct + '%. Avg score: ' + avg + '.';
-  } else if(blockPct >= 15){
-    name = 'Careless Carl';
-    emoji = '!';
-    badge = '#FFB300';
-    msg = 'Caution: warnings and blocks are elevated. Warn: ' + warnPct + '%, Block: ' + blockPct + '%.';
-  } else if(blockPct >= 5){
-    name = 'Cautious Chris';
-    emoji = '~';
-    badge = '#1565C0';
-    msg = 'Improving. Safe: ' + safePct + '%. Keep reducing warnings.';
-  }
-
-  const top = getTopPII(rows);
-  let topHTML = '';
-  if(top.length){
-    topHTML = '<div class="habits"><span style="font-size:11px;color:rgba(255,255,255,0.3);margin-right:4px">Top PII:</span>';
-    top.forEach(function(pair){
-      topHTML += '<span class="hb" style="background:rgba(229,57,53,.18);color:#ef9a9a">' + pair[0] + ' (' + pair[1] + 'x)</span>';
-    });
-    topHTML += '</div>';
-  }
-
-  document.getElementById('charSection').innerHTML =
-    '<div class="char-section">' +
-      '<div class="char-face">' + emoji + '</div>' +
-      '<div class="char-right">' +
-        '<div class="char-name-row">' +
-          '<div class="char-name">' + name + '</div>' +
-          '<span class="char-badge" style="background:' + badge + '22;color:' + badge + '">' + name + '</span>' +
-        '</div>' +
-        '<div class="speech">' + msg + '</div>' +
-        topHTML +
-      '</div>' +
-    '</div>';
-}
-
-function mk(id, type, dataObj, opts){
-  opts = opts || {};
-  if(C[id]) C[id].destroy();
-  C[id] = new Chart(document.getElementById(id).getContext('2d'), {
-    type: type,
-    data: dataObj,
-    options: Object.assign({
-      responsive:true,
-      maintainAspectRatio:true,
-      plugins:{ legend:{ labels:{ color:'rgba(255,255,255,0.5)', font:{size:11}, boxWidth:12 } } },
-      scales: (type === 'bar' || type === 'line') ? {
-        x:{ ticks:{ color:'rgba(255,255,255,0.35)', font:{size:10} }, grid:{ color:'rgba(255,255,255,0.04)' } },
-        y:{ ticks:{ color:'rgba(255,255,255,0.35)', font:{size:10} }, grid:{ color:'rgba(255,255,255,0.04)' } }
-      } : {}
-    }, opts)
+function renderPR(){
+  if(charts.pr) charts.pr.destroy();
+  charts.pr = new Chart(document.getElementById('prChart'), {
+    type:'line',
+    data:{
+      labels:PR_RECALL,
+      datasets:[
+        {label:'PR curve',data:PR_PRECISION,borderColor:'#02C39A',backgroundColor:'rgba(2,195,154,0.06)',tension:0.25,fill:false,pointRadius:2},
+        {label:'Operating point',data:PR_RECALL.map(function(v,i){ return i===11 ? 0.976 : null; }),borderColor:'#E53935',backgroundColor:'#E53935',pointRadius:5,showLine:false},
+        {label:'Minimum precision target',data:PR_RECALL.map(function(){ return 0.90; }),borderColor:'#FFB300',borderDash:[5,5],pointRadius:0}
+      ]
+    },
+    options:{plugins:{legend:{labels:{color:'rgba(255,255,255,0.6)'}}},scales:{x:{title:{display:true,text:'Recall',color:'rgba(255,255,255,0.6)'},ticks:{color:'rgba(255,255,255,0.5)'},grid:{color:'rgba(255,255,255,0.06)'}},y:{title:{display:true,text:'Precision',color:'rgba(255,255,255,0.6)'},ticks:{color:'rgba(255,255,255,0.5)'},min:0.4,max:1,grid:{color:'rgba(255,255,255,0.06)'}}}}
   });
 }
 
-function renderDonut(b,w,s){
-  mk('donut', 'doughnut', {
-    labels:['Blocked','Warned','Safe'],
-    datasets:[{ data:[b,w,s], backgroundColor:['#E53935','#FFB300','#43A047'], borderWidth:0, hoverOffset:4 }]
-  }, { plugins:{ legend:{ position:'right' } } });
+function renderROC(){
+  if(charts.roc) charts.roc.destroy();
+  charts.roc = new Chart(document.getElementById('rocChart'), {
+    type:'line',
+    data:{
+      labels:ROC_FPR,
+      datasets:[
+        {label:'ROC',data:ROC_TPR,borderColor:'#02C39A',tension:0.25,pointRadius:2,fill:false},
+        {label:'Random classifier',data:ROC_FPR,borderColor:'rgba(255,255,255,0.35)',borderDash:[5,5],pointRadius:0},
+        {label:'Operating point',data:ROC_FPR.map(function(v){ return Math.abs(v - 0.02) < 0.001 ? 0.987 : null; }),borderColor:'#E53935',backgroundColor:'#E53935',pointRadius:5,showLine:false}
+      ]
+    },
+    options:{plugins:{legend:{labels:{color:'rgba(255,255,255,0.6)'}}},scales:{x:{title:{display:true,text:'False Positive Rate',color:'rgba(255,255,255,0.6)'},ticks:{color:'rgba(255,255,255,0.5)'},min:0,max:1,grid:{color:'rgba(255,255,255,0.06)'}},y:{title:{display:true,text:'True Positive Rate',color:'rgba(255,255,255,0.6)'},ticks:{color:'rgba(255,255,255,0.5)'},min:0,max:1,grid:{color:'rgba(255,255,255,0.06)'}}}}
+  });
 }
 
-function renderHist(rows){
-  const bk = Array(10).fill(0);
-  rows.forEach(function(r){ bk[Math.min(9, Math.floor((r.risk_score || 0) / 10))]++; });
-  const cols = bk.map(function(_,i){ return i <= 3 ? '#43A047' : (i <= 6 ? '#FFB300' : '#E53935'); });
-  mk('hist', 'bar', {
-    labels:['0','10','20','30','40','50','60','70','80','90'],
-    datasets:[{ label:'Pastes', data:bk, backgroundColor:cols, borderRadius:3 }]
-  }, { plugins:{ legend:{ display:false } } });
-}
-
-function renderPII(rows){
-  var SKIP = ['empty_input', 'dedup_cached',
-              'O', 'low', '', 'TEST', 'test',
-              'dedup'];
-  // filter before counting
-  rows = rows.filter(function(r){
-    var p = (r.pii_classes || r.pii_class || '')
-      .trim();
-    return SKIP.indexOf(p) === -1;
-  });
-  const c = {};
-  rows.forEach(function(r){
-    const p = (r.pii_classes || '').trim();
-    if(p) c[p] = (c[p] || 0) + 1;
-  });
-  const s = Object.entries(c).sort(function(a,b){ return b[1] - a[1]; }).slice(0,7);
-  if(!s.length) return;
-  mk('pii', 'bar', {
-    labels:s.map(function(kv){ return kv[0].length > 14 ? kv[0].slice(0,14) + '...' : kv[0]; }),
-    datasets:[{ label:'Count', data:s.map(function(kv){ return kv[1]; }), backgroundColor:'rgba(229,57,53,0.65)', borderRadius:3 }]
-  }, { indexAxis:'y', plugins:{ legend:{ display:false } } });
-}
-
-function renderHour(rows){
-  const h = Array(24).fill(0);
-  rows.forEach(function(r){
-    if(!r.timestamp) return;
-    try { h[new Date(r.timestamp).getHours()]++; } catch(e) {}
-  });
-  const labels = Array.from({length:24}, function(_, i){
-    if(i % 6 !== 0) return '';
-    if(i === 0) return '12a';
-    if(i === 12) return '12p';
-    return i < 12 ? (i + 'a') : ((i - 12) + 'p');
-  });
-  mk('hour', 'line', {
-    labels:labels,
-    datasets:[{ label:'Pastes', data:h, borderColor:'#02C39A', backgroundColor:'rgba(2,195,154,0.08)', tension:0.4, fill:true, pointRadius:2, pointHoverRadius:4 }]
-  }, { plugins:{ legend:{ display:false } } });
-}
-
-function renderTrend(rows){
-  const days = {};
-  for(let i=6; i>=0; i--){
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    days[d.toISOString().slice(0,10)] = { block:0, warn:0, silent:0 };
-  }
-  rows.forEach(function(r){
-    if(!r.timestamp) return;
-    const d = r.timestamp.slice(0,10);
-    if(days[d]) days[d][r.action] = (days[d][r.action] || 0) + 1;
-  });
-  mk('trend', 'line', {
-    labels:Object.keys(days).map(function(d){ return d.slice(5); }),
-    datasets:[
-      { label:'Block', data:Object.values(days).map(function(v){ return v.block; }), borderColor:'#E53935', backgroundColor:'rgba(229,57,53,0.08)', tension:0.4, fill:true, pointRadius:2 },
-      { label:'Warn', data:Object.values(days).map(function(v){ return v.warn; }), borderColor:'#FFB300', backgroundColor:'rgba(255,179,0,0.08)', tension:0.4, fill:true, pointRadius:2 },
-      { label:'Safe', data:Object.values(days).map(function(v){ return v.silent; }), borderColor:'#43A047', backgroundColor:'rgba(67,160,71,0.08)', tension:0.4, fill:true, pointRadius:2 }
-    ]
-  }, { plugins:{ legend:{ position:'bottom', labels:{ boxWidth:10, font:{size:10} } } } });
-}
-
-function renderHeatmap(rows){
-  const h = Array(24).fill(0);
-  const today = new Date().toISOString().slice(0,10);
-  rows.forEach(function(r){
-    if(!r.timestamp || !r.timestamp.startsWith(today)) return;
-    try { h[new Date(r.timestamp).getHours()] += (r.risk_score || 0) / 100; } catch(e) {}
-  });
-  const max = Math.max.apply(null, h.concat([1]));
-  document.getElementById('heatmap').innerHTML = h.map(function(v, i){
-    const pct = v / max;
-    let bg = 'rgba(255,255,255,0.04)';
-    if(pct > 0){
-      if(pct < 0.33){
-        bg = 'rgba(67,160,71,' + (0.15 + pct * 0.7) + ')';
-      } else if(pct < 0.66){
-        bg = 'rgba(255,179,0,' + (0.15 + pct * 0.7) + ')';
-      } else {
-        bg = 'rgba(229,57,53,' + (0.15 + pct * 0.7) + ')';
-      }
+function renderConfusion(){
+  const el = document.getElementById('cmatrix');
+  const top = ['Pred:Low','Pred:Med','Pred:High'];
+  let html = '<div></div>';
+  top.forEach(function(h){ html += '<div class="mx-h">' + h + '</div>'; });
+  const rows = ['True:Low','True:Med','True:High'];
+  const max = 4767;
+  for(let r=0; r<3; r++){
+    html += '<div class="mx-r">' + rows[r] + '</div>';
+    for(let c=0; c<3; c++){
+      const v = CM[r][c];
+      let bg = 'rgba(255,255,255,0.04)';
+      if(v > 0 && r === c) bg = 'rgba(67,160,71,' + (0.25 + (v/max)*0.5) + ')';
+      if(v > 0 && r !== c) bg = 'rgba(229,57,53,' + (0.2 + (v/max)*0.55) + ')';
+      html += '<div class="mx-c" style="background:' + bg + '">' + v + '</div>';
     }
-    return '<div class="hm-cell" style="background:' + bg + '" title="' + i + ':00"></div>';
-  }).join('');
+  }
+  el.innerHTML = html;
 }
 
-function renderTable(rows){
-  document.getElementById('recentBody').innerHTML = rows.map(function(r){
-    const t = r.timestamp ? new Date(r.timestamp).toLocaleTimeString() : '-';
-    const pillCls = r.action === 'block' ? 'pill-block' : (r.action === 'warn' ? 'pill-warn' : 'pill-silent');
+function renderFPRGauge(){
+  const blocks = eventsData.filter(function(r){ return r.action === 'block'; });
+  const snoozed = blocks.filter(function(r){ return !!r.snoozed; }).length;
+  const overridden = eventsData.filter(function(r){ return !!r.overridden; }).length;
+  const fpr = blocks.length ? (snoozed / blocks.length) : 0;
+  let c = '#43A047';
+  if(fpr > 0.10) c = '#E53935'; else if(fpr > 0.05) c = '#FFB300';
+  document.getElementById('fprVal').textContent = (fpr * 100).toFixed(1) + '%';
+  document.getElementById('fprVal').style.color = c;
+  document.getElementById('fprBlocks').textContent = String(blocks.length);
+  document.getElementById('fprSnoozed').textContent = String(snoozed);
+  document.getElementById('fprOverride').textContent = eventsData.length ? ((overridden / eventsData.length) * 100).toFixed(1) + '%' : '0%';
+  if(charts.fpr) charts.fpr.destroy();
+  charts.fpr = new Chart(document.getElementById('fprGauge'), {
+    type:'doughnut',
+    data:{labels:['FPR','Remaining'],datasets:[{data:[Math.min(fpr*100,100),Math.max(100 - fpr*100,0)],backgroundColor:[c,'rgba(255,255,255,0.08)'],borderWidth:0}]},
+    options:{cutout:'72%',plugins:{legend:{display:false}}}
+  });
+}
+
+function getWeekWindow(offsetWeeks){
+  const now = new Date();
+  const day = now.getDay();
+  const end = new Date(now);
+  end.setDate(now.getDate() - day - (offsetWeeks * 7));
+  end.setHours(23,59,59,999);
+  const start = new Date(end);
+  start.setDate(end.getDate() - 6);
+  start.setHours(0,0,0,0);
+  return {start:start, end:end};
+}
+
+function bucketize(rows, start, end){
+  const b = Array(10).fill(0);
+  rows.forEach(function(r){
+    if(!r.timestamp) return;
+    const t = new Date(r.timestamp);
+    if(t < start || t > end) return;
+    const s = Number(r.risk_score || 0);
+    const i = Math.max(0, Math.min(9, Math.floor(s / 10)));
+    b[i] += 1;
+  });
+  return b;
+}
+
+function colorForBucket(i, count, max){
+  if(count === 0) return 'rgba(255,255,255,0.04)';
+  const a = 0.18 + (count / Math.max(max,1)) * 0.72;
+  if(i < 4) return 'rgba(67,160,71,' + a + ')';
+  if(i < 7) return 'rgba(255,179,0,' + a + ')';
+  return 'rgba(229,57,53,' + a + ')';
+}
+
+function renderBucketRow(elId, arr){
+  const max = Math.max.apply(null, arr.concat([1]));
+  let html = '<div class="hm-row">';
+  for(let i=0;i<10;i++){
+    html += '<div class="hm-cell" style="background:' + colorForBucket(i, arr[i], max) + '">' + arr[i] + '</div>';
+  }
+  html += '</div><div class="hm-lbl">';
+  for(let i=0;i<10;i++) html += '<span>' + (i*10) + '-' + (i*10+9) + '</span>';
+  html += '</div>';
+  document.getElementById(elId).innerHTML = html;
+}
+
+function renderHeatmaps(){
+  const cw = getWeekWindow(0);
+  const pw = getWeekWindow(1);
+  renderBucketRow('hmCurrent', bucketize(eventsData, cw.start, cw.end));
+  renderBucketRow('hmPrev', bucketize(eventsData, pw.start, pw.end));
+}
+
+function getFeedbackTimestamp(r){
+  return r.timestamp || r.created_at || r.corrected_at || null;
+}
+
+function renderDrift(){
+  const now = new Date();
+  const labels = [];
+  const rates = [];
+  let hasReal = false;
+  for(let i=7;i>=0;i--){
+    const end = new Date(now);
+    end.setDate(now.getDate() - (i*7));
+    const start = new Date(end);
+    start.setDate(end.getDate() - 6);
+    const inW = feedbackData.filter(function(r){
+      const ts = getFeedbackTimestamp(r);
+      if(!ts) return false;
+      const t = new Date(ts);
+      return t >= start && t <= end;
+    });
+    const wrong = inW.filter(function(r){ return String(r.predicted) !== String(r.correct); }).length;
+    const rate = inW.length ? (wrong / inW.length) : 0;
+    if(inW.length) hasReal = true;
+    labels.push((start.getMonth()+1) + '/' + start.getDate());
+    rates.push(Number((rate * 100).toFixed(2)));
+  }
+  if(!hasReal){
+    labels.splice(0, labels.length, 'W1','W2','W3','W4','W5','W6','W7','W8');
+    rates.splice(0, rates.length, 2,3,4,5,4,6,5,7);
+    document.getElementById('driftNote').textContent = 'No corrections yet - showing demo drift trend.';
+  } else {
+    document.getElementById('driftNote').textContent = 'Live weekly correction rate from feedback_corrections.';
+  }
+  if(charts.drift) charts.drift.destroy();
+  charts.drift = new Chart(document.getElementById('driftChart'), {
+    type:'line',
+    data:{labels:labels,datasets:[
+      {label:'Correction rate %',data:rates,borderColor:'#02C39A',backgroundColor:'rgba(2,195,154,0.08)',fill:true,tension:0.35},
+      {label:'Warning 8%',data:labels.map(function(){ return 8; }),borderColor:'#FFB300',borderDash:[5,5],pointRadius:0},
+      {label:'Retrain 15%',data:labels.map(function(){ return 15; }),borderColor:'#E53935',borderDash:[5,5],pointRadius:0}
+    ]},
+    options:{plugins:{legend:{labels:{color:'rgba(255,255,255,0.6)'}}},scales:{x:{ticks:{color:'rgba(255,255,255,0.5)'},grid:{color:'rgba(255,255,255,0.06)'}},y:{ticks:{color:'rgba(255,255,255,0.5)'},grid:{color:'rgba(255,255,255,0.06)'}}}}
+  });
+}
+
+function computeSim(warnT, blockT){
+  let wb = 0, ww = 0, ws = 0;
+  eventsData.forEach(function(r){
+    const s = Number(r.risk_score || 0);
+    if(s >= blockT) wb++;
+    else if(s >= warnT) ww++;
+    else ws++;
+  });
+  return {would_block:wb, would_warn:ww, would_safe:ws};
+}
+
+function renderThresholdSim(){
+  const wr = document.getElementById('warnRange');
+  const br = document.getElementById('blockRange');
+  function draw(){
+    const w = Number(wr.value);
+    const b = Number(br.value);
+    document.getElementById('warnVal').textContent = String(w);
+    document.getElementById('blockVal').textContent = String(b);
+    const curB = eventsData.filter(function(r){ return r.action === 'block'; }).length;
+    const curW = eventsData.filter(function(r){ return r.action === 'warn'; }).length;
+    const curS = eventsData.filter(function(r){ return r.action === 'silent'; }).length;
+    const sim = computeSim(w, b);
+    const blocks = eventsData.filter(function(r){ return r.action === 'block'; });
+    const snoozed = blocks.filter(function(r){ return !!r.snoozed; }).length;
+    const curFpr = blocks.length ? (snoozed / blocks.length) : 0;
+    const estFpr = sim.would_block ? (curFpr * 100).toFixed(1) : '0.0';
+    let txt = '';
+    txt += 'Simulated block: ' + sim.would_block + ' (' + (sim.would_block - curB >= 0 ? '+' : '') + (sim.would_block - curB) + ' vs current)<br>';
+    txt += 'Simulated warn: ' + sim.would_warn + ' (' + (sim.would_warn - curW >= 0 ? '+' : '') + (sim.would_warn - curW) + ' vs current)<br>';
+    txt += 'Simulated safe: ' + sim.would_safe + ' (' + (sim.would_safe - curS >= 0 ? '+' : '') + (sim.would_safe - curS) + ' vs current)<br>';
+    txt += 'Estimated FPR proxy: ~' + estFpr + '%';
+    if(w >= b) txt += '<br><span style="color:#ef9a9a">Warning: warn threshold must be lower than block threshold.</span>';
+    document.getElementById('simResult').innerHTML = txt;
+  }
+  wr.oninput = draw;
+  br.oninput = draw;
+  draw();
+}
+
+function copyThresholdConfig(){
+  const w = document.getElementById('warnRange').value;
+  const b = document.getElementById('blockRange').value;
+  const text = '{\n  "warn_threshold": ' + w + ',\n  "block_threshold": ' + b + '\n}';
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text);
+    alert('Copied threshold config for risk_policy.json');
+  } else {
+    prompt('Copy this config:', text);
+  }
+}
+
+function renderActiveLearning(){
+  const total = feedbackData.length;
+  const wrong = feedbackData.filter(function(r){ return String(r.predicted) !== String(r.correct); }).length;
+  const pending = feedbackData.filter(function(r){ return String(r.predicted) !== String(r.correct) && !r.used_for_training; }).length;
+  const pct = Math.min(100, (pending / 30) * 100);
+  document.getElementById('alProg').style.width = pct + '%';
+  document.getElementById('alStats').innerHTML =
+    'Total corrections collected: <strong>' + total + '</strong><br>' +
+    'Wrong corrections: <strong>' + wrong + '</strong><br>' +
+    'Pending for next retrain: <strong>' + pending + '</strong><br>' +
+    'Progress to retrain target: <strong>' + pending + '/30</strong><br>' +
+    'Last retrain date: <strong>2026-04-08</strong>';
+  const map = {};
+  feedbackData.forEach(function(r){
+    const k = String(r.predicted) + '->' + String(r.correct);
+    map[k] = (map[k] || 0) + 1;
+  });
+  const top = Object.entries(map).sort(function(a,b){ return b[1] - a[1]; }).slice(0,5);
+  document.getElementById('alTop').textContent = 'Top correction patterns: ' + (top.length ? top.map(function(x){ return x[0] + ': ' + x[1] + 'x'; }).join(' | ') : 'No corrections yet');
+}
+
+function renderFalsePositives(){
+  const rows = eventsData.filter(function(r){ return !!r.snoozed || !!r.overridden; }).slice(0,20);
+  const body = document.getElementById('fpBody');
+  if(!rows.length){
+    body.innerHTML = '<tr><td colspan="5" style="color:rgba(255,255,255,0.45)">No false positives recorded yet.</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map(function(r){
+    const t = r.timestamp ? new Date(r.timestamp).toLocaleString() : '-';
+    const score = Number(r.risk_score || 0);
+    const cls = r.pii_classes || '-';
+    const action = r.action || '-';
+    const fb = (r.snoozed ? 'snoozed' : '') + ((r.snoozed && r.overridden) ? ' + ' : '') + (r.overridden ? 'overridden' : '');
+    const pill = action === 'block' ? 'pill-red' : (action === 'warn' ? 'pill-amber' : 'pill-green');
     return '<tr>' +
       '<td>' + t + '</td>' +
-      '<td><span class="pill ' + pillCls + '">' + (r.action || '-') + '</span></td>' +
-      '<td>' + (r.risk_score || 0) + '</td>' +
-      '<td>' + String(r.pii_classes || '-').slice(0,28) + '</td>' +
-      '<td>' + String(r.llm_name || '-').slice(0,20) + '</td>' +
+      '<td>' + score + '</td>' +
+      '<td>' + cls + '</td>' +
+      '<td><span class="pill ' + pill + '">' + action + '</span></td>' +
+      '<td>' + (fb || '-') + '</td>' +
       '</tr>';
   }).join('');
 }
 
 setInterval(function(){
   if(localStorage.getItem('sb_url') && localStorage.getItem('sb_key')) loadData();
-}, 60000);
+}, 300000);
 </script>
 </body>
 </html>
-
-
-
-
-
