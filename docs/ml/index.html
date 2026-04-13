@@ -140,7 +140,7 @@ tr:last-child td{border-bottom:none}
 
 </div>
 
-<div id="cfgPrompt" style="display:flex;
+<div id="cfgPrompt" style="display:none;
   position:fixed;bottom:20px;left:50%;
   transform:translateX(-50%);
   background:#1c1c32;border:1px solid
@@ -173,22 +173,32 @@ tr:last-child td{border-bottom:none}
 
 <script>
 function saveAndLoad(){
-  const url = document.getElementById('quickUrl').value.trim();
-  const key = document.getElementById('quickKey').value.trim();
-  if(!url || !key) return;
-  localStorage.setItem('sb_url', url);
-  localStorage.setItem('sb_key', key);
-  document.getElementById('cfgPrompt').style.display = 'none';
-  location.reload();
+  var u = document.getElementById('quickUrl')
+    .value.trim();
+  var k = document.getElementById('quickKey')
+    .value.trim();
+  if(!u || !k) return;
+  localStorage.setItem('sb_url', u);
+  localStorage.setItem('sb_key', k);
+  // small delay to ensure localStorage is written
+  setTimeout(function(){ location.reload(); }, 100);
 }
 
 window.addEventListener('load', function(){
-  const SB_URL = localStorage.getItem('sb_url') || '';
-  const SB_KEY = localStorage.getItem('sb_key') || '';
-  if(SB_URL && SB_KEY){
-    loadData();
+  var u = localStorage.getItem('sb_url') || '';
+  var k = localStorage.getItem('sb_key') || '';
+  
+  var prompt = document.getElementById('cfgPrompt');
+  
+  if(u && k){
+    // hide prompt immediately
+    if(prompt) prompt.style.display = 'none';
+    // load data
+    if(typeof loadData === 'function') loadData();
+    else if(typeof connect === 'function') connect();
   } else {
-    document.getElementById('cfgPrompt').style.display = 'flex';
+    // show prompt
+    if(prompt) prompt.style.display = 'flex';
   }
 });
 
@@ -357,10 +367,19 @@ function renderHist(rows){
 }
 
 function renderPII(rows){
+  var SKIP = ['empty_input', 'dedup_cached',
+              'O', 'low', '', 'TEST', 'test',
+              'dedup'];
+  // filter before counting
+  rows = rows.filter(function(r){
+    var p = (r.pii_classes || r.pii_class || '')
+      .trim();
+    return SKIP.indexOf(p) === -1;
+  });
   const c = {};
   rows.forEach(function(r){
     const p = (r.pii_classes || '').trim();
-    if(p && p !== 'low') c[p] = (c[p] || 0) + 1;
+    if(p) c[p] = (c[p] || 0) + 1;
   });
   const s = Object.entries(c).sort(function(a,b){ return b[1] - a[1]; }).slice(0,7);
   if(!s.length) return;
