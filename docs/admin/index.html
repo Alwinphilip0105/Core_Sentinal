@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -222,10 +222,39 @@ th.sortable:hover{color:rgba(255,255,255,0.55)}
 </div>
 </div>
 
+<div id="cfgPrompt" style="display:none;
+  position:fixed;bottom:20px;left:50%;
+  transform:translateX(-50%);
+  background:#1c1c32;border:1px solid
+  rgba(255,179,0,0.4);border-radius:10px;
+  padding:14px 20px;z-index:999;
+  align-items:center;gap:12px;
+  min-width:400px;flex-wrap:wrap">
+  <span style="font-size:13px;color:#ffe082">
+    ⚙️ Enter Supabase credentials to load data
+  </span>
+  <input id="quickUrl" placeholder="Project URL"
+    style="background:#12122a;border:1px solid
+    rgba(255,255,255,0.1);border-radius:6px;
+    padding:6px 10px;color:white;font-size:11px;
+    flex:1;min-width:140px">
+  <input id="quickKey" placeholder="Anon key"
+    type="password"
+    style="background:#12122a;border:1px solid
+    rgba(255,255,255,0.1);border-radius:6px;
+    padding:6px 10px;color:white;font-size:11px;
+    flex:1;min-width:140px">
+  <button onclick="saveAndLoad()" style="
+    background:#02C39A;color:#fff;border:none;
+    border-radius:6px;padding:6px 14px;
+    font-size:12px;font-weight:600;cursor:pointer;
+    white-space:nowrap">
+    Connect
+  </button>
+</div>
+
 <script>
-// ── Supabase (from Sentinel Hub localStorage only — never shown in UI) ──
-const SB_URL = localStorage.getItem('sb_url') || '';
-const SB_KEY = localStorage.getItem('sb_key') || '';
+// ── Supabase: credentials via localStorage (cfgPrompt or Hub) ──
 
 // ── AUTH ──────────────────────────────────────────────────
 const ACCESS_KEY = 'sentinel2026'; // change this
@@ -757,24 +786,33 @@ function renderTable(rows){
     }).join('');
 }
 
+function saveAndLoad(){
+  const url = document.getElementById('quickUrl')
+    .value.trim();
+  const key = document.getElementById('quickKey')
+    .value.trim();
+  if(!url || !key) return;
+  localStorage.setItem('sb_url', url);
+  localStorage.setItem('sb_key', key);
+  document.getElementById('cfgPrompt')
+    .style.display = 'none';
+  location.reload();
+}
+
 function runSupabaseBootstrap(){
   const main = document.getElementById('main-content');
   if(!main || main.style.display === 'none') return;
+  const SB_URL = localStorage.getItem('sb_url')||'';
+  const SB_KEY = localStorage.getItem('sb_key')||'';
   if(SB_URL && SB_KEY){
     loadData();
     setStatus('Auto-connected', '#43A047');
   } else {
     setStatus(
-      'Not configured — set credentials in Hub',
+      'Not configured — enter credentials below',
       '#FFB300');
-    document.getElementById('modelBanner')
+    document.getElementById('cfgPrompt')
       .style.display = 'flex';
-    document.getElementById('modelBanner')
-      .style.background = 'rgba(255,179,0,0.1)';
-    document.getElementById('modelBanner')
-      .innerHTML = '⚙️ <strong>Not configured</strong> '
-        + '— ask admin to set Supabase credentials '
-        + 'in the Sentinel Hub settings panel.';
   }
 }
 
@@ -786,3 +824,6 @@ window.addEventListener('load', runSupabaseBootstrap);
 </script>
 </body>
 </html>
+
+
+

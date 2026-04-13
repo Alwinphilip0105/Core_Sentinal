@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -385,8 +385,8 @@ function saveConfig(){
 }
 
 async function testConnection(){
-  const url = (localStorage.getItem('sb_url') || '').trim().replace(/\/$/, '');
-  const key = (localStorage.getItem('sb_key') || '').trim();
+  const url = ('https://uwirvbwufmoruvtcpbit.supabase.co').trim().replace(/\/$/, '');
+  const key = ('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV3aXJ2Ynd1Zm1vcnV2dGNwYml0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NjAwMjcsImV4cCI6MjA5MTIzNjAyN30.v6nF-wythAf3CFq3AMPaVX4khRsLVNrbXbCqhc_5N-4').trim();
   const wrap = document.getElementById('connStatus');
   const dot = document.getElementById('connDot');
   const text = document.getElementById('connText');
@@ -426,8 +426,8 @@ async function testConnection(){
 }
 
 function loadSavedConfig(){
-  const url = localStorage.getItem('sb_url') || '';
-  const key = localStorage.getItem('sb_key') || '';
+  const url = 'https://uwirvbwufmoruvtcpbit.supabase.co';
+  const key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV3aXJ2Ynd1Zm1vcnV2dGNwYml0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NjAwMjcsImV4cCI6MjA5MTIzNjAyN30.v6nF-wythAf3CFq3AMPaVX4khRsLVNrbXbCqhc_5N-4';
   const cfgUrl = document.getElementById('cfgUrl');
   const cfgKey = document.getElementById('cfgKey');
   const st = document.getElementById('cfgSaveStatus');
@@ -844,3 +844,6 @@ document.addEventListener('keydown', function(e){
 </script>
 </body>
 </html>
+
+
+
