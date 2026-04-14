@@ -48,11 +48,10 @@ if str(_guardrail_dir) not in sys.path:
     sys.path.insert(0, str(_guardrail_dir))
 
 from PyQt6.QtCore import QObject, QRect, QThread, Qt, QTimer, pyqtSignal, pyqtSlot
-from PyQt6.QtGui import QCursor, QKeySequence, QShortcut
+from PyQt6.QtGui import QColor, QCursor, QFont, QIcon, QKeySequence, QPainter, QPen, QPixmap, QShortcut
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
-    QStyle,
     QSystemTrayIcon,
     QToolTip,
 )
@@ -92,6 +91,35 @@ _SAFE_MESSAGES: list[tuple[str, str, str]] = [
     ("🤖", "Scan complete!", "Nothing to report"),
 ]
 _STREAK_MILESTONES: frozenset[int] = frozenset({5, 10, 25, 50, 100})
+
+# Retrain trigger can be tuned later via env without code changes.
+_RETRAIN_TRIGGER_MIN = max(
+    1,
+    int(os.environ.get("GUARDRAIL_RETRAIN_MIN_CORRECTIONS", "10") or "10"),
+)
+
+
+def _build_circular_tray_icon() -> QIcon:
+    """Create a circular Core Sentinel tray icon."""
+    size = 64
+    pm = QPixmap(size, size)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    p.setPen(QPen(QColor(220, 220, 220, 180), 2.0))
+    p.setBrush(QColor(12, 37, 34, 245))
+    p.drawEllipse(3, 3, size - 6, size - 6)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(2, 195, 154, 255))
+    p.drawEllipse(10, 10, size - 20, size - 20)
+    p.setPen(QColor(255, 255, 255))
+    f = QFont("Segoe UI", 20)
+    f.setBold(True)
+    p.setFont(f)
+    p.drawText(pm.rect(), Qt.AlignmentFlag.AlignCenter, "CS")
+    p.end()
+    return QIcon(pm)
+
 
 if sys.platform == "win32":
     from win_paste_hook import (
@@ -212,9 +240,9 @@ def check_feedback_and_maybe_retrain(tray: QSystemTrayIcon | None) -> None:
         flush=True,
     )
 
-    if should_trigger_retrain(min_count=30):
+    if should_trigger_retrain(min_count=_RETRAIN_TRIGGER_MIN):
         print(
-            "[feedback] 30+ pending corrections — retrain recommended",
+            f"[feedback] {_RETRAIN_TRIGGER_MIN}+ pending corrections — retrain recommended",
             flush=True,
         )
         if tray is not None and QSystemTrayIcon.isSystemTrayAvailable():
@@ -226,7 +254,7 @@ def check_feedback_and_maybe_retrain(tray: QSystemTrayIcon | None) -> None:
             )
     else:
         print(
-            f"[feedback] {stats['pending']} pending (need 30 to trigger retrain)",
+            f"[feedback] {stats['pending']} pending (need {_RETRAIN_TRIGGER_MIN} to trigger retrain)",
             flush=True,
         )
 
@@ -733,7 +761,7 @@ def main():
     )
 
     tray = QSystemTrayIcon(app)
-    tray.setIcon(app.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxWarning))
+    tray.setIcon(_build_circular_tray_icon())
     tray.setToolTip("Core Sentinel Guardrail")
     if QSystemTrayIcon.isSystemTrayAvailable():
         tray.show()

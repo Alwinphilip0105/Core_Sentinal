@@ -179,7 +179,7 @@ class ToolbarIconButton(QtWidgets.QWidget):
 
 
 class BubbleToolbar(QtWidgets.QWidget):
-    """Frameless vertical toolbar; parent=None (top-level tool window).
+    """Vertical icon strip docked inside RiskBubble (same top-level window as the pill).
 
     Monitoring on/off is only on the main pill (and Alt+G) — no duplicate power row here.
     """
@@ -191,15 +191,10 @@ class BubbleToolbar(QtWidgets.QWidget):
     settings_clicked = QtCore.pyqtSignal()
 
     def __init__(self, bubble: Any, parent: Optional[QtWidgets.QWidget] = None):
-        super().__init__(parent)
+        # Child of RiskBubble so icons share one window with the pill (no extra Tool window).
+        super().__init__(bubble)
         self._bubble = bubble
-        self.setWindowFlags(
-            QtCore.Qt.WindowType.FramelessWindowHint
-            | QtCore.Qt.WindowType.WindowStaysOnTopHint
-            | QtCore.Qt.WindowType.Tool
-        )
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setObjectName("bubbleToolbar")
         self.setStyleSheet(
             "#bubbleToolbar { background-color: rgba(28,28,30,235); "

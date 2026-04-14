@@ -1,6 +1,6 @@
 """
 Grammarly-style floating pill for Core Sentinel guardrail.
-Single paint-only bubble (height 46px; width 72 collapsed → 220 on hover) with pill: square left edge, rounded right; traffic light is flush to the pill’s left.
+Single window: traffic light + pill (toolbar icons dock to the right of the bubble as a child widget).
 """
 
 from __future__ import annotations
@@ -25,21 +25,28 @@ import user_settings
 from character_widget import CharacterWidget
 from infer import score_clipboard_with_pii
 from toast import show_toast
-from traffic_light_indicator import COLOR_HOUSING, TrafficLightIndicator
+from traffic_light_indicator import COLOR_HOUSING, H_TL, TrafficLightIndicator, W_TL
 from ui_bubble_toolbar import BubbleToolbar, ToolbarTooltip
 from font_clamp import MIN_PX_BADGE, MIN_PX_BODY, MIN_PX_LABEL, paint_font_px
 
+# Traffic column is embedded at x=0; pill starts after it (single top-level window).
+TRAFFIC_SLOT_W = W_TL
 # Outer widget height; width animates (collapsed / expanded pill)
-COLLAPSED_W = 72
-EXPANDED_W = 200
-EXPANDED_W_NO_STREAK = 180
-WIDGET_H = 46
-# Pill geometry inside widget (power + shield + score); width = widget - PILL_X - PILL_MARGIN_RIGHT
-PILL_X = 6
-PILL_Y = 6
-PILL_MARGIN_RIGHT = 22
+COLLAPSED_W = 72 + TRAFFIC_SLOT_W
+EXPANDED_W = 200 + TRAFFIC_SLOT_W
+EXPANDED_W_NO_STREAK = 180 + TRAFFIC_SLOT_W
 PILL_H = 34
+WIDGET_H = max(46, H_TL)
+# Pill geometry inside widget (power + shield + score); width = widget - PILL_X - PILL_MARGIN_RIGHT
+# Start exactly at traffic-slot edge so the two parts are fused without a visible gap.
+PILL_X = TRAFFIC_SLOT_W
+PILL_Y = max(6, (WIDGET_H - PILL_H) // 2)
+PILL_MARGIN_RIGHT = 22
 PILL_RX = 14
+
+# Vertical toolbar docked to the right of the pill row (child widget; expands window width).
+TOOLBAR_DOCK_MARGIN = 8
+TOOLBAR_DOCK_BODY_W = 40
 
 # Matches traffic-light chrome; top + right + bottom on pill (no stroke on seam).
 COLOR_FUSED_BORDER = QtGui.QColor(200, 200, 200, 80)
@@ -71,12 +78,13 @@ def _pill_border_path_no_left(pill_w: float) -> QtGui.QPainterPath:
     h = float(PILL_H)
     r = float(PILL_RX)
     border = QtGui.QPainterPath()
-    border.moveTo(x, y)
+    # Start half-pixel toward the traffic seam so top/bottom borders align exactly.
+    border.moveTo(x - 0.5, y)
     border.lineTo(x + w - r, y)
     border.arcTo(QtCore.QRectF(x + w - 2.0 * r, y, 2.0 * r, 2.0 * r), 90.0, -90.0)
     border.lineTo(x + w, y + h - r)
     border.arcTo(QtCore.QRectF(x + w - 2.0 * r, y + h - 2.0 * r, 2.0 * r, 2.0 * r), 0.0, -90.0)
-    border.lineTo(x, y + h)
+    border.lineTo(x - 0.5, y + h)
     return border
 
 
@@ -408,18 +416,39 @@ class RiskBubble(QtWidgets.QWidget):
     def _state(self) -> str:
         return str(getattr(self._traffic_indicator, "_state", "") or "")
 
-    def _pill_width_f(self) -> float:
-        w = float(self.width() - PILL_X - PILL_MARGIN_RIGHT)
-        return max(float(PILL_RX * 2 + 4), w)
-
-    def _apply_window_width_from_expand(self) -> None:
+    def _content_width_for_layout(self) -> int:
+        """Pill row width from expand animation (excludes toolbar dock slot)."""
         cw = int(round(self._current_width))
         if self._action_card_wrap.height() > 0:
-            w = max(CARD_W, cw)
-        else:
-            w = cw
+            return max(CARD_W, cw)
+        return cw
+
+    def _toolbar_slot_w(self) -> int:
+        # Toolbar docks near the pill's right edge, not after the full content width.
+        slot = TOOLBAR_DOCK_MARGIN + TOOLBAR_DOCK_BODY_W - PILL_MARGIN_RIGHT
+        slot = max(0, slot)
+        if self._toolbar is not None and self._toolbar.isVisible():
+            return slot
+        return 0
+
+    def _pill_row_top(self) -> int:
+        return self._action_card_wrap.height()
+
+    def _pill_width_f(self) -> float:
+        base = float(self._content_width_for_layout())
+        w = base - float(PILL_X) - float(PILL_MARGIN_RIGHT)
+        return max(float(PILL_RX * 2 + 4), w)
+
+    def _refresh_window_geometry(self, *, reserve_toolbar_slot: bool = False) -> None:
         h = self._action_card_wrap.height() + WIDGET_H
+        slot = self._toolbar_slot_w()
+        if reserve_toolbar_slot and slot == 0:
+            slot = max(0, TOOLBAR_DOCK_MARGIN + TOOLBAR_DOCK_BODY_W - PILL_MARGIN_RIGHT)
+        w = self._content_width_for_layout() + slot
         self.setFixedSize(w, max(h, WIDGET_H))
+
+    def _apply_window_width_from_expand(self) -> None:
+        self._refresh_window_geometry()
 
     def _tick_expand(self) -> None:
         diff = float(self._target_width) - self._current_width
@@ -786,13 +815,7 @@ class RiskBubble(QtWidgets.QWidget):
         return self.mapToGlobal(self._pill_center_local())
 
     def _resize_to_state(self) -> None:
-        h = self._action_card_wrap.height() + WIDGET_H
-        cw = int(round(self._current_width))
-        if self._action_card_wrap.height() > 0:
-            w = max(CARD_W, cw)
-        else:
-            w = cw
-        self.setFixedSize(w, max(h, WIDGET_H))
+        self._refresh_window_geometry()
 
     def _clamp_point_to_screen(self, top_left: QtCore.QPoint) -> QtCore.QPoint:
         app = QtGui.QGuiApplication.instance()
@@ -861,45 +884,36 @@ class RiskBubble(QtWidgets.QWidget):
         self._dot_opacity = 1.0
 
     def _toolbar_end_pos(self) -> QtCore.QPoint:
+        """Dock toolbar to the right of the pill row in local coordinates (same top-level window)."""
         if self._toolbar is None:
-            return QtCore.QPoint(self.x(), self.y())
-        app = QtWidgets.QApplication.instance()
-        scr = QtGui.QGuiApplication.screenAt(self.pos()) if app else None
-        if scr is None and app:
-            scr = app.primaryScreen()
-        if scr is None:
-            return QtCore.QPoint(self.x(), self.y())
-        screen = scr.availableGeometry()
-        if screen.width() <= 0:
-            return QtCore.QPoint(self.x(), self.y())
-        bubble_pos = self.pos()
+            return QtCore.QPoint(0, 0)
         tb_w = self._toolbar.width()
         tb_h = self._toolbar.sizeHint().height()
-        mid_x = screen.left() + screen.width() // 2
-        if bubble_pos.x() > mid_x:
-            tb_x = bubble_pos.x() - tb_w - 8
-        else:
-            tb_x = bubble_pos.x() + self.width() + 8
-        tb_y = bubble_pos.y() + self.height() // 2 - tb_h // 2
-        tb_y = max(screen.top() + 8, min(tb_y, screen.bottom() - tb_h - 8))
+        base_w = self._content_width_for_layout()
+        tb_x = base_w - PILL_MARGIN_RIGHT + TOOLBAR_DOCK_MARGIN
+        row_top = self._pill_row_top()
+        tb_y = row_top + max(0, (WIDGET_H - tb_h) // 2)
+        end_global = self.mapToGlobal(QtCore.QPoint(tb_x + tb_w, tb_y + tb_h // 2))
+        app = QtWidgets.QApplication.instance()
+        scr = QtGui.QGuiApplication.screenAt(end_global) if app else None
+        if scr is None and app:
+            scr = app.primaryScreen()
+        g = scr.availableGeometry() if scr else QtCore.QRect(0, 0, 1920, 1080)
+        if end_global.x() > g.right() - 12:
+            overflow = end_global.x() - (g.right() - 12)
+            tb_x = max(-tb_w - TOOLBAR_DOCK_MARGIN, tb_x - overflow)
         return QtCore.QPoint(tb_x, tb_y)
 
     def _toolbar_slide_start(self, end: QtCore.QPoint) -> QtCore.QPoint:
-        screen = QtGui.QGuiApplication.primaryScreen()
-        if screen is None:
-            return end
-        g = screen.availableGeometry()
-        bx, by = self.x(), self.y()
-        mid_x = g.left() + g.width() // 2
-        mid_y = g.top() + g.height() // 2
-        cx = bx + self.width() // 2
-        cy = by + self.height() // 2
+        """Slide animation offset in the same local coordinate system as _toolbar_end_pos."""
         ex, ey = end.x(), end.y()
-        if cx > mid_x:
-            sx = ex + 40
+        mid_x = self._content_width_for_layout() // 2
+        mid_y = self._pill_row_top() + WIDGET_H // 2
+        if ex > mid_x:
+            sx = ex + 48
         else:
-            sx = ex - 40
-        if cy > mid_y:
+            sx = ex - 48
+        if ey > mid_y:
             sy = ey + 30
         else:
             sy = ey - 30
@@ -928,7 +942,7 @@ class RiskBubble(QtWidgets.QWidget):
 
     def _restart_toolbar_idle_timer(self) -> None:
         self._toolbar_idle_timer.stop()
-        self._toolbar_idle_timer.start(2000)
+        self._toolbar_idle_timer.start(4000)
 
     def _toolbar_content_enter(self) -> None:
         self._toolbar_hide_timer.stop()
@@ -1000,6 +1014,7 @@ class RiskBubble(QtWidgets.QWidget):
             # Reset dock position so Windows DWM does not leave a faded “ghost” at the slide-out spot.
             self._toolbar.move(self._toolbar_end_pos())
             self._toolbar.setWindowOpacity(1.0)
+            self._refresh_window_geometry()
 
     def _hide_toolbar_for_drag(self) -> None:
         if self._toolbar is None or not self._toolbar.isVisible():
@@ -1008,11 +1023,15 @@ class RiskBubble(QtWidgets.QWidget):
         self._toolbar_idle_timer.stop()
         self._stop_toolbar_anim()
         self._toolbar.hide()
+        self._refresh_window_geometry()
 
     def _show_toolbar(self) -> None:
         self._restart_toolbar_idle_timer()
         tb = self._ensure_toolbar()
         tb.adjustSize()
+        self._refresh_window_geometry(reserve_toolbar_slot=not tb.isVisible())
+        # Keep the dock slot on-screen so the vertical menu is always visible.
+        self.move(self._clamp_point_to_screen(self.pos()))
         if tb.isVisible():
             self._update_toolbar_position()
             return
@@ -1472,7 +1491,8 @@ class RiskBubble(QtWidgets.QWidget):
             )
         p.restore()
 
-        dot_r = QtCore.QRectF(float(PILL_X + 4), float(PILL_Y + 4), 8.0, 8.0)
+        # Status indicator above power glyph (requested: 4x4).
+        dot_r = QtCore.QRectF(float(PILL_X + 5), float(PILL_Y + 5), 4.0, 4.0)
         dc = self._status_dot_color()
         p.save()
         if self._analysing:

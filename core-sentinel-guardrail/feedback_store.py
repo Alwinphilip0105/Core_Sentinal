@@ -76,7 +76,7 @@ def record_feedback(
             f.write(json.dumps(ft_row, ensure_ascii=False) + "\n")
 
 
-def get_pending_feedback(min_count: int = 30) -> list:
+def get_pending_feedback(min_count: int = 10) -> list:
     """
     Returns feedback rows not yet used for training.
     Returns empty list if fewer than min_count pending.
@@ -121,7 +121,7 @@ def mark_feedback_used(text_hashes: list) -> None:
         f.write("\n".join(updated) + "\n")
 
 
-def should_trigger_retrain(min_count: int = 30) -> bool:
+def should_trigger_retrain(min_count: int = 10) -> bool:
     return len(get_pending_feedback(min_count)) >= min_count
 
 
@@ -350,5 +350,5 @@ if __name__ == "__main__":
     )
     stats = get_feedback_stats()
     print("Feedback stats:", stats)
-    print("Should retrain (threshold 30):", should_trigger_retrain(30))
+    print("Should retrain (threshold 10):", should_trigger_retrain(10))
     print("Should retrain (threshold 1):", should_trigger_retrain(1))
