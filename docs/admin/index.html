@@ -78,11 +78,13 @@ th.sortable:hover{color:rgba(255,255,255,0.55)}
     <div class="hdr-sub">Model health · Fleet analytics · Error detection · Drift monitoring</div>
   </div>
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <button class="btn btn-sm" onclick="goBackToHub()">← Back</button>
     <span id="syncTime" style="font-size:11px;color:rgba(255,255,255,0.3)">—</span>
     <span id="loadStatus" style="font-size:11px;padding:2px 0"></span>
+    <span id="qaStatus" style="font-size:11px;color:rgba(255,255,255,0.5)">QA: pending</span>
     <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;color:rgba(255,255,255,0.5)">
       <input type="checkbox" id="autoRefresh" checked onchange="toggleAutoRefresh(this.checked)">
-      Auto-refresh (2 min)
+      Auto-refresh (1 min)
     </label>
     <button class="btn btn-sm" onclick="loadData()" id="refreshBtn">⟳ Refresh</button>
   </div>
@@ -341,9 +343,10 @@ function setTimeRange(range){
   };
   const cutoff = cutoffs[range] ?? 0;
   filteredData = allData.filter(r=>{
-    if(!r.timestamp) return range==='all';
+    const ts = eventTimestamp(r);
+    if(!ts) return range==='all';
     if(range==='all') return true;
-    return new Date(r.timestamp).getTime() >= cutoff;
+    return new Date(ts).getTime() >= cutoff;
   });
   document.querySelectorAll('.trbtn').forEach(b=>
     b.classList.toggle('active', b.dataset.range===range));
@@ -365,7 +368,7 @@ function setActionFilter(k){
 }
 
 function drillUser(userId){
-  if(!userId || userId==='—') return;
+  if(!userId || userId==='—' || userId==='N/A') return;
   drillUserId = userId;
   const userEvents = allData.filter(r=>r.user_id===userId);
   document.getElementById('userBanner').innerHTML =
@@ -422,8 +425,8 @@ function sortRowsInPlace(rows){
       return av < bv ? dir : -dir;
     }
     if(col==='timestamp'){
-      const av = new Date(a.timestamp||0).getTime();
-      const bv = new Date(b.timestamp||0).getTime();
+      const av = new Date(eventTimestamp(a)||0).getTime();
+      const bv = new Date(eventTimestamp(b)||0).getTime();
       if(av===bv) return 0;
       return av < bv ? dir : -dir;
     }
@@ -470,6 +473,38 @@ function setStatus(msg, color){
   el.style.color = color || 'rgba(255,255,255,0.35)';
 }
 
+function setQaStatus(msg, color){
+  const el = document.getElementById('qaStatus');
+  if(!el) return;
+  el.textContent = msg || 'QA: pending';
+  el.style.color = color || 'rgba(255,255,255,0.5)';
+}
+
+function goBackToHub(){
+  if(document.referrer){
+    history.back();
+    return;
+  }
+  window.location.href = '../index.html';
+}
+
+function eventTimestamp(r){
+  return r.timestamp || r.created_at || r.recorded_at || null;
+}
+
+function normalizeEventRows(rows){
+  if(!Array.isArray(rows)) return [];
+  return rows.map((r)=>({
+    ...r,
+    timestamp: eventTimestamp(r),
+    user_id: r.user_id || r.text_hash || null,
+    action: String(r.action || 'silent').toLowerCase(),
+    risk_score: Number(r.risk_score ?? r.confidence ?? 0) || 0,
+    pii_classes: String(r.pii_classes || r.pii_class || '').trim(),
+    llm_name: String(r.llm_name || r.window_title || '').trim()
+  }));
+}
+
 async function loadData(){
   const url = (localStorage.getItem('sb_url') || '').trim();
   const key = (localStorage.getItem('sb_key') || '').trim();
@@ -487,7 +522,8 @@ async function loadData(){
       { headers: reqHeaders, cache: 'no-store' }
     );
     if(!r.ok) throw new Error(await r.text());
-    allData = await r.json();
+    allData = normalizeEventRows(await r.json());
+    let feedbackReachable = false;
 
     // load feedback
     try {
@@ -508,6 +544,7 @@ async function loadData(){
         );
       }
       if(r2.ok){
+        feedbackReachable = true;
         fbData = await r2.json();
         fbData.sort((a,b)=>{
           const ta = new Date(a.timestamp || a.recorded_at || a.created_at || a.corrected_at || 0).getTime();
@@ -530,10 +567,15 @@ async function loadData(){
       if(sl) simulateThreshold(sl.value);
     }
     setStatus('Connected — ' + allData.length + ' events', '#43A047');
+    setQaStatus(
+      feedbackReachable ? 'QA smoke: events + feedback endpoints OK' : 'QA smoke: events OK, feedback unavailable',
+      feedbackReachable ? '#43A047' : '#FFB300'
+    );
     document.getElementById('syncTime').textContent =
       'Updated ' + new Date().toLocaleTimeString();
   } catch(e){
     setStatus('Error: ' + e.message.slice(0,40), '#E53935');
+    setQaStatus('QA smoke: API check failed', '#E53935');
   }
   btn.disabled = false;
   btn.textContent = '⟳ Refresh';
@@ -574,7 +616,7 @@ function renderAll(data, fb){
     r.predicted!==r.correct && !r.used_for_training).length;
 
   document.getElementById('s-total').textContent      = total;
-  document.getElementById('s-users').textContent      = users || '1';
+  document.getElementById('s-users').textContent      = users || '0';
   document.getElementById('s-fpr').textContent        = fprProxy + '%';
   document.getElementById('s-block').textContent      = blockRate + '%';
   document.getElementById('s-correction').textContent = corrRate + '%';
@@ -671,8 +713,9 @@ function renderTrend(data){
     days[d.toISOString().slice(0,10)]={block:0,warn:0,silent:0};
   }
   data.forEach(r=>{
-    if(!r.timestamp) return;
-    const d=r.timestamp.slice(0,10);
+    const ts = eventTimestamp(r);
+    if(!ts) return;
+    const d=String(ts).slice(0,10);
     if(days[d]) days[d][r.action]=(days[d][r.action]||0)+1;
   });
   mk('trendChart','line',{
@@ -695,8 +738,9 @@ function renderDrift(fb, events){
     const wEnd = new Date(wStart);
     wEnd.setDate(wEnd.getDate()+7);
     const wEvents = events.filter(r=>{
-      if(!r.timestamp) return false;
-      const d = new Date(r.timestamp);
+      const ts = eventTimestamp(r);
+      if(!ts) return false;
+      const d = new Date(ts);
       return d >= wStart && d < wEnd;
     });
     const wFb = fb.filter(r=>{
@@ -731,7 +775,10 @@ function renderPII(data){
     if(p&&p!=='low'&&p!=='') c[p]=(c[p]||0)+1;
   });
   const s=Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,8);
-  if(!s.length) return;
+  if(!s.length){
+    if(C['piiChart']) C['piiChart'].destroy();
+    return;
+  }
   mk('piiChart','bar',{
     labels:s.map(([k])=>k.length>16?k.slice(0,16)+'…':k),
     datasets:[{label:'Count',data:s.map(([,v])=>v),
@@ -742,8 +789,9 @@ function renderPII(data){
 function renderHour(data){
   const h=Array(24).fill(0);
   data.forEach(r=>{
-    if(!r.timestamp) return;
-    try{ h[new Date(r.timestamp).getHours()]++; }catch(e){}
+    const ts = eventTimestamp(r);
+    if(!ts) return;
+    try{ h[new Date(ts).getHours()]++; }catch(e){}
   });
   mk('hourChart','line',{
     labels:Array.from({length:24},(_,i)=>
@@ -789,29 +837,31 @@ function renderFeedback(fb){
         </div>
         <span style="font-size:11px;font-weight:700;color:#FFB300;min-width:30px;text-align:right">${v}x</span>
       </div>`).join('')}
-    ${pending >= 30 ?
-      '<div style="background:rgba(21,101,192,0.2);border:1px solid #1565C0;border-radius:6px;padding:8px 12px;margin-top:10px;font-size:11px;color:#90CAF9">📚 <strong>'+pending+' corrections pending</strong> — run train.py tonight to retrain the model.</div>'
+    ${pending >= 10 ?
+      '<div style="background:rgba(21,101,192,0.2);border:1px solid #1565C0;border-radius:6px;padding:8px 12px;margin-top:10px;font-size:11px;color:#90CAF9">📚 <strong>'+pending+' corrections pending</strong> — retrain threshold reached (10).</div>'
       : ''}`;
 }
 
 function renderTable(rows){
   document.getElementById('recentBody').innerHTML =
     rows.map(r=>{
-      const t = r.timestamp ?
-        new Date(r.timestamp).toLocaleString() : '—';
-      const uid = (r.user_id||'—').slice(0,12);
-      const uidEsc = JSON.stringify(r.user_id != null ? String(r.user_id) : '');
+      const ts = eventTimestamp(r);
+      const t = ts ? new Date(ts).toLocaleString() : 'N/A';
+      const rawUid = r.user_id != null ? String(r.user_id) : '';
+      const uid = (rawUid || 'N/A').slice(0,12);
+      const uidEsc = JSON.stringify(rawUid);
+      const canDrill = !!rawUid && rawUid !== 'N/A';
       const pillCls = r.action==='block'?'pill-block':
                       r.action==='warn' ?'pill-warn':'pill-silent';
       const sc = r.risk_score || 0;
       const sc_color = sc>=70?'#ef9a9a':sc>=40?'#ffe082':'#a5d6a7';
       return `<tr>
         <td style="font-size:10px;color:#888">${t}</td>
-        <td onclick="drillUser(${uidEsc})" style="cursor:pointer;color:#CE93D8;font-family:monospace;font-size:10px" title="Filter charts to this user">${uid}</td>
-        <td><span class="pill ${pillCls}">${r.action||'—'}</span></td>
+        <td ${canDrill ? `onclick="drillUser(${uidEsc})"` : ''} style="cursor:${canDrill ? 'pointer' : 'default'};color:${canDrill ? '#CE93D8' : '#888'};font-family:monospace;font-size:10px" title="${canDrill ? 'Filter charts to this user' : 'No user id available'}">${uid}</td>
+        <td><span class="pill ${pillCls}">${r.action||'N/A'}</span></td>
         <td style="font-weight:700;color:${sc_color}">${sc}</td>
-        <td style="font-size:11px">${(r.pii_classes||'—').slice(0,25)}</td>
-        <td style="font-size:11px;color:#888">${(r.llm_name||'—').slice(0,15)}</td>
+        <td style="font-size:11px">${(r.pii_classes||'N/A').slice(0,25)}</td>
+        <td style="font-size:11px;color:#888">${(r.llm_name||'N/A').slice(0,15)}</td>
       </tr>`;
     }).join('');
 }

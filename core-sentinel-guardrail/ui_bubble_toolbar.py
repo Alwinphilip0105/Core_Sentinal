@@ -191,14 +191,23 @@ class BubbleToolbar(QtWidgets.QWidget):
     settings_clicked = QtCore.pyqtSignal()
 
     def __init__(self, bubble: Any, parent: Optional[QtWidgets.QWidget] = None):
-        # Child of RiskBubble so icons share one window with the pill (no extra Tool window).
-        super().__init__(bubble)
+        # Separate frameless Tool window so the full vertical strip is never clipped by pill height.
+        super().__init__(
+            None,
+            QtCore.Qt.WindowType.FramelessWindowHint
+            | QtCore.Qt.WindowType.WindowStaysOnTopHint
+            | QtCore.Qt.WindowType.Tool
+            | QtCore.Qt.WindowType.NoDropShadowWindowHint,
+        )
+        del parent
         self._bubble = bubble
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.setObjectName("bubbleToolbar")
         self.setStyleSheet(
-            "#bubbleToolbar { background-color: rgba(28,28,30,235); "
-            "border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); }"
+            "#bubbleToolbar { background-color: transparent; "
+            "border-radius: 0px; border: none; }"
         )
 
         lay = QtWidgets.QVBoxLayout(self)

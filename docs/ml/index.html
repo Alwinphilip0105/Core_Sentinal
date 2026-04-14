@@ -66,8 +66,10 @@ td{padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);color:rgba(255,255
     <div class="hdr-sub">Model reliability, drift, thresholds, active learning</div>
   </div>
   <div class="top-row">
+    <button class="btn" onclick="goBackToHub()">← Back</button>
     <span class="hdr-note">Admin access required - model internals</span>
     <span id="syncTime" style="font-size:11px;color:rgba(255,255,255,0.35)">Not loaded</span>
+    <span id="qaStatus" style="font-size:11px;color:rgba(255,255,255,0.5)">QA: pending</span>
     <button id="refreshBtn" class="btn" onclick="loadData()">Refresh</button>
   </div>
 </div>
@@ -82,6 +84,25 @@ td{padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);color:rgba(255,255
     <div class="metric"><div class="metric-v" style="color:#FFB300">0.387</div><div class="metric-l">Medium F1</div></div>
     <div class="metric"><div class="metric-v" style="color:#02C39A">97.0%</div><div class="metric-l">Overall Accuracy</div></div>
     <div class="metric"><div class="metric-v" style="color:#02C39A">0.790</div><div class="metric-l">Macro F1</div></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">Detailed Class Report <span class="badge">Derived from confusion matrix</span></div>
+      <table>
+        <thead><tr><th>Class</th><th>Precision</th><th>Recall</th><th>F1</th><th>Support</th></tr></thead>
+        <tbody id="classReportBody"></tbody>
+      </table>
+      <div class="note" id="classReportSummary"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Latest Automated Test Snapshot <span class="badge">Local `test_sentinel.py`</span></div>
+      <div class="sim-result" id="qaSummary"></div>
+      <table style="margin-top:10px">
+        <thead><tr><th>Failing case</th><th>Expected</th><th>Actual</th><th>Score</th></tr></thead>
+        <tbody id="qaFailuresBody"></tbody>
+      </table>
+    </div>
   </div>
 
   <div class="grid2">
@@ -172,11 +193,45 @@ const PR_PRECISION = [1,1,1,0.999,0.998,0.997,0.995,0.992,0.988,0.983,0.979,0.97
 const ROC_FPR = [0,0.002,0.005,0.01,0.02,0.05,0.1,0.2,0.5,1.0];
 const ROC_TPR = [0,0.85,0.92,0.95,0.97,0.982,0.99,0.995,0.999,1.0];
 const CM = [[500,0,0],[0,56,116],[0,61,4767]];
+const LATEST_LOCAL_TEST_SUMMARY = {
+  timestamp: '2026-04-14T11:29:07',
+  total: 64,
+  passed: 55,
+  failed: 9,
+  pass_rate_pct: 86,
+  total_duration_ms: 2419,
+  failures: [
+    {name:'SSN with asterisks', expected:'block', actual:'silent', score:30},
+    {name:'SSN spelled out', expected:'warn', actual:'silent', score:30},
+    {name:'Partial card hint', expected:'warn', actual:'silent', score:30},
+    {name:'Obfuscated API key', expected:'warn', actual:'silent', score:30},
+    {name:'Implicit DOB', expected:'warn', actual:'silent', score:30},
+    {name:'Medical context', expected:'warn', actual:'silent', score:0},
+    {name:'UK National Insurance', expected:'block', actual:'silent', score:30},
+    {name:'Indian Aadhaar', expected:'block', actual:'silent', score:30},
+    {name:'Canadian SIN', expected:'block', actual:'silent', score:0}
+  ]
+};
 const charts = {};
 let eventsData = [];
 let feedbackData = [];
 let mlAutoRefreshTimer = null;
 const ML_AUTO_REFRESH_MS = 60000;
+
+function setQaStatus(msg, color){
+  const el = document.getElementById('qaStatus');
+  if(!el) return;
+  el.textContent = msg || 'QA: pending';
+  el.style.color = color || 'rgba(255,255,255,0.5)';
+}
+
+function goBackToHub(){
+  if(document.referrer){
+    history.back();
+    return;
+  }
+  window.location.href = '../index.html';
+}
 
 function saveAndLoad(){
   var u = document.getElementById('quickUrl').value.trim();
@@ -226,6 +281,7 @@ async function loadData(){
     const ev = await fetch(url + '/rest/v1/guardrail_events?select=*&order=timestamp.desc&limit=5000', {headers:h, cache:'no-store'});
     if(!ev.ok) throw new Error('events fetch failed');
     eventsData = await ev.json();
+    let feedbackReachable = false;
     // feedback_corrections schemas vary (timestamp vs recorded_at); avoid hard-failing on order.
     let fb = await fetch(url + '/rest/v1/feedback_corrections?select=*&order=timestamp.desc&limit=5000', {headers:h, cache:'no-store'});
     if(!fb.ok){
@@ -234,6 +290,7 @@ async function loadData(){
     if(!fb.ok){
       fb = await fetch(url + '/rest/v1/feedback_corrections?select=*&limit=5000', {headers:h, cache:'no-store'});
     }
+    feedbackReachable = fb.ok;
     feedbackData = fb.ok ? await fb.json() : [];
     feedbackData.sort(function(a,b){
       const ta = new Date(a.timestamp || a.recorded_at || a.created_at || a.corrected_at || 0).getTime();
@@ -241,8 +298,13 @@ async function loadData(){
       return tb - ta;
     });
     renderAll();
+    setQaStatus(
+      feedbackReachable ? 'QA smoke: events + feedback endpoints OK' : 'QA smoke: events OK, feedback unavailable',
+      feedbackReachable ? '#43A047' : '#FFB300'
+    );
     document.getElementById('syncTime').textContent = 'Updated ' + new Date().toLocaleTimeString();
   }catch(e){
+    setQaStatus('QA smoke: API check failed', '#E53935');
     document.getElementById('modelStatusBanner').style.background = 'rgba(229,57,53,0.12)';
     document.getElementById('modelStatusBanner').style.borderColor = 'rgba(229,57,53,0.45)';
     document.getElementById('modelStatusBanner').style.color = '#ef9a9a';
@@ -254,6 +316,8 @@ async function loadData(){
 
 function renderAll(){
   renderStatusBanner();
+  renderDetailedClassReport();
+  renderLatestTestSnapshot();
   renderPR();
   renderROC();
   renderConfusion();
@@ -263,6 +327,61 @@ function renderAll(){
   renderThresholdSim();
   renderActiveLearning();
   renderFalsePositives();
+}
+
+function renderDetailedClassReport(){
+  const labels = ['low','med','high'];
+  const body = document.getElementById('classReportBody');
+  const summary = document.getElementById('classReportSummary');
+  const rows = [];
+  let macroF1 = 0;
+  let weightedF1 = 0;
+  let totalSupport = 0;
+  for(let i=0;i<3;i++){
+    const tp = CM[i][i];
+    let fp = 0, fn = 0, support = 0;
+    for(let r=0;r<3;r++) fp += (r===i ? 0 : CM[r][i]);
+    for(let c=0;c<3;c++) fn += (c===i ? 0 : CM[i][c]);
+    for(let c=0;c<3;c++) support += CM[i][c];
+    const precision = tp + fp > 0 ? tp/(tp+fp) : 0;
+    const recall = tp + fn > 0 ? tp/(tp+fn) : 0;
+    const f1 = precision + recall > 0 ? (2*precision*recall)/(precision+recall) : 0;
+    macroF1 += f1;
+    weightedF1 += f1 * support;
+    totalSupport += support;
+    rows.push({cls:labels[i], precision:precision, recall:recall, f1:f1, support:support});
+  }
+  macroF1 = macroF1 / 3;
+  weightedF1 = totalSupport > 0 ? weightedF1 / totalSupport : 0;
+  body.innerHTML = rows.map(function(r){
+    return '<tr>' +
+      '<td>' + r.cls.toUpperCase() + '</td>' +
+      '<td>' + r.precision.toFixed(3) + '</td>' +
+      '<td>' + r.recall.toFixed(3) + '</td>' +
+      '<td>' + r.f1.toFixed(3) + '</td>' +
+      '<td>' + r.support + '</td>' +
+      '</tr>';
+  }).join('');
+  summary.textContent = 'Macro F1: ' + macroF1.toFixed(3) + ' | Weighted F1: ' + weightedF1.toFixed(3) + ' | Total labeled samples: ' + totalSupport;
+}
+
+function renderLatestTestSnapshot(){
+  const s = LATEST_LOCAL_TEST_SUMMARY;
+  const qaSummary = document.getElementById('qaSummary');
+  const qaFailuresBody = document.getElementById('qaFailuresBody');
+  qaSummary.innerHTML =
+    'Run time: <strong>' + new Date(s.timestamp).toLocaleString() + '</strong><br>' +
+    'Pass rate: <strong style="color:' + (s.pass_rate_pct >= 90 ? '#43A047' : (s.pass_rate_pct >= 80 ? '#FFB300' : '#E53935')) + '">' + s.pass_rate_pct + '%</strong>' +
+    ' (' + s.passed + '/' + s.total + ' passed, ' + s.failed + ' failed)<br>' +
+    'Suite duration: <strong>' + (s.total_duration_ms/1000).toFixed(2) + 's</strong>';
+  qaFailuresBody.innerHTML = s.failures.map(function(f){
+    return '<tr>' +
+      '<td>' + f.name + '</td>' +
+      '<td>' + f.expected + '</td>' +
+      '<td>' + f.actual + '</td>' +
+      '<td>' + f.score + '</td>' +
+      '</tr>';
+  }).join('');
 }
 
 function renderStatusBanner(){
@@ -505,13 +624,21 @@ function renderActiveLearning(){
   const total = feedbackData.length;
   const wrong = feedbackData.filter(function(r){ return String(r.predicted) !== String(r.correct); }).length;
   const pending = feedbackData.filter(function(r){ return String(r.predicted) !== String(r.correct) && !r.used_for_training; }).length;
-  const pct = Math.min(100, (pending / 30) * 100);
+  const retrainTarget = 10;
+  const pct = Math.min(100, (pending / retrainTarget) * 100);
   document.getElementById('alProg').style.width = pct + '%';
+  if(!total){
+    document.getElementById('alStats').innerHTML =
+      'No feedback rows synced yet.<br>' +
+      'Collect corrections from remediation dialog to populate active learning stats.';
+    document.getElementById('alTop').textContent = 'Top correction patterns: no data';
+    return;
+  }
   document.getElementById('alStats').innerHTML =
     'Total corrections collected: <strong>' + total + '</strong><br>' +
     'Wrong corrections: <strong>' + wrong + '</strong><br>' +
     'Pending for next retrain: <strong>' + pending + '</strong><br>' +
-    'Progress to retrain target: <strong>' + pending + '/30</strong><br>' +
+    'Progress to retrain target: <strong>' + pending + '/' + retrainTarget + '</strong><br>' +
     'Last retrain date: <strong>2026-04-08</strong>';
   const map = {};
   feedbackData.forEach(function(r){
@@ -539,9 +666,9 @@ function renderFalsePositives(){
   body.innerHTML = rows.map(function(r){
     const tRaw = r.timestamp || r.recorded_at || r.created_at || r.corrected_at;
     const t = tRaw ? new Date(tRaw).toLocaleString() : '-';
-    const score = Number(r.risk_score || 0);
-    const cls = r.pii_classes || r.predicted || '-';
-    const action = r.action || 'warn';
+    const score = (r.risk_score != null && r.risk_score !== '') ? Number(r.risk_score) : '-';
+    const cls = r.pii_classes || r.predicted || 'N/A';
+    const action = r.action || (String(r.predicted) !== String(r.correct) ? 'warn' : 'N/A');
     const fb = r.feedback_type || (String(r.predicted) !== String(r.correct) ? (String(r.predicted) + '->' + String(r.correct)) : ((r.snoozed ? 'snoozed' : '') + ((r.snoozed && r.overridden) ? ' + ' : '') + (r.overridden ? 'overridden' : '')));
     const pill = action === 'block' ? 'pill-red' : (action === 'warn' ? 'pill-amber' : 'pill-green');
     return '<tr>' +

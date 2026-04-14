@@ -80,13 +80,13 @@ def _pill_border_path_no_left(pill_w: float) -> QtGui.QPainterPath:
     h = float(PILL_H)
     r = float(PILL_RX)
     border = QtGui.QPainterPath()
-    # Start half-pixel toward the traffic seam so top/bottom borders align exactly.
-    border.moveTo(x - 0.5, y)
+    # Keep seam stroke exactly on pill edge to avoid double-border look at join.
+    border.moveTo(x, y)
     border.lineTo(x + w - r, y)
     border.arcTo(QtCore.QRectF(x + w - 2.0 * r, y, 2.0 * r, 2.0 * r), 90.0, -90.0)
     border.lineTo(x + w, y + h - r)
     border.arcTo(QtCore.QRectF(x + w - 2.0 * r, y + h - 2.0 * r, 2.0 * r, 2.0 * r), 0.0, -90.0)
-    border.lineTo(x - 0.5, y + h)
+    border.lineTo(x, y + h)
     return border
 
 
@@ -426,13 +426,7 @@ class RiskBubble(QtWidgets.QWidget):
         return cw
 
     def _toolbar_slot_w(self) -> int:
-        # Toolbar docks near the pill's right edge, not after the full content width.
-        slot = TOOLBAR_DOCK_MARGIN + TOOLBAR_DOCK_BODY_W - PILL_MARGIN_RIGHT
-        slot = max(0, slot)
-        if ALWAYS_SHOW_TOOLBAR:
-            return slot
-        if self._toolbar is not None and self._toolbar.isVisible():
-            return slot
+        # Toolbar is now a separate top-level tool window; no in-pill slot reservation.
         return 0
 
     def _pill_row_top(self) -> int:
@@ -446,8 +440,8 @@ class RiskBubble(QtWidgets.QWidget):
     def _refresh_window_geometry(self, *, reserve_toolbar_slot: bool = False) -> None:
         h = self._action_card_wrap.height() + WIDGET_H
         slot = self._toolbar_slot_w()
-        if reserve_toolbar_slot and slot == 0:
-            slot = max(0, TOOLBAR_DOCK_MARGIN + TOOLBAR_DOCK_BODY_W - PILL_MARGIN_RIGHT)
+        # Toolbar is a separate top-level window; never reserve extra pill width for it.
+        del reserve_toolbar_slot
         w = self._content_width_for_layout() + slot
         self.setFixedSize(w, max(h, WIDGET_H))
 
@@ -614,6 +608,8 @@ class RiskBubble(QtWidgets.QWidget):
         if not self._show_badge_on_issues or self._analysing:
             return False
         if self._risk_score <= 0:
+            return False
+        if self._issue_count <= 0 and not getattr(self, "_hold_locked", False):
             return False
         st = self._state.lower()
         if st in ("idle", "none", "not_monitoring"):
@@ -888,16 +884,18 @@ class RiskBubble(QtWidgets.QWidget):
         self._dot_opacity = 1.0
 
     def _toolbar_end_pos(self) -> QtCore.QPoint:
-        """Dock toolbar to the right of the pill row in local coordinates (same top-level window)."""
+        """Dock toolbar to the right of the pill row in global screen coordinates."""
         if self._toolbar is None:
             return QtCore.QPoint(0, 0)
         tb_w = self._toolbar.width()
         tb_h = self._toolbar.sizeHint().height()
         base_w = self._content_width_for_layout()
-        tb_x = base_w - PILL_MARGIN_RIGHT + TOOLBAR_DOCK_MARGIN
+        local_x = base_w - PILL_MARGIN_RIGHT + TOOLBAR_DOCK_MARGIN
         row_top = self._pill_row_top()
-        tb_y = row_top + max(0, (WIDGET_H - tb_h) // 2)
-        end_global = self.mapToGlobal(QtCore.QPoint(tb_x + tb_w, tb_y + tb_h // 2))
+        # Align the toolbar to the pill row top so it reads as a slide-out side bar.
+        local_y = row_top
+        tb_top_left = self.mapToGlobal(QtCore.QPoint(local_x, local_y))
+        end_global = QtCore.QPoint(tb_top_left.x() + tb_w, tb_top_left.y() + tb_h // 2)
         app = QtWidgets.QApplication.instance()
         scr = QtGui.QGuiApplication.screenAt(end_global) if app else None
         if scr is None and app:
@@ -905,22 +903,24 @@ class RiskBubble(QtWidgets.QWidget):
         g = scr.availableGeometry() if scr else QtCore.QRect(0, 0, 1920, 1080)
         if end_global.x() > g.right() - 12:
             overflow = end_global.x() - (g.right() - 12)
-            tb_x = max(-tb_w - TOOLBAR_DOCK_MARGIN, tb_x - overflow)
-        return QtCore.QPoint(tb_x, tb_y)
+            tb_top_left.setX(max(g.left() + 4, tb_top_left.x() - overflow))
+        if tb_top_left.y() < g.top() + 4:
+            tb_top_left.setY(g.top() + 4)
+        if tb_top_left.y() + tb_h > g.bottom() - 4:
+            tb_top_left.setY(max(g.top() + 4, g.bottom() - tb_h - 4))
+        return tb_top_left
 
     def _toolbar_slide_start(self, end: QtCore.QPoint) -> QtCore.QPoint:
         """Slide animation offset in the same local coordinate system as _toolbar_end_pos."""
         ex, ey = end.x(), end.y()
-        mid_x = self._content_width_for_layout() // 2
-        mid_y = self._pill_row_top() + WIDGET_H // 2
+        center_global = self.mapToGlobal(QtCore.QPoint(self.width() // 2, self.height() // 2))
+        mid_x = center_global.x()
         if ex > mid_x:
-            sx = ex + 48
+            sx = ex + 24
         else:
-            sx = ex - 48
-        if ey > mid_y:
-            sy = ey + 30
-        else:
-            sy = ey - 30
+            sx = ex - 24
+        # Keep same y while sliding so hidden state does not leave a detached glyph artifact.
+        sy = ey
         return QtCore.QPoint(sx, sy)
 
     def _update_toolbar_position(self) -> None:
@@ -1003,16 +1003,12 @@ class RiskBubble(QtWidgets.QWidget):
         if self._toolbar is None or not self._toolbar.isVisible():
             return
         tb = self._toolbar
-        end = self._toolbar_end_pos()
-        away = self._toolbar_slide_start(end)
         self._stop_toolbar_anim()
-        self._toolbar_anim = QtCore.QPropertyAnimation(tb, b"pos", self)
-        self._toolbar_anim.setDuration(180)
-        self._toolbar_anim.setStartValue(tb.pos())
-        self._toolbar_anim.setEndValue(away)
-        self._toolbar_anim.setEasingCurve(QtCore.QEasingCurve.Type.InCubic)
-        self._toolbar_anim.finished.connect(self._on_toolbar_hide_anim_finished)
-        self._toolbar_anim.start()
+        tb.hide()
+        # Snap back to dock anchor immediately to prevent any stale ghost pixels.
+        tb.move(self._toolbar_end_pos())
+        tb.setWindowOpacity(1.0)
+        self._refresh_window_geometry()
 
     def _on_toolbar_hide_anim_finished(self) -> None:
         if self._toolbar_anim is not None:
@@ -1041,7 +1037,7 @@ class RiskBubble(QtWidgets.QWidget):
         self._restart_toolbar_idle_timer()
         tb = self._ensure_toolbar()
         tb.adjustSize()
-        self._refresh_window_geometry(reserve_toolbar_slot=not tb.isVisible())
+        self._refresh_window_geometry()
         # Keep the dock slot on-screen so the vertical menu is always visible.
         self.move(self._clamp_point_to_screen(self.pos()))
         if tb.isVisible():
@@ -1464,6 +1460,8 @@ class RiskBubble(QtWidgets.QWidget):
         self.raise_()
         if self._traffic_indicator is not None:
             self._traffic_indicator.raise_()
+        if self._toolbar is not None and self._toolbar.isVisible():
+            self._toolbar.raise_()
 
     def showEvent(self, event: QtGui.QShowEvent) -> None:
         super().showEvent(event)
@@ -1473,6 +1471,8 @@ class RiskBubble(QtWidgets.QWidget):
 
     def hideEvent(self, event: QtGui.QHideEvent) -> None:
         self._traffic_indicator.hide()
+        if self._toolbar is not None:
+            self._toolbar.hide()
         super().hideEvent(event)
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
@@ -1487,12 +1487,11 @@ class RiskBubble(QtWidgets.QWidget):
         p.drawPath(body)
         # Bridge the segment join by 1px to avoid subpixel seams on some DPI scales.
         p.fillRect(
-            QtCore.QRectF(float(PILL_X) - 1.0, float(PILL_Y), 1.5, float(PILL_H)),
+            QtCore.QRectF(float(PILL_X) - 0.5, float(PILL_Y), 1.0, float(PILL_H)),
             self._pill_fill_paint_color(),
         )
         p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-        p.setPen(QtGui.QPen(COLOR_FUSED_BORDER, 1.0))
-        p.drawPath(_pill_border_path_no_left(pw))
+        p.setPen(QtCore.Qt.PenStyle.NoPen)
 
         p.save()
         sc_badge = int(self._streak.get("streak_count", 0) or 0)
@@ -1612,14 +1611,10 @@ class RiskBubble(QtWidgets.QWidget):
                     p.setClipPath(clip)
                     p.drawPixmap(x, y, scaled)
                     p.setClipping(False)
-                    # Match traffic-light border tone for a unified component feel.
-                    p.setPen(QtGui.QPen(COLOR_FUSED_BORDER, 1.0))
-                    p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-                    p.drawEllipse(badge_rect)
                     p.restore()
                 else:
                     p.save()
-                    diameter = max(8.0, min(float(score_slot.width()), float(score_slot.height())) - 2.0)
+                    diameter = max(9.0, min(float(score_slot.width()), float(score_slot.height())) - 1.0)
                     badge_rect = QtCore.QRectF(
                         float(score_slot.x() + (score_slot.width() - diameter) / 2.0),
                         float(score_slot.y() + (score_slot.height() - diameter) / 2.0),
@@ -1629,12 +1624,8 @@ class RiskBubble(QtWidgets.QWidget):
                     p.setPen(QtCore.Qt.PenStyle.NoPen)
                     p.setBrush(QtGui.QColor(12, 37, 34, 220))
                     p.drawEllipse(badge_rect)
-                    # Match traffic-light border tone for a unified component feel.
-                    p.setPen(QtGui.QPen(COLOR_FUSED_BORDER, 1.0))
-                    p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-                    p.drawEllipse(badge_rect)
                     p.setPen(QtGui.QColor(255, 255, 255, 220))
-                    p.setFont(paint_font_px(fam, 8, bold=True, floor=MIN_PX_LABEL))
+                    p.setFont(paint_font_px(fam, 9, bold=True, floor=MIN_PX_LABEL))
                     p.drawText(
                         badge_rect,
                         QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignVCenter,
@@ -1669,37 +1660,9 @@ class RiskBubble(QtWidgets.QWidget):
             )
 
         self._paint_expanded_hover_content(p, fam)
-        self._paint_risk_score_ring(p)
+        # Keep chrome minimal: do not draw floating score ring/capsule.
 
-        if (
-            getattr(self, "_clipboard_preview_active", False)
-            and int(getattr(self, "_preview_score", 0) or 0) > 0
-            and not self._analysing
-            and str(self._state).lower() in ("idle", "none", "not_monitoring")
-        ):
-            preview_color = {
-                "high": QtGui.QColor("#E53935"),
-                "med": QtGui.QColor("#FFB300"),
-                "safe": QtGui.QColor("#43A047"),
-            }.get(
-                str(getattr(self, "_preview_level", "safe")).lower(),
-                QtGui.QColor("#43A047"),
-            )
-            p.setPen(preview_color)
-            prev_font = QtGui.QFont()
-            prev_font.setPixelSize(8)
-            p.setFont(prev_font)
-            pr = QtCore.QRectF(
-                float(pw) + float(PILL_X) - 28.0,
-                float(PILL_Y) - 10.0,
-                28.0,
-                10.0,
-            )
-            p.drawText(
-                pr,
-                QtCore.Qt.AlignmentFlag.AlignCenter,
-                f"📋{int(self._preview_score)}",
-            )
+        # Intentionally hide the compact clipboard-preview badge to keep the overlay clean.
 
     def set_clipboard_preview(self, level: str, score: int) -> None:
         """

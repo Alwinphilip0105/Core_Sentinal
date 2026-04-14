@@ -186,9 +186,8 @@ class TrafficLightIndicator(QtWidgets.QWidget):
         painter.setBrush(COLOR_HOUSING)
         painter.drawPath(fill_path)
 
-        painter.setPen(QtGui.QPen(COLOR_BORDER, 1.0))
+        painter.setPen(QtCore.Qt.PenStyle.NoPen)
         painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-        painter.drawPath(self._border_path())
         # Do not draw a separate seam stroke here; the pill border handles the join.
         # This avoids a doubled/thicker border where the two segments meet.
 
