@@ -12,10 +12,16 @@ for _rel in (
         os.add_dll_directory(_dll)
         break
 
-# Set working directory and path to the guardrail package
-os.chdir(os.path.join(_here, "core-sentinel-guardrail"))
-sys.path.insert(0, os.path.join(_here, "core-sentinel-guardrail"))
+_guardrail = os.path.join(_here, "core-sentinel-guardrail")
+_main_py = os.path.join(_guardrail, "main.py")
+if not os.path.isfile(_main_py):
+    print(f"Missing main.py: {_main_py}", file=sys.stderr)
+    sys.exit(1)
 
-# Launch main.py as __main__
+# Working directory for relative paths inside the app; absolute path for runpy avoids broken __file__ on Windows.
+os.chdir(_guardrail)
+sys.path.insert(0, _guardrail)
+
 import runpy
-runpy.run_path("main.py", run_name="__main__")
+
+runpy.run_path(_main_py, run_name="__main__")

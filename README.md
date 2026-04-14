@@ -193,7 +193,7 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
 ### Configure (optional)
 
-Create a `.env` file in the project root:
+Create a `.env` file in the project root (you can copy **`.env.example`** to `.env` and edit):
 
 ```env
 # Gemini AI for document scanning (free tier)
