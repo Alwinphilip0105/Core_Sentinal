@@ -218,6 +218,8 @@ GUARDRAIL_DEBUG_WINDOW=0
 
 For **GitHub sync, backup scope, and recovery** after disk loss or a new machine, see **[docs/BACKUP_AND_RECOVERY.md](docs/BACKUP_AND_RECOVERY.md)**.
 
+For a **production-style workflow** (branching, secrets, tests before ship, ML release order, demo checklist), see **[docs/PRODUCTION_AND_RELEASE.md](docs/PRODUCTION_AND_RELEASE.md)**. Contributors: **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+
 ### Run
 
 ```powershell

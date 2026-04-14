@@ -6,6 +6,7 @@ All guides live next to the application under **`core-sentinel-guardrail/`**. Us
 
 | Document | Description |
 |----------|-------------|
+| [Production and release](PRODUCTION_AND_RELEASE.md) | Git workflow, secrets, quality gates, ML release order, launch checklist |
 | [Backup and recovery](BACKUP_AND_RECOVERY.md) | What is in Git vs local-only, Supabase/webhook logging, how to recover |
 | [Guardrail README](../core-sentinel-guardrail/README.md) | Overview, label modes (3-class / 9-class), `data.py` / `train.py` |
 | [Clipboard guardrail](../core-sentinel-guardrail/CLIPBOARD_GUARDRAIL.md) | How paste monitoring works, env vars, full training / calibration loop |
