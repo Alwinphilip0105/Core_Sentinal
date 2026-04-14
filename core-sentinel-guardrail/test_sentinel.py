@@ -2,7 +2,7 @@
 Core Sentinel — Automated Test Suite
 Tests all detection flows and generates an HTML report.
 Run from: core-sentinel-guardrail/
-Usage: ..\.venv\Scripts\python.exe test_sentinel.py
+Usage: ..\\.venv\\Scripts\\python.exe test_sentinel.py
 """
 
 import sys

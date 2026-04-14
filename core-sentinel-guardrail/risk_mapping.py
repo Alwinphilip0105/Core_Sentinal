@@ -94,6 +94,11 @@ _STREET_ADDRESS = re.compile(
 _INTL_PHONE = re.compile(
     r"\+\d{1,3}[\s\-\.]?\(?\d{1,4}\)?[\s\-\.]?\d{3,12}"
 )
+_STREET_ADDRESS_GENERIC = re.compile(
+    r"(?i)\d+\s+[a-z]+\s+(street|st|avenue|ave|road|rd|drive|dr|lane|ln|blvd|boulevard|way|court|ct)\b"
+)
+_CVV_NUMBER = re.compile(r"(?i)\bcvv\b.{0,30}\d{3,4}")
+_PARTIAL_CARD = re.compile(r"(?i)card\s+ending\s+in\s+\d{4}")
 
 # Passport: explicit label + ID, or ID with passport/travel-doc context (high risk).
 _PASSPORT_EXPLICIT = re.compile(
@@ -116,12 +121,18 @@ _SALARY_INFO = re.compile(
 _MEDIUM_PII_PATTERNS = [
     _STREET_ADDRESS,
     _INTL_PHONE,
+    _STREET_ADDRESS_GENERIC,
+    _CVV_NUMBER,
+    _PARTIAL_CARD,
     _CONFIDENTIAL_MARKER,
     _SALARY_INFO,
 ]
 _MEDIUM_PII_NAMES = [
     "street address",
     "international phone",
+    "Street address",
+    "CVV number",
+    "Partial card",
     "Confidential marker",
     "Salary information",
 ]

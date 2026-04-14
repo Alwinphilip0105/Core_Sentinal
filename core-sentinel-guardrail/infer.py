@@ -1502,6 +1502,7 @@ def _apply_long_text_sliding_penalty(
     per_window_scores: list[int],
     merged_risk: str,
     merged_risk_score: int,
+    total_tokens: int = 0,
 ) -> tuple[str, int]:
     """
     If only a small fraction of windows exceed the warn band, scale the worst window score down.
@@ -1511,21 +1512,32 @@ def _apply_long_text_sliding_penalty(
     """
     if not per_window_scores:
         return merged_risk, merged_risk_score
-    n = len(per_window_scores)
-    max_score = max(per_window_scores)
-    triggered = sum(1 for s in per_window_scores if s >= 40)
-    trigger_rate = triggered / n
-    if n <= 3 or trigger_rate >= 0.3:
-        return merged_risk, merged_risk_score
-    adjusted = int(max_score * 0.6)
-    # Map adjusted scalar to risk tier for policy (45 lines up with 70*0.6 → ~42 → low/silent)
-    if adjusted < 45:
+    final_score = max(per_window_scores)
+    total_windows = len(per_window_scores)
+    triggered_windows = sum(1 for s in per_window_scores if s > 30)
+    trigger_rate = triggered_windows / total_windows if total_windows > 0 else 0
+    # If less than 25% of windows triggered, reduce score to avoid false
+    # positives on long mostly-safe text.
+    if trigger_rate < 0.25 and final_score < 80:
+        final_score = int(final_score * trigger_rate * 2)
+    # For very long multi-window text with no regex/KB triggers, treat a
+    # uniform model-only HIGH signal as likely false positive noise.
+    if (
+        total_tokens >= 180
+        and total_windows > 1
+        and triggered_windows == total_windows
+        and min(per_window_scores) >= 70
+        and merged_risk_score <= 70
+    ):
+        final_score = min(final_score, 30)
+    # Map scalar to risk tier for policy.
+    if final_score < 45:
         new_risk = "low"
-    elif adjusted < 70:
+    elif final_score < 70:
         new_risk = "med"
     else:
         new_risk = "high"
-    return new_risk, adjusted
+    return new_risk, final_score
 
 
 def compute_risk_score(risk: str, triggers: list[str]) -> int:
@@ -1810,10 +1822,13 @@ def score_clipboard_with_pii(
     ):
         win_meta_pre = _get_sliding_window_meta()
         prob_vecs = list(win_meta_pre.get("window_prob_vectors") or [])
-        if len(prob_vecs) > 3:
+        if len(prob_vecs) > 1:
             pws = _per_window_model_risk_scores(prob_vecs)
             risk, merged_score_for_penalty = _apply_long_text_sliding_penalty(
-                pws, risk, merged_score_for_penalty
+                pws,
+                risk,
+                merged_score_for_penalty,
+                total_tokens=int(win_meta_pre.get("token_count", 0) or 0),
             )
     base_policy = load_pii_policy()
     if policy_override:
