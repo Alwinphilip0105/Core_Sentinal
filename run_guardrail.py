@@ -22,6 +22,13 @@ if not os.path.isfile(_main_py):
 os.chdir(_guardrail)
 sys.path.insert(0, _guardrail)
 
-import runpy
+import importlib.util
 
-runpy.run_path(_main_py, run_name="__main__")
+# importlib is more reliable than runpy.run_path on Windows (correct __file__ for local imports).
+_spec = importlib.util.spec_from_file_location("__main__", _main_py)
+if _spec is None or _spec.loader is None:
+    print(f"Could not load: {_main_py}", file=sys.stderr)
+    sys.exit(1)
+_main_mod = importlib.util.module_from_spec(_spec)
+sys.modules["__main__"] = _main_mod
+_spec.loader.exec_module(_main_mod)

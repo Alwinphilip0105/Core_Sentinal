@@ -1,5 +1,9 @@
 # Windows: Fix PyTorch "DLL initialization failed" (c10.dll)
 
+**PowerShell:** If the project path contains spaces (e.g. `Sem 4`), always quote the path:
+
+`cd "E:\Rutgers_Class\Sem 4\Project\Core_Sentinal"`
+
 If you see:
 ```text
 OSError: [WinError 1114] A dynamic link library (DLL) initialization routine failed. Error loading "...\c10.dll" or one of its dependencies.
