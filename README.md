@@ -195,7 +195,7 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
 ### Configure (optional)
 
-Create a `.env` file in the project root (you can copy **`.env.example`** to `.env` and edit):
+Create a `.env` file in the project root (you can copy **`.env.example`** to `.env` and edit). When you start the app with **`run_guardrail.py`**, the launcher reads `.env` into the process environment (shell variables still take precedence if already set).
 
 ```env
 # Gemini AI for document scanning (free tier)

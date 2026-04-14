@@ -8,6 +8,27 @@ def _repo_root() -> str:
     return os.path.dirname(here) if os.path.basename(here) == "launchers" else here
 
 
+def _load_dotenv() -> None:
+    """Load repo-root .env into os.environ (does not override shell-set vars)."""
+    path = os.path.join(_repo_root(), ".env")
+    if not os.path.isfile(path):
+        return
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, val = line.partition("=")
+                key, val = key.strip(), val.strip().strip('"').strip("'")
+                if key:
+                    os.environ.setdefault(key, val)
+    except OSError:
+        pass
+
+
+_load_dotenv()
+
 # Add torch DLL directory before any imports (Windows fix)
 _here = _repo_root()
 for _rel in (
