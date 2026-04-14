@@ -205,10 +205,18 @@ GEMINI_API_KEY=your-key-here
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 
+# Optional: mirror each risk telemetry row to Supabase (see docs/sql/risk_telemetry.sql)
+# GUARDRAIL_TELEMETRY_SUPABASE=1
+
+# Optional: POST each telemetry JSON to your own HTTPS endpoint (Zapier, Edge Function, etc.)
+# GUARDRAIL_TELEMETRY_WEBHOOK_URL=https://example.com/ingest
+
 # Optional tuning
 GUARDRAIL_BLOCKING_PRELOAD=0
 GUARDRAIL_DEBUG_WINDOW=0
 ```
+
+For **GitHub sync, backup scope, and recovery** after disk loss or a new machine, see **[docs/BACKUP_AND_RECOVERY.md](docs/BACKUP_AND_RECOVERY.md)**.
 
 ### Run
 

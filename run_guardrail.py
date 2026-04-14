@@ -3,9 +3,14 @@ import sys
 
 # Add torch DLL directory before any imports (Windows fix)
 _here = os.path.dirname(os.path.abspath(__file__))
-_dll = os.path.join(_here, ".venv", "Lib", "site-packages", "torch", "lib")
-if os.path.isdir(_dll) and hasattr(os, "add_dll_directory"):
-    os.add_dll_directory(_dll)
+for _rel in (
+    (".venv", "Lib", "site-packages", "torch", "lib"),
+    ("core-sentinel-guardrail", ".venv", "Lib", "site-packages", "torch", "lib"),
+):
+    _dll = os.path.join(_here, *_rel)
+    if os.path.isdir(_dll) and hasattr(os, "add_dll_directory"):
+        os.add_dll_directory(_dll)
+        break
 
 # Set working directory and path to the guardrail package
 os.chdir(os.path.join(_here, "core-sentinel-guardrail"))

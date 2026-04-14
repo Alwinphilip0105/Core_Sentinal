@@ -31,6 +31,21 @@ Set **`GUARDRAIL_TELEMETRY_WEBHOOK_URL`** to an HTTPS URL. Each score **POST**s 
 
 No extra Python dependencies are required for the webhook.
 
+## Cloud storage (Supabase)
+
+You already have two ways to get data off the machine:
+
+1. **SQLite → Supabase table `guardrail_events`**  
+   When **`SUPABASE_URL`** and **`SUPABASE_ANON_KEY`** are set, **`sentinel_sync_daemon`** (started from `main.py`) copies new rows from **`logs/guardrail.db`** (`scoring_events`) every 60s. Same hashes and actions; good for a warehouse or your hosted dashboards.
+
+2. **Telemetry JSON → Supabase table `risk_telemetry`** (optional, mirrors JSONL)  
+   - In Supabase SQL Editor, run **`docs/sql/risk_telemetry.sql`** to create the `payload` jsonb table and RLS policies.  
+   - Set **`GUARDRAIL_TELEMETRY_SUPABASE=1`** (same `SUPABASE_*` env vars as above).  
+   - Each score inserts one row with the full telemetry object in **`payload`** (same shape as one line of `risk_telemetry.jsonl`).  
+   - Override table name with **`GUARDRAIL_TELEMETRY_SUPABASE_TABLE`** if needed.
+
+If you also use the scoring sync, you may see overlapping information in **`guardrail_events`** vs **`risk_telemetry`**; keep both, or use only the stream you prefer for analytics.
+
 ## Training: dataset size and accuracy
 
 **Telemetry is for monitoring**, not training labels. To improve the model:

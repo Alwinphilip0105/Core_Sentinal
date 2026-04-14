@@ -2,40 +2,64 @@
   "block_threshold": 80,
   "thresholds": {
     "low": {
-      "warn": 1.0,
-      "block": 1.0,
+      "warn": 0.3,
+      "block": 0.048,
       "action_override": "silent",
-      "note": "Low risk never interrupts user — logged only"
+      "note": "Low risk never interrupts user \u2014 logged only",
+      "derived_from": "pr_curve_precision_0.85",
+      "auprc": 0.9991
     },
     "med": {
-      "warn": 0.60,
-      "block": 1.0,
+      "warn": 0.638,
+      "block": 0.788,
       "action_override": "warn_only",
-      "note": "Medium risk shows badge/toast, never blocks"
+      "note": "Medium risk shows badge/toast, never blocks",
+      "derived_from": "pr_curve_precision_0.85",
+      "auprc": 0.2526
     },
     "high": {
-      "warn": 0.45,
-      "block": 0.75,
-      "note": "High risk shows panel and blocks paste"
+      "warn": 0.3,
+      "block": 0.002,
+      "note": "High risk shows panel and blocks paste",
+      "derived_from": "pr_curve_precision_0.85",
+      "auprc": 0.9942
     }
   },
   "class_overrides": {
-    "NAME": { "max_action": "warn" },
-    "LOCATION": { "max_action": "warn" },
-    "CONTACT": { "max_action": "warn" },
-    "ID": { "max_action": "block" },
-    "FINANCIAL": { "max_action": "block" },
-    "AUTH": { "max_action": "block" },
-    "HEALTH": { "max_action": "block" },
-    "OTHER_PII": { "max_action": "warn" },
-    "O": { "max_action": "silent" }
+    "NAME": {
+      "max_action": "warn"
+    },
+    "LOCATION": {
+      "max_action": "warn"
+    },
+    "CONTACT": {
+      "max_action": "warn"
+    },
+    "ID": {
+      "max_action": "block"
+    },
+    "FINANCIAL": {
+      "max_action": "block"
+    },
+    "AUTH": {
+      "max_action": "block"
+    },
+    "HEALTH": {
+      "max_action": "block"
+    },
+    "OTHER_PII": {
+      "max_action": "warn"
+    },
+    "O": {
+      "max_action": "silent"
+    }
   },
   "low_risk_policy": "silent",
   "med_risk_policy": "warn_only_no_block",
   "high_risk_policy": "full_block_with_panel",
   "inference_3class_labels": {
     "prob_threshold_high": 0.75,
-    "prob_threshold_med": 0.40
+    "prob_threshold_med": 0.4
   },
   "strict_decision_rules": {
     "prob_high_block": 0.35,
@@ -45,5 +69,7 @@
   "pii_count_probability_threshold": 0.1,
   "critical_secret": {
     "min_token_entropy_bits": 4.2
-  }
+  },
+  "_calibrated_at": "2026-04-14T00:47:21.169316+00:00",
+  "_calibration_source": "reports/pr_curve_summary.json"
 }

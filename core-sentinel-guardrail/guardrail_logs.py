@@ -9,10 +9,12 @@ Stores:
 Database path: logs/guardrail.db (WAL mode). Thread-safe for the infer background writer + UI thread.
 Optional legacy CSV: set GUARDRAIL_LEGACY_EVENTS_CSV=1 to also append logs/events.csv
 
-Risk telemetry (JSONL + optional webhook):
+Risk telemetry (JSONL + optional webhook + optional Supabase):
   - logs/risk_telemetry.jsonl — one JSON object per score (risk, risk_score, hash, …).
   - GUARDRAIL_RISK_TELEMETRY=0 disables JSONL append.
   - GUARDRAIL_TELEMETRY_WEBHOOK_URL — POST each record as JSON (async) for your own server / Zapier / etc.
+  - GUARDRAIL_TELEMETRY_SUPABASE=1 — insert each record into Supabase (see docs/sql/risk_telemetry.sql).
+    Uses SUPABASE_URL + SUPABASE_ANON_KEY; table name from GUARDRAIL_TELEMETRY_SUPABASE_TABLE (default risk_telemetry).
 """
 
 from __future__ import annotations
@@ -200,6 +202,32 @@ def _append_risk_telemetry_line(row: list, context_json: str | None) -> None:
     with open(RISK_TELEMETRY_JSONL, "a", encoding="utf-8") as f:
         f.write(json.dumps(rec, ensure_ascii=False) + "\n")
     _maybe_post_telemetry_webhook(rec)
+    _maybe_supabase_telemetry(rec)
+
+
+def _maybe_supabase_telemetry(rec: dict) -> None:
+    """Insert telemetry row into Supabase when GUARDRAIL_TELEMETRY_SUPABASE=1 (async thread)."""
+    v = os.environ.get("GUARDRAIL_TELEMETRY_SUPABASE", "").strip().lower()
+    if v not in ("1", "true", "yes"):
+        return
+    url = os.environ.get("SUPABASE_URL", "").strip()
+    key = os.environ.get("SUPABASE_ANON_KEY", "").strip()
+    if not url or not key:
+        return
+    table = (os.environ.get("GUARDRAIL_TELEMETRY_SUPABASE_TABLE") or "risk_telemetry").strip()
+    if not table:
+        return
+
+    def _run() -> None:
+        try:
+            from supabase import create_client
+
+            sb = create_client(url, key)
+            sb.table(table).insert({"payload": rec}).execute()
+        except Exception:
+            pass
+
+    threading.Thread(target=_run, daemon=True, name="guardrail-telemetry-supabase").start()
 
 
 def _maybe_post_telemetry_webhook(rec: dict) -> None:

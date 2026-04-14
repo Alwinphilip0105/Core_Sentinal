@@ -20,6 +20,7 @@ import json
 import math
 import os
 import sys
+from typing import Optional
 import queue
 import re
 import threading
@@ -63,21 +64,23 @@ def _is_windows_torch_dll_error(exc: BaseException) -> bool:
     )
 
 
+def _windows_torch_lib_dir() -> Optional[str]:
+    base = os.path.dirname(os.path.abspath(__file__))
+    for rel in (
+        ("..", ".venv", "Lib", "site-packages", "torch", "lib"),
+        (".venv", "Lib", "site-packages", "torch", "lib"),
+    ):
+        p = os.path.normpath(os.path.join(base, *rel))
+        if os.path.isdir(p):
+            return p
+    return None
+
+
 try:
     if sys.platform == "win32":
-        import os
-
-        os.add_dll_directory(
-            os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
-                "..",
-                ".venv",
-                "Lib",
-                "site-packages",
-                "torch",
-                "lib",
-            )
-        )
+        _torch_lib = _windows_torch_lib_dir()
+        if _torch_lib is not None:
+            os.add_dll_directory(_torch_lib)
     import torch
     import torch.nn.functional as F
     from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer
