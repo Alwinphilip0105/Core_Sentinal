@@ -41,7 +41,7 @@ cd Core_Sentinal
 | Create venv | `python -m venv .venv` (repo root) or `uv venv` under `core-sentinel-guardrail` per your layout. |
 | Install deps | `pip install -r core-sentinel-guardrail/requirements.txt` (full desktop stack). |
 | Lockfile | `core-sentinel-guardrail/uv.lock` + `pyproject.toml` support **`uv sync`** for ML tooling; align with `requirements.txt` if you standardize on one tool. |
-| Document path quirks | Paths with **spaces** need quotes in PowerShell; see **[WINDOWS_SETUP.md](../WINDOWS_SETUP.md)**. |
+| Document path quirks | Paths with **spaces** need quotes in PowerShell; see **[WINDOWS_SETUP.md](WINDOWS_SETUP.md)**. |
 
 ---
 
@@ -92,7 +92,7 @@ $env:GUARDRAIL_BLOCKING_PRELOAD = "0"
 & ".\.venv\Scripts\python.exe" ".\run_guardrail.py"
 ```
 
-If the venv lives only under `core-sentinel-guardrail`, adjust the path to `python.exe` accordingly. **Do not** rely on ZIP extracts without replacing **`run_guardrail.py`** from `main` — see **WINDOWS_SETUP.md**.
+If the venv lives only under `core-sentinel-guardrail`, adjust the path to `python.exe` accordingly. **Do not** rely on ZIP extracts without replacing **`run_guardrail.py`** from `main` — see **`docs/WINDOWS_SETUP.md`**.
 
 ---
 
@@ -113,7 +113,8 @@ If the venv lives only under `core-sentinel-guardrail`, adjust the path to `pyth
 | Document | Role |
 |----------|------|
 | [README.md](../README.md) | Install, configure, run, training overview. |
-| [WINDOWS_SETUP.md](../WINDOWS_SETUP.md) | PyTorch DLL issues, paths with spaces, non-git copies. |
+| [REPO_LAYOUT.md](../REPO_LAYOUT.md) | Top-level folders and entry points. |
+| [WINDOWS_SETUP.md](WINDOWS_SETUP.md) | PyTorch DLL issues, paths with spaces, non-git copies. |
 | [BACKUP_AND_RECOVERY.md](BACKUP_AND_RECOVERY.md) | Git vs local data, recovery steps. |
 | [core-sentinel-guardrail/RISK_TELEMETRY.md](../core-sentinel-guardrail/RISK_TELEMETRY.md) | Telemetry JSONL, webhook, Supabase. |
 | [docs/sql/](sql/) | Supabase DDL to run in order. |

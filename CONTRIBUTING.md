@@ -10,7 +10,8 @@
 
 ## Documentation
 
-- User-facing setup: **[README.md](README.md)** and **[WINDOWS_SETUP.md](WINDOWS_SETUP.md)**.  
+- User-facing setup: **[README.md](README.md)** and **[docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md)**.  
+- Repository map: **[REPO_LAYOUT.md](REPO_LAYOUT.md)**.  
 - Operations and releases: **[docs/PRODUCTION_AND_RELEASE.md](docs/PRODUCTION_AND_RELEASE.md)**.  
 - Backup and recovery: **[docs/BACKUP_AND_RECOVERY.md](docs/BACKUP_AND_RECOVERY.md)**.
 

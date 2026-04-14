@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-"""Run the clipboard guardrail app from project root. Forwards all args."""
+"""Entry point at repo root; implementation lives in launchers/ (see REPO_LAYOUT.md)."""
+import os
 import subprocess
 import sys
-from pathlib import Path
 
-guardrail_dir = Path(__file__).resolve().parent / "core-sentinel-guardrail"
-script = guardrail_dir / "windows_clipboard_app.py"
-if not script.exists():
-    print(f"Not found: {script}", file=sys.stderr)
-    sys.exit(1)
-sys.exit(subprocess.call([sys.executable, str(script)] + sys.argv[1:]))
+_root = os.path.dirname(os.path.abspath(__file__))
+launcher = os.path.join(_root, "launchers", "run_clipboard_guardrail.py")
+sys.exit(subprocess.call([sys.executable, launcher] + sys.argv[1:]))

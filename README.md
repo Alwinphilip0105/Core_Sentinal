@@ -2,6 +2,8 @@
 
 > A Grammarly-style floating overlay that detects and protects Personally Identifiable Information (PII) when pasting content into LLM chat windows like ChatGPT, Claude, Gemini, and Comet.
 
+**Repository layout:** see **[REPO_LAYOUT.md](REPO_LAYOUT.md)** (folders, entry points, what belongs where).
+
 ---
 
 ## What it does
@@ -359,9 +361,14 @@ $env:GUARDRAIL_EXTRA_LLM_TITLES = "myapp,internal-gpt,llama"
 
 ```
 Core_Sentinal/
-├── run_guardrail.py              ← entry point
+├── run_guardrail.py              ← entry point (delegates to launchers/)
+├── launchers/                    ← launcher implementation (PyTorch DLL, main import)
+├── REPO_LAYOUT.md                ← folder map (read this first)
+├── scripts/                      ← dev helpers (e.g. manual_probe.py)
+├── docs/                         ← guides, Windows setup, Supabase SQL, static hub HTML
+├── legacy/rutgers_demo/          ← small older demo (not the full guardrail)
 ├── .env                          ← API keys (not in git)
-├── .venv/                        ← Python environment
+├── .venv/                        ← Python environment (optional location; see REPO_LAYOUT.md)
 └── core-sentinel-guardrail/
     ├── main.py                   ← PyQt6 app + keyboard hook
     ├── infer.py                  ← TinyBERT inference + sliding window

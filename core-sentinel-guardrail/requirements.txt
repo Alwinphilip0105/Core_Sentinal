@@ -1,6 +1,6 @@
 datasets
 transformers
-# Windows DLL fix: use torch 2.4 + numpy<2 if 2.6+ fails (see ../WINDOWS_SETUP.md)
+# Windows DLL fix: use torch 2.4 + numpy<2 if 2.6+ fails (see ../docs/WINDOWS_SETUP.md)
 torch>=2.6
 torchvision>=0.19
 accelerate

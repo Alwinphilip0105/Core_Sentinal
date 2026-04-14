@@ -29,7 +29,7 @@ This project uses **Git** (typically **GitHub**) as the source of truth for **co
 
 ## Recovering after disk loss or a new machine
 
-1. **Clone** the repository and install Python dependencies (`README.md` / `WINDOWS_SETUP.md`).
+1. **Clone** the repository and install Python dependencies (`README.md` / **`docs/WINDOWS_SETUP.md`**).
 2. **Recreate `.env`** with `GEMINI_API_KEY`, `SUPABASE_*`, and any optional guardrail env vars.
 3. **Run Supabase SQL** from `docs/sql/` if your cloud tables are empty or new.
 4. **Rehydrate models:** run `python data.py` then `python train.py` in `core-sentinel-guardrail`, or restore a saved `models/` backup.
