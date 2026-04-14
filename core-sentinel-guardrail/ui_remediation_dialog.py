@@ -1087,6 +1087,18 @@ class RemediationDialog(QtWidgets.QDialog):
         self._fix_all_btn.customContextMenuRequested.connect(self._on_fix_all_context_menu)
         fh.addWidget(self._fix_all_btn)
 
+        self._skip_all_btn = QtWidgets.QPushButton("Skip all")
+        self._skip_all_btn.setFixedSize(76, 36)
+        self._skip_all_btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self._skip_all_btn.setStyleSheet(
+            "QPushButton { background: #ffffff; color: #757575; font-size: 12px; font-weight: 600; "
+            "border: 1px solid #d1d5db; border-radius: 8px; }"
+            "QPushButton:hover { background: #f5f5f5; }"
+        )
+        self._skip_all_btn.clicked.connect(self._on_skip_all_clicked)
+        self._skip_all_btn.setVisible(False)
+        fh.addWidget(self._skip_all_btn)
+
         fl.addWidget(footer_row)
 
         self._override_confirm = QtWidgets.QWidget()
@@ -1584,17 +1596,30 @@ class RemediationDialog(QtWidgets.QDialog):
             from supabase import create_client
 
             sb = create_client(url, key)
-            sb.table("feedback_corrections").insert(
-                {
-                    "recorded_at": entry["timestamp"],
-                    "text_hash": entry["text_hash"],
-                    "predicted": entry["predicted"],
-                    "correct": entry["correct"],
-                    "source": entry["feedback_type"],
-                }
-            ).execute()
-        except Exception:
-            pass
+            base = {
+                "text_hash": entry["text_hash"],
+                "predicted": entry["predicted"],
+                "correct": entry["correct"],
+                "source": entry["feedback_type"],
+                "feedback_type": entry["feedback_type"],
+                "used_for_training": False,
+            }
+            payloads = [
+                {"timestamp": entry["timestamp"], **base},
+                {"recorded_at": entry["timestamp"], **base},
+                dict(base),
+            ]
+            last_err: Exception | None = None
+            for payload in payloads:
+                try:
+                    sb.table("feedback_corrections").insert(payload).execute()
+                    return
+                except Exception as e:
+                    last_err = e
+            if last_err is not None:
+                print(f"[feedback] supabase sync failed: {last_err}", flush=True)
+        except Exception as e:
+            print(f"[feedback] supabase client error: {e}", flush=True)
 
     def _check_retrain_threshold(self) -> None:
         """Notify when enough wrong-label corrections are pending."""
@@ -1658,6 +1683,7 @@ class RemediationDialog(QtWidgets.QDialog):
             self._has_issues = bool(self._spans) or bool(self._triggers)
         self._update_score_display(int(score), risk)
         self._update_issue_count()
+        self._skip_all_btn.setVisible(not bool(critical))
         self.show()
 
     def _show_banner(self, text: str, text_color: str, bg_color: str) -> None:
@@ -1740,6 +1766,7 @@ class RemediationDialog(QtWidgets.QDialog):
         self._fix_all_btn.setToolTip(
             "Redact PII and copy clean version to clipboard for manual paste"
         )
+        self._skip_all_btn.setVisible(True)
         self.show()
 
     def _build_hold_banners(self) -> None:
@@ -2226,6 +2253,7 @@ class RemediationDialog(QtWidgets.QDialog):
         self._snooze_main_btn.setEnabled(enabled)
         self._snooze_drop_btn.setEnabled(enabled)
         self._fix_all_btn.setEnabled(enabled)
+        self._skip_all_btn.setEnabled(enabled)
 
     def _on_fix_all_context_menu(self, pos: QtCore.QPoint) -> None:
         if not self._has_issues:

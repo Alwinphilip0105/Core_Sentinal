@@ -37,8 +37,8 @@ import copy
 import json
 import os
 import random
-import subprocess
 import sys
+import webbrowser
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -799,11 +799,27 @@ def main():
 
     def _view_report() -> None:
         try:
+            root = Path(__file__).resolve().parent
+            paste_reports = root / "logs" / "paste_reports"
+            latest_html: Path | None = None
+            if paste_reports.exists():
+                html_files = sorted(
+                    paste_reports.glob("*.html"),
+                    key=lambda p: p.stat().st_mtime,
+                    reverse=True,
+                )
+                if html_files:
+                    latest_html = html_files[0]
+            if latest_html is None:
+                fallback = root / "logs" / "test_report.html"
+                if fallback.exists():
+                    latest_html = fallback
+            if latest_html is not None:
+                webbrowser.open(latest_html.resolve().as_uri())
+                return
+            # Last fallback: generate CSV export.
             p = export_scoring_events_csv()
-            subprocess.Popen(
-                ["notepad.exe", str(p.resolve())],
-                shell=False,
-            )
+            webbrowser.open(p.resolve().as_uri())
         except OSError as e:
             show_toast(f"View report: {e}", parent=bubble, color="#E53935")
 

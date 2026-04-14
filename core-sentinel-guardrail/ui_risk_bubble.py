@@ -9,6 +9,7 @@ import datetime
 import importlib.util
 import os
 import sys
+import webbrowser
 from pathlib import Path
 from typing import Optional
 
@@ -25,7 +26,7 @@ import user_settings
 from character_widget import CharacterWidget
 from infer import score_clipboard_with_pii
 from toast import show_toast
-from traffic_light_indicator import COLOR_HOUSING, H_TL, TrafficLightIndicator, W_TL
+from traffic_light_indicator import COLOR_BORDER, COLOR_HOUSING, H_TL, TrafficLightIndicator, W_TL
 from ui_bubble_toolbar import BubbleToolbar, ToolbarTooltip
 from font_clamp import MIN_PX_BADGE, MIN_PX_BODY, MIN_PX_LABEL, paint_font_px
 
@@ -45,11 +46,12 @@ PILL_MARGIN_RIGHT = 22
 PILL_RX = 14
 
 # Vertical toolbar docked to the right of the pill row (child widget; expands window width).
-TOOLBAR_DOCK_MARGIN = 8
+TOOLBAR_DOCK_MARGIN = 4
 TOOLBAR_DOCK_BODY_W = 40
+ALWAYS_SHOW_TOOLBAR = False
 
 # Matches traffic-light chrome; top + right + bottom on pill (no stroke on seam).
-COLOR_FUSED_BORDER = QtGui.QColor(200, 200, 200, 80)
+COLOR_FUSED_BORDER = QtGui.QColor(COLOR_BORDER)
 
 
 def _pill_body_path(pill_w: float) -> QtGui.QPainterPath:
@@ -350,7 +352,7 @@ class RiskBubble(QtWidgets.QWidget):
         self._toolbar_hide_timer.timeout.connect(self._maybe_hide_toolbar)
         self._toolbar_idle_timer = QtCore.QTimer(self)
         self._toolbar_idle_timer.setSingleShot(True)
-        self._toolbar_idle_timer.setInterval(2000)
+        self._toolbar_idle_timer.setInterval(4000)
         self._toolbar_idle_timer.timeout.connect(self._hide_toolbar_idle_timeout)
         self._status_hide_timer: Optional[QtCore.QTimer] = None
 
@@ -427,6 +429,8 @@ class RiskBubble(QtWidgets.QWidget):
         # Toolbar docks near the pill's right edge, not after the full content width.
         slot = TOOLBAR_DOCK_MARGIN + TOOLBAR_DOCK_BODY_W - PILL_MARGIN_RIGHT
         slot = max(0, slot)
+        if ALWAYS_SHOW_TOOLBAR:
+            return slot
         if self._toolbar is not None and self._toolbar.isVisible():
             return slot
         return 0
@@ -949,6 +953,8 @@ class RiskBubble(QtWidgets.QWidget):
         self._restart_toolbar_idle_timer()
 
     def _on_application_state_changed(self, state: QtCore.Qt.ApplicationState) -> None:
+        if ALWAYS_SHOW_TOOLBAR:
+            return
         if state != QtCore.Qt.ApplicationState.ApplicationActive:
             self._hide_toolbar_immediately()
 
@@ -967,6 +973,8 @@ class RiskBubble(QtWidgets.QWidget):
         return False
 
     def _maybe_hide_toolbar(self) -> None:
+        if ALWAYS_SHOW_TOOLBAR:
+            return
         if self._should_keep_toolbar_visible():
             return
         self._hide_toolbar()
@@ -974,11 +982,15 @@ class RiskBubble(QtWidgets.QWidget):
             self._tb_tooltip.hide()
 
     def _hide_toolbar_immediately(self) -> None:
+        if ALWAYS_SHOW_TOOLBAR:
+            return
         self._hide_toolbar_for_drag()
         if self._tb_tooltip is not None:
             self._tb_tooltip.hide()
 
     def _hide_toolbar_idle_timeout(self) -> None:
+        if ALWAYS_SHOW_TOOLBAR:
+            return
         self._hide_toolbar_slide_out()
 
     def _stop_toolbar_anim(self) -> None:
@@ -1473,6 +1485,11 @@ class RiskBubble(QtWidgets.QWidget):
         p.setPen(QtCore.Qt.PenStyle.NoPen)
         p.setBrush(self._pill_fill_paint_color())
         p.drawPath(body)
+        # Bridge the segment join by 1px to avoid subpixel seams on some DPI scales.
+        p.fillRect(
+            QtCore.QRectF(float(PILL_X) - 1.0, float(PILL_Y), 1.5, float(PILL_H)),
+            self._pill_fill_paint_color(),
+        )
         p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
         p.setPen(QtGui.QPen(COLOR_FUSED_BORDER, 1.0))
         p.drawPath(_pill_border_path_no_left(pw))
@@ -1575,26 +1592,53 @@ class RiskBubble(QtWidgets.QWidget):
                 if pm is not None and not pm.isNull():
                     p.save()
                     p.setOpacity(0.65)
+                    diameter = max(8.0, min(float(score_slot.width()), float(score_slot.height())) - 2.0)
+                    badge_rect = QtCore.QRectF(
+                        float(score_slot.x() + (score_slot.width() - diameter) / 2.0),
+                        float(score_slot.y() + (score_slot.height() - diameter) / 2.0),
+                        diameter,
+                        diameter,
+                    )
                     scaled = pm.scaled(
-                        int(score_slot.width()),
-                        int(score_slot.height()),
-                        QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                        int(diameter),
+                        int(diameter),
+                        QtCore.Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                         QtCore.Qt.TransformationMode.SmoothTransformation,
                     )
-                    x = int(score_slot.x() + (score_slot.width() - scaled.width()) / 2.0)
-                    y = int(score_slot.y() + (score_slot.height() - scaled.height()) / 2.0)
-                    p.setClipPath(_pill_body_path(pw))
+                    x = int(badge_rect.x() + (badge_rect.width() - scaled.width()) / 2.0)
+                    y = int(badge_rect.y() + (badge_rect.height() - scaled.height()) / 2.0)
+                    clip = QtGui.QPainterPath()
+                    clip.addEllipse(badge_rect)
+                    p.setClipPath(clip)
                     p.drawPixmap(x, y, scaled)
+                    p.setClipping(False)
+                    # Match traffic-light border tone for a unified component feel.
+                    p.setPen(QtGui.QPen(COLOR_FUSED_BORDER, 1.0))
+                    p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+                    p.drawEllipse(badge_rect)
                     p.restore()
                 else:
                     p.save()
-                    p.setOpacity(0.5)
-                    p.setPen(COLOR_IDLE_GLYPH)
-                    p.setFont(paint_font_px(fam, 12, floor=MIN_PX_BODY))
+                    diameter = max(8.0, min(float(score_slot.width()), float(score_slot.height())) - 2.0)
+                    badge_rect = QtCore.QRectF(
+                        float(score_slot.x() + (score_slot.width() - diameter) / 2.0),
+                        float(score_slot.y() + (score_slot.height() - diameter) / 2.0),
+                        diameter,
+                        diameter,
+                    )
+                    p.setPen(QtCore.Qt.PenStyle.NoPen)
+                    p.setBrush(QtGui.QColor(12, 37, 34, 220))
+                    p.drawEllipse(badge_rect)
+                    # Match traffic-light border tone for a unified component feel.
+                    p.setPen(QtGui.QPen(COLOR_FUSED_BORDER, 1.0))
+                    p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+                    p.drawEllipse(badge_rect)
+                    p.setPen(QtGui.QColor(255, 255, 255, 220))
+                    p.setFont(paint_font_px(fam, 8, bold=True, floor=MIN_PX_LABEL))
                     p.drawText(
-                        score_slot,
+                        badge_rect,
                         QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignVCenter,
-                        "✓",
+                        "CS",
                     )
                     p.restore()
 
@@ -1823,12 +1867,37 @@ class RiskBubble(QtWidgets.QWidget):
         self.update()
 
     def _open_user_dashboard(self) -> None:
-        """Generate logs/user_dashboard.html via reports/user_dashboard_gen.py and open it."""
+        """Open hosted dashboard first; fall back to local generated dashboard."""
+        hosted = (
+            os.environ.get("GUARDRAIL_HOSTED_DASHBOARD_URL", "")
+            or "https://alwinphilip.online/Core_Sentinal/"
+        ).strip()
+        if hosted:
+            try:
+                opened = bool(webbrowser.open(hosted))
+                if opened:
+                    return
+            except Exception as e:
+                print(f"[dashboard] hosted open failed: {e}")
+            # Windows fallback if webbrowser handler fails/returns False.
+            try:
+                os.startfile(hosted)  # type: ignore[attr-defined]
+                return
+            except Exception:
+                pass
         root = Path(__file__).resolve().parent
+        gen_path = root / "reports" / "user_dashboard_gen.py"
+        if not gen_path.exists():
+            show_toast(
+                "Hosted dashboard unavailable and local dashboard generator not found.",
+                color="#E65100",
+                parent=self,
+            )
+            return
         try:
             spec = importlib.util.spec_from_file_location(
                 "user_dashboard_gen",
-                root / "reports" / "user_dashboard_gen.py",
+                gen_path,
             )
             if spec is None or spec.loader is None:
                 raise RuntimeError("user_dashboard_gen spec missing")

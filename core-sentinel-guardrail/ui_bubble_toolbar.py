@@ -240,10 +240,10 @@ class BubbleToolbar(QtWidgets.QWidget):
         lay.addWidget(self._btn_encrypt)
 
         self._btn_scan = ToolbarIconButton(
-            "📄",
+            "⬆",
             white,
             self._bubble,
-            "Scan a file for PII",
+            "Upload/scan document for PII (Gemini)",
             "[Alt+S]",
         )
         self._btn_scan.clicked.connect(self.scan_file_clicked.emit)
