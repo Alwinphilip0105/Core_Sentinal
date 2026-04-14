@@ -4,6 +4,8 @@
 
 `cd "E:\Rutgers_Class\Sem 4\Project\Core_Sentinal"`
 
+**No `.git` folder / `git pull` fails:** The directory is not a Git clone (zip copy, USB, etc.). Either clone fresh — `git clone https://github.com/Alwinphilip0105/Core_Sentinal.git` — or download the repo from GitHub and replace **`run_guardrail.py`** at the repo root with the current version from `main` (the launcher must use `importlib` to load `main.py`, not the older `runpy.run_path` snippet).
+
 If you see:
 ```text
 OSError: [WinError 1114] A dynamic link library (DLL) initialization routine failed. Error loading "...\c10.dll" or one of its dependencies.

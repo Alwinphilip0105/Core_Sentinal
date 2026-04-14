@@ -18,7 +18,7 @@ if not os.path.isfile(_main_py):
     print(f"Missing main.py: {_main_py}", file=sys.stderr)
     sys.exit(1)
 
-# Working directory for relative paths inside the app; absolute path for runpy avoids broken __file__ on Windows.
+# Working directory for relative paths; importlib loads main with a correct __file__ on Windows.
 os.chdir(_guardrail)
 sys.path.insert(0, _guardrail)
 
