@@ -118,7 +118,7 @@ Core Sentinel ships with multiple dashboards for users, operators, and admins.
 - Confusion matrix
 - Drift and threshold simulation
 
-![ML Dashboard Preview](docs/hub-preview-full.png)
+![ML Dashboard Preview](docs/ml-health-preview-final.png)
 
 ### Fleet Admin Dashboard
 
@@ -126,7 +126,7 @@ Core Sentinel ships with multiple dashboards for users, operators, and admins.
 - Alert and policy controls
 - Risk category rollups
 
-![Fleet Dashboard Preview](docs/hub-preview-full.png)
+![Fleet Dashboard Preview](docs/admin-preview-redesign-demo.png)
 
 Additional UI previews:
 
