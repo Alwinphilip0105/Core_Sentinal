@@ -90,7 +90,7 @@ h1{font-size:20px;font-weight:700;color:#fff;margin-bottom:6px}
 
 <div class="wrap">
   <h1>Documentation hub</h1>
-  <p class="sub">Local dashboards and tools. Privacy and ML sections are always available; fleet admin unlocks after signing in.</p>
+  <p class="sub">Local dashboards and tools. Privacy and ML sections are always available; admin dashboard unlocks after signing in.</p>
 
   <div class="mini-stats" id="miniStats">
     <div class="ms">
@@ -105,8 +105,8 @@ h1{font-size:20px;font-weight:700;color:#fff;margin-bottom:6px}
     </div>
     <div class="ms">
       <div class="ms-val" id="msLive">—</div>
-      <div class="ms-lbl">Fleet events</div>
-      <div class="ms-sub" id="msLiveSub">Fleet total when connected</div>
+      <div class="ms-lbl">Admin events</div>
+      <div class="ms-sub" id="msLiveSub">Admin total when connected</div>
     </div>
   </div>
 
@@ -122,12 +122,12 @@ h1{font-size:20px;font-weight:700;color:#fff;margin-bottom:6px}
 
     <div class="hub-card-wrap" id="adminCardWrap">
       <a class="hub-card hub-card--admin" id="adminCardLink" href="admin/">
-        Fleet admin dashboard
-        <span>Supabase fleet analytics, model health, and event stream.</span>
+        Admin dashboard
+        <span>Supabase admin analytics, model health, and event stream.</span>
       </a>
       <div class="lock-overlay" id="adminLock" onclick="showAdminLogin()" title="Sign in as admin">
         <span class="ic">🔒</span>
-        <span class="tx">Admin sign-in required to open fleet tools.</span>
+        <span class="tx">Admin sign-in required to open admin tools.</span>
       </div>
     </div>
   </div>
@@ -791,7 +791,7 @@ async function deleteKB(id){
   }
 }
 
-function loadMiniStats(){
+async function loadMiniStats(){
   let streak = localStorage.getItem('sentinel_streak');
   let total = localStorage.getItem('sentinel_total');
   document.getElementById('msStreak').textContent =
@@ -805,32 +805,62 @@ function loadMiniStats(){
   const subEl = document.getElementById('msLiveSub');
   if(!url || !key){
     liveEl.textContent = '—';
-    subEl.textContent = 'Fleet total (admin configures Supabase in panel)';
+    subEl.textContent = 'Admin total (configure Supabase in panel)';
     return;
   }
   liveEl.textContent = '…';
   subEl.textContent = 'Loading…';
-  fetch(
-    url.replace(/\/$/, '') + '/rest/v1/guardrail_events?select=id&limit=1',
-    { headers: {
-      'apikey': key,
-      'Authorization': 'Bearer ' + key,
-      'Prefer': 'count=exact'
-    }}
-  ).then(r => {
+  try{
+    const r = await fetch(
+      url.replace(/\/$/, '') + '/rest/v1/guardrail_events?select=id&limit=1',
+      { headers: {
+        'apikey': key,
+        'Authorization': 'Bearer ' + key,
+        'Prefer': 'count=exact'
+      }}
+    );
+    if(!r.ok) throw new Error('count fetch failed');
     const cr = r.headers.get('content-range');
+    let n = 0;
     if(cr){
       const m = /\/(\d+)$/.exec(cr);
-      if(m) return parseInt(m[1], 10);
+      if(m) n = parseInt(m[1], 10);
+    } else {
+      const rows = await r.json();
+      n = Array.isArray(rows) ? rows.length : 0;
     }
-    return r.json().then(rows => Array.isArray(rows) ? rows.length : 0);
-  }).then(n => {
+
+    total = String(n);
+    localStorage.setItem('sentinel_total', total);
+    document.getElementById('msTotal').textContent = total;
     liveEl.textContent = n;
     subEl.textContent = 'Live from Supabase';
-  }).catch(() => {
+
+    const rs = await fetch(
+      url.replace(/\/$/, '') + '/rest/v1/guardrail_events?select=action&order=timestamp.desc.nullslast&limit=200',
+      { headers: {
+        'apikey': key,
+        'Authorization': 'Bearer ' + key
+      }}
+    );
+    if(rs.ok){
+      const rows = await rs.json();
+      if(Array.isArray(rows)){
+        let run = 0;
+        for(const row of rows){
+          const a = String((row && row.action) || '').toLowerCase();
+          if(a === 'warn' || a === 'block') break;
+          run += 1;
+        }
+        streak = String(run);
+        localStorage.setItem('sentinel_streak', streak);
+        document.getElementById('msStreak').textContent = streak;
+      }
+    }
+  }catch(_e){
     liveEl.textContent = '—';
     subEl.textContent = 'Could not load (check credentials)';
-  });
+  }
 }
 
 document.addEventListener('keydown', function(e){

@@ -74,12 +74,18 @@
       width: 28px;
       height: 28px;
       border-radius: 8px;
-      background: linear-gradient(140deg, #0dc9a3, #078f74);
-      display: grid;
-      place-items: center;
-      color: #05241d;
-      font-size: 14px;
-      box-shadow: 0 0 0 1px rgba(255,255,255,0.12) inset;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: #0a0a0f;
+    }
+    .brand-mark img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      border-radius: 8px;
     }
     .top-actions {
       display: flex;
@@ -596,14 +602,13 @@
   <header class="topnav">
     <div class="container topnav-inner">
       <a href="index.html" class="brand">
-        <span class="brand-mark">🛡</span>
+        <span class="brand-mark"><img src="favicon.svg" alt="Core Sentinel logo"></span>
         <span>Core Sentinel Hub</span>
       </a>
       <div class="top-actions">
         <a class="btn btn-outline" href="index.html">← Back to Home</a>
         <a class="btn btn-outline" href="dashboard/">Privacy</a>
         <a class="btn btn-outline" href="ml/">ML</a>
-        <a class="btn btn-outline" href="admin/">Fleet</a>
         <a class="btn btn-outline" href="demo/">Demo</a>
         <div id="connStatus" class="mini-note" style="display:none;">
           <span id="connDot" class="live-dot" style="background:#555;animation:none;"></span>
@@ -621,7 +626,7 @@
       <div>
         <h1>Welcome to Core Sentinel</h1>
         <p>
-          Your command center for privacy, model health, fleet security, and active learning.
+          Your command center for privacy, model health, admin security, and active learning.
           Monitor risk trends, review recent activity, and keep AI usage compliant across teams.
         </p>
         <p style="margin-top:8px;font-size:12px;color:rgba(245,247,255,0.64);">
@@ -630,7 +635,7 @@
       </div>
       <div class="pill-demo" aria-label="Sentinel pill widget preview">
         <span class="traffic"></span>
-        <span class="pill-core">🛡</span>
+        <span class="pill-core"><img src="favicon.svg" alt="Core Sentinel logo" style="width:22px;height:22px;border-radius:6px;"></span>
         <div class="pill-text">Clipboard monitored · Risk engine active</div>
       </div>
     </section>
@@ -647,8 +652,8 @@
           Understand personal risk trends, streaks, and recent events.
         </a>
         <a class="on-step" href="ml/">
-          <strong>3) ML + Fleet Views</strong>
-          Validate model health in ML dashboard, then inspect org-level risk in Fleet Admin.
+          <strong>3) ML + Admin Views</strong>
+          Validate model health in ML dashboard, then inspect org-level risk in Admin Dashboard.
         </a>
       </div>
     </section>
@@ -665,7 +670,7 @@
         <div class="stat-sub">sentinel_total</div>
       </article>
       <article class="stat-card">
-        <div class="stat-lbl">Fleet Events</div>
+        <div class="stat-lbl">Admin Events</div>
         <div class="stat-val" id="msLive">—</div>
         <div class="stat-sub" id="msLiveSub"><span class="live-dot"></span>Live</div>
       </article>
@@ -734,7 +739,7 @@
         <a class="hub-card hub-link-card" id="fleetCardLink" href="admin/" style="position:absolute;inset:0;opacity:0;z-index:1;"></a>
         <div class="card-head">
           <span class="card-ic">🏢</span>
-          <h2 class="card-title">Fleet Management</h2>
+          <h2 class="card-title">Admin Dashboard</h2>
         </div>
         <p class="card-sub">Organization-wide monitoring, per-user risk profiles, policy enforcement</p>
         <div id="fleetLockedHint" class="chips">
@@ -877,7 +882,7 @@
     <button type="button" id="adminPanelClose" onclick="closeAdminPanel()" aria-label="Close">×</button>
     <div id="adminLoginBlock" style="display:flex;flex-direction:column;gap:10px;">
       <div style="font-size:16px;font-weight:700;">🔒 Admin access</div>
-      <div class="mini-note">Enter credentials to unlock fleet and configuration controls.</div>
+      <div class="mini-note">Enter credentials to unlock admin and configuration controls.</div>
       <input type="email" id="admEmail" class="inp" placeholder="Email" autocomplete="username">
       <input type="password" id="admPass" class="inp" placeholder="Password" autocomplete="current-password">
       <input type="password" id="admKey" class="inp" placeholder="Access key" autocomplete="off">
@@ -1127,8 +1132,8 @@
     }
 
     async function loadMiniStats() {
-      const streak = Number(localStorage.getItem("sentinel_streak") || 0);
-      const total = Number(localStorage.getItem("sentinel_total") || 0);
+      let streak = Number(localStorage.getItem("sentinel_streak") || 0);
+      let total = Number(localStorage.getItem("sentinel_total") || 0);
       const streakEl = document.getElementById("msStreak");
       const totalEl = document.getElementById("msTotal");
       const streakSub = document.getElementById("msStreakSub");
@@ -1151,6 +1156,7 @@
         const r = await fetch(url.replace(/\/$/, "") + "/rest/v1/guardrail_events?select=id&limit=1", {
           headers: { apikey: key, Authorization: "Bearer " + key, Prefer: "count=exact" }
         });
+        if (!r.ok) throw new Error("count fetch failed");
         const cr = r.headers.get("content-range");
         let count = 0;
         if (cr) {
@@ -1160,6 +1166,31 @@
           const rows = await r.json();
           count = Array.isArray(rows) ? rows.length : 0;
         }
+        total = count;
+        localStorage.setItem("sentinel_total", String(total));
+        if (totalEl) totalEl.textContent = String(total);
+
+        // Safe streak = consecutive most-recent non-warn/non-block events.
+        const rs = await fetch(
+          url.replace(/\/$/, "") + "/rest/v1/guardrail_events?select=action&order=timestamp.desc.nullslast&limit=200",
+          { headers: { apikey: key, Authorization: "Bearer " + key } }
+        );
+        if (rs.ok) {
+          const rows = await rs.json();
+          if (Array.isArray(rows) && rows.length) {
+            let run = 0;
+            for (const row of rows) {
+              const a = String((row && row.action) || "").toLowerCase();
+              if (a === "warn" || a === "block") break;
+              run += 1;
+            }
+            streak = run;
+            localStorage.setItem("sentinel_streak", String(streak));
+            if (streakEl) streakEl.textContent = String(streak);
+            if (streakSub) streakSub.textContent = streak > 10 ? "🔥 streak on fire" : "sentinel_streak";
+          }
+        }
+
         if (liveEl) liveEl.textContent = String(count);
         if (liveSub) liveSub.innerHTML = "<span class='live-dot'></span>Live";
       } catch {
