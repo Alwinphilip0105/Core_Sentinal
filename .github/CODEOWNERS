@@ -1,0 +1,20 @@
+# Core Sentinel CODEOWNERS
+# Format: <path> <owner>
+
+# Default owner for entire repository
+* @Alwinphilip0105
+
+# Core runtime and ML guardrail code
+/core-sentinel-guardrail/ @Alwinphilip0105
+
+# Docs, website, and dashboard content
+/docs/ @Alwinphilip0105
+
+# Launchers and utility scripts
+/launchers/ @Alwinphilip0105
+/scripts/ @Alwinphilip0105
+
+# Top-level project metadata
+/README.md @Alwinphilip0105
+/CONTRIBUTING.md @Alwinphilip0105
+/REPO_LAYOUT.md @Alwinphilip0105
