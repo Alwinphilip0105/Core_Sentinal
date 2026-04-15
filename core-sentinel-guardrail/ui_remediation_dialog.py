@@ -595,6 +595,9 @@ class RemediationDialog(QtWidgets.QDialog):
         root = QtWidgets.QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
+        # Keep outer window sizing authoritative; child rows may temporarily
+        # report larger width hints (e.g., when optional footer buttons appear).
+        root.setSizeConstraint(QtWidgets.QLayout.SizeConstraint.SetNoConstraint)
         self._main_layout = root
 
         self._hold_banner = QtWidgets.QWidget()
@@ -1607,7 +1610,10 @@ class RemediationDialog(QtWidgets.QDialog):
         ).start()
 
     def _sync_feedback_supabase(self, entry: dict) -> None:
-        """Sync feedback to Supabase feedback_corrections table when configured."""
+        """Sync feedback to Supabase feedback_corrections table.
+
+        Prints actionable guidance when PostgREST reports schema mismatches.
+        """
         url = os.environ.get("SUPABASE_URL")
         key = os.environ.get("SUPABASE_ANON_KEY")
         if not url or not key:
@@ -1617,36 +1623,78 @@ class RemediationDialog(QtWidgets.QDialog):
 
             sb = create_client(url, key)
             base = {
-                "text_hash": entry["text_hash"],
-                "predicted": entry["predicted"],
-                "correct": entry["correct"],
-                "source": entry["feedback_type"],
-                "feedback_type": entry["feedback_type"],
+                "text_hash": entry.get("text_hash", ""),
+                "predicted": entry.get("predicted", "low"),
+                "correct": entry.get("correct", "low"),
+                "source": entry.get("feedback_type", "correct"),
+                "feedback_type": entry.get("feedback_type", "correct"),
                 "used_for_training": False,
+                "risk_score": entry.get("risk_score", 0),
             }
+            # Try timestamp first, then recorded_at, then bare base payload.
             payloads = [
-                {"timestamp": entry["timestamp"], **base},
-                {"recorded_at": entry["timestamp"], **base},
+                {"timestamp": entry.get("timestamp"), **base},
+                {"recorded_at": entry.get("timestamp"), **base},
                 dict(base),
             ]
             last_err: Exception | None = None
             for payload in payloads:
                 try:
-                    sb.table("feedback_corrections").insert(payload).execute()
-                    return
+                    # Schema-tolerant insert: progressively remove unknown columns
+                    # when PostgREST reports "column ... does not exist".
+                    work = dict(payload)
+                    while True:
+                        try:
+                            sb.table("feedback_corrections").insert(work).execute()
+                            print("[feedback] supabase sync OK", flush=True)
+                            return
+                        except Exception as inner:
+                            last_err = inner
+                            err_str = str(inner)
+                            if "PGRST204" not in err_str and "column" not in err_str.lower():
+                                raise
+                            m = re.search(r"column '([^']+)'", err_str)
+                            missing_col = m.group(1) if m else ""
+                            if not missing_col or missing_col not in work:
+                                raise
+                            work.pop(missing_col, None)
+                            if not work:
+                                raise
                 except Exception as e:
                     last_err = e
+                    err_str = str(e)
+                    if "PGRST204" in err_str or "column" in err_str.lower():
+                        missing = ""
+                        for col in (
+                            "predicted",
+                            "correct",
+                            "text_hash",
+                            "source",
+                            "feedback_type",
+                            "used_for_training",
+                            "risk_score",
+                            "timestamp",
+                            "recorded_at",
+                            "pii_classes",
+                        ):
+                            if col in err_str:
+                                missing = col
+                                break
+                        print(
+                            f"[feedback] supabase PGRST204: column '{missing}' not found.\n"
+                            f"  FIX: Run the SQL migration in Supabase -> SQL Editor:\n"
+                            f"       supabase/feedback_corrections.sql\n"
+                            f"  Then: Settings -> API -> Reload schema",
+                            flush=True,
+                        )
+                        return
             if last_err is not None:
-                err_s = str(last_err)
                 print(f"[feedback] supabase sync failed: {last_err}", flush=True)
-                if "predicted" in err_s and "PGRST204" in err_s:
-                    print(
-                        "[feedback] Your Supabase table `feedback_corrections` is missing columns "
-                        "the app expects (predicted, correct, …). Run the SQL in "
-                        "core-sentinel-guardrail/supabase/feedback_corrections.sql "
-                        "in the Supabase SQL Editor, then reload the API schema.",
-                        flush=True,
-                    )
+        except ImportError:
+            print(
+                "[feedback] supabase package not installed -- pip install supabase",
+                flush=True,
+            )
         except Exception as e:
             print(f"[feedback] supabase client error: {e}", flush=True)
 
@@ -1936,14 +1984,22 @@ class RemediationDialog(QtWidgets.QDialog):
         self.slide_out_and_hide()
 
     def _apply_panel_height(self) -> None:
+        """Clamp panel to available screen height to avoid Qt geometry warnings."""
         screen = QtGui.QGuiApplication.screenAt(QtGui.QCursor.pos())
         if screen is None:
             screen = QtGui.QGuiApplication.primaryScreen()
         if screen is None:
-            app = QtWidgets.QApplication.instance()
-            screen = app.primaryScreen() if app else None
-        h = _remediation_dialog_height_px(screen)
-        self.setFixedSize(PANEL_W, h)
+            g = QtCore.QRect(0, 0, 1080, 1920)
+        else:
+            g = screen.availableGeometry()
+
+        # Leave a tiny safety margin for DWM/WM size negotiations.
+        target_h = max(400, g.height() - 2)
+        self.setMinimumWidth(PANEL_W)
+        self.setMaximumWidth(PANEL_W)
+        self.setMinimumHeight(min(target_h, 600))
+        self.setMaximumHeight(target_h)
+        self.resize(PANEL_W, target_h)
 
     def _build_settings_section(self) -> QtWidgets.QWidget:
         widget = QtWidgets.QWidget()
@@ -2761,4 +2817,14 @@ class RemediationDialog(QtWidgets.QDialog):
 
     def reject(self) -> None:
         super().reject()
+
+    def minimumSizeHint(self) -> QtCore.QSize:
+        """Force stable window-manager min-track values for the fixed-width drawer."""
+        min_h = int(self.minimumHeight() or 600)
+        return QtCore.QSize(PANEL_W, min_h)
+
+    def sizeHint(self) -> QtCore.QSize:
+        """Report a fixed drawer width so Qt/Win32 geometry negotiation stays consistent."""
+        h = int(self.height() or self.maximumHeight() or self.minimumHeight() or 900)
+        return QtCore.QSize(PANEL_W, max(400, h))
 
