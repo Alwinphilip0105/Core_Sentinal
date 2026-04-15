@@ -35,8 +35,24 @@ from feedback_store import count_pending_wrong_feedback, record_feedback
 from toast import Toast, show_toast
 from font_clamp import MIN_PX_BODY, paint_font_px
 
+RETRAIN_MIN = max(
+    1,
+    int(os.environ.get("GUARDRAIL_RETRAIN_MIN_CORRECTIONS", "10") or "10"),
+)
+
 FONT_FAMILY = "Segoe UI"
 PANEL_W = 408
+_PANEL_MAX_H = 900  # cap; also limited to ~85% of available screen height
+
+
+def _remediation_dialog_height_px(screen: QtGui.QScreen | None) -> int:
+    """Fit the remediation drawer: at most 900px tall and at most ~85% of the work area."""
+    if screen is None:
+        return _PANEL_MAX_H
+    screen_h = screen.availableGeometry().height()
+    return min(_PANEL_MAX_H, int(screen_h * 0.85))
+
+
 HEADER_H = 52
 HEADER_DRAG_HINT_H = 12
 HEADER_TOTAL_H = HEADER_DRAG_HINT_H + HEADER_H
@@ -482,6 +498,11 @@ class RemediationDialog(QtWidgets.QDialog):
         critical_hold: bool = False,
     ):
         super().__init__(parent)
+        _app = QtWidgets.QApplication.instance()
+        _screen = _app.primaryScreen() if _app else None
+        dialog_h = _remediation_dialog_height_px(_screen)
+        self.setFixedSize(PANEL_W, dialog_h)
+
         self._hold_mode = bool(hold_mode)
         self._critical_hold = bool(critical_hold)
         self._warn_review_mode = False
@@ -1171,7 +1192,6 @@ class RemediationDialog(QtWidgets.QDialog):
 
         self._setup_shortcuts()
 
-        self.setFixedWidth(PANEL_W)
         self._apply_panel_height()
         self._update_issue_count()
         # When there are no literal spans/triggers but score >= 40, keep wheel/header aligned
@@ -1617,7 +1637,16 @@ class RemediationDialog(QtWidgets.QDialog):
                 except Exception as e:
                     last_err = e
             if last_err is not None:
+                err_s = str(last_err)
                 print(f"[feedback] supabase sync failed: {last_err}", flush=True)
+                if "predicted" in err_s and "PGRST204" in err_s:
+                    print(
+                        "[feedback] Your Supabase table `feedback_corrections` is missing columns "
+                        "the app expects (predicted, correct, …). Run the SQL in "
+                        "core-sentinel-guardrail/supabase/feedback_corrections.sql "
+                        "in the Supabase SQL Editor, then reload the API schema.",
+                        flush=True,
+                    )
         except Exception as e:
             print(f"[feedback] supabase client error: {e}", flush=True)
 
@@ -1625,7 +1654,7 @@ class RemediationDialog(QtWidgets.QDialog):
         """Notify when enough wrong-label corrections are pending."""
         pending = count_pending_wrong_feedback()
         print(f"[feedback] {pending} pending corrections", flush=True)
-        if pending >= 30:
+        if pending >= RETRAIN_MIN:
             show_toast(
                 f"{pending} corrections collected. Run train.py tonight to retrain!",
                 color="#1565C0",
@@ -1635,7 +1664,7 @@ class RemediationDialog(QtWidgets.QDialog):
             )
         elif pending >= 10:
             show_toast(
-                f"{pending}/30 corrections collected.",
+                f"{pending}/{RETRAIN_MIN} corrections collected.",
                 color="#888888",
                 duration=2000,
                 parent=self,
@@ -1910,8 +1939,11 @@ class RemediationDialog(QtWidgets.QDialog):
         screen = QtGui.QGuiApplication.screenAt(QtGui.QCursor.pos())
         if screen is None:
             screen = QtGui.QGuiApplication.primaryScreen()
-        g = screen.availableGeometry() if screen else QtCore.QRect(0, 0, 1080, 1920)
-        self.setFixedHeight(g.height())
+        if screen is None:
+            app = QtWidgets.QApplication.instance()
+            screen = app.primaryScreen() if app else None
+        h = _remediation_dialog_height_px(screen)
+        self.setFixedSize(PANEL_W, h)
 
     def _build_settings_section(self) -> QtWidgets.QWidget:
         widget = QtWidgets.QWidget()

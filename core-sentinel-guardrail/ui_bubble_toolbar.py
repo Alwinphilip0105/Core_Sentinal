@@ -204,14 +204,15 @@ class BubbleToolbar(QtWidgets.QWidget):
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
+        self.setAutoFillBackground(False)
         self.setObjectName("bubbleToolbar")
         self.setStyleSheet(
-            "#bubbleToolbar { background-color: transparent; "
-            "border-radius: 0px; border: none; }"
+            "#bubbleToolbar { background: transparent; border: none; }"
         )
 
         lay = QtWidgets.QVBoxLayout(self)
-        lay.setContentsMargins(0, 4, 0, 4)
+        lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
 
         white = QtGui.QColor("#ffffff")
@@ -270,6 +271,7 @@ class BubbleToolbar(QtWidgets.QWidget):
 
         self.setFixedWidth(40)
         self.adjustSize()
+        self.hide()
 
     def enterEvent(self, event: QtCore.QEvent) -> None:
         b = self._bubble

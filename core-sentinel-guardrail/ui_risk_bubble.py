@@ -26,7 +26,7 @@ import user_settings
 from character_widget import CharacterWidget
 from infer import score_clipboard_with_pii
 from toast import show_toast
-from traffic_light_indicator import COLOR_BORDER, COLOR_HOUSING, H_TL, TrafficLightIndicator, W_TL
+from traffic_light_indicator import COLOR_HOUSING, H_TL, TrafficLightIndicator, W_TL
 from ui_bubble_toolbar import BubbleToolbar, ToolbarTooltip
 from font_clamp import MIN_PX_BADGE, MIN_PX_BODY, MIN_PX_LABEL, paint_font_px
 
@@ -50,10 +50,6 @@ TOOLBAR_DOCK_MARGIN = 4
 TOOLBAR_DOCK_BODY_W = 40
 ALWAYS_SHOW_TOOLBAR = False
 
-# Matches traffic-light chrome; top + right + bottom on pill (no stroke on seam).
-COLOR_FUSED_BORDER = QtGui.QColor(COLOR_BORDER)
-
-
 def _pill_body_path(pill_w: float) -> QtGui.QPainterPath:
     """Pill fill: square left edge (flush with traffic light), rounded right corners only."""
     x = float(PILL_X)
@@ -70,24 +66,6 @@ def _pill_body_path(pill_w: float) -> QtGui.QPainterPath:
     path.lineTo(x, y + h)
     path.closeSubpath()
     return path
-
-
-def _pill_border_path_no_left(pill_w: float) -> QtGui.QPainterPath:
-    """Outer border on top, right, and bottom only (no left — fused with traffic light)."""
-    x = float(PILL_X)
-    y = float(PILL_Y)
-    w = float(pill_w)
-    h = float(PILL_H)
-    r = float(PILL_RX)
-    border = QtGui.QPainterPath()
-    # Keep seam stroke exactly on pill edge to avoid double-border look at join.
-    border.moveTo(x, y)
-    border.lineTo(x + w - r, y)
-    border.arcTo(QtCore.QRectF(x + w - 2.0 * r, y, 2.0 * r, 2.0 * r), 90.0, -90.0)
-    border.lineTo(x + w, y + h - r)
-    border.arcTo(QtCore.QRectF(x + w - 2.0 * r, y + h - 2.0 * r, 2.0 * r, 2.0 * r), 0.0, -90.0)
-    border.lineTo(x, y + h)
-    return border
 
 
 CARD_W = 280
@@ -371,9 +349,11 @@ class RiskBubble(QtWidgets.QWidget):
             QtCore.Qt.WindowType.FramelessWindowHint
             | QtCore.Qt.WindowType.WindowStaysOnTopHint
             | QtCore.Qt.WindowType.Tool
+            | QtCore.Qt.WindowType.NoDropShadowWindowHint
         )
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
         self.setAutoFillBackground(False)
         self.setMouseTracking(True)
@@ -691,11 +671,6 @@ class RiskBubble(QtWidgets.QWidget):
         expand_pct = max(0.0, (self._current_width - 100.0) / 120.0)
         text_alpha = int(expand_pct * 255.0)
         pill_h = float(PILL_H)
-        div_x = 56.0
-        p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 30), 1.0))
-        p.drawLine(
-            QtCore.QLineF(div_x, float(PILL_Y + 2), div_x, float(PILL_Y + PILL_H - 2))
-        )
         llm_color = QtGui.QColor(255, 255, 255, text_alpha)
         p.setPen(llm_color)
         p.setFont(paint_font_px(fam, 11, bold=True, floor=MIN_PX_LABEL))
@@ -724,11 +699,6 @@ class RiskBubble(QtWidgets.QWidget):
         )
         count = int(self._streak.get("streak_count", 0) or 0)
         if count > 0:
-            div2_x = 158.0
-            p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 30), 1.0))
-            p.drawLine(
-                QtCore.QLineF(div2_x, float(PILL_Y + 2), div2_x, float(PILL_Y + PILL_H - 2))
-            )
             if count >= 10:
                 streak_color = QtGui.QColor("#FFB300")
                 streak_text = f"🔥{count}"
@@ -1004,11 +974,15 @@ class RiskBubble(QtWidgets.QWidget):
             return
         tb = self._toolbar
         self._stop_toolbar_anim()
-        tb.hide()
-        # Snap back to dock anchor immediately to prevent any stale ghost pixels.
-        tb.move(self._toolbar_end_pos())
-        tb.setWindowOpacity(1.0)
-        self._refresh_window_geometry()
+        end = self._toolbar_end_pos()
+        slide_to = self._toolbar_slide_start(end)
+        self._toolbar_anim = QtCore.QPropertyAnimation(tb, b"pos", self)
+        self._toolbar_anim.setDuration(180)
+        self._toolbar_anim.setStartValue(tb.pos())
+        self._toolbar_anim.setEndValue(slide_to)
+        self._toolbar_anim.setEasingCurve(QtCore.QEasingCurve.Type.InCubic)
+        self._toolbar_anim.finished.connect(self._on_toolbar_hide_anim_finished)
+        self._toolbar_anim.start()
 
     def _on_toolbar_hide_anim_finished(self) -> None:
         if self._toolbar_anim is not None:
@@ -1468,6 +1442,8 @@ class RiskBubble(QtWidgets.QWidget):
         self._traffic_indicator.show()
         self._reposition_traffic_light()
         self._sync_traffic_indicator_opacity()
+        if ALWAYS_SHOW_TOOLBAR:
+            QtCore.QTimer.singleShot(0, self._show_toolbar)
 
     def hideEvent(self, event: QtGui.QHideEvent) -> None:
         self._traffic_indicator.hide()
@@ -1485,6 +1461,7 @@ class RiskBubble(QtWidgets.QWidget):
         p.setPen(QtCore.Qt.PenStyle.NoPen)
         p.setBrush(self._pill_fill_paint_color())
         p.drawPath(body)
+        # No outer border stroke on the pill (fill only — avoids faint rectangular outline).
         # Bridge the segment join by 1px to avoid subpixel seams on some DPI scales.
         p.fillRect(
             QtCore.QRectF(float(PILL_X) - 0.5, float(PILL_Y), 1.0, float(PILL_H)),

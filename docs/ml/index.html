@@ -77,6 +77,7 @@ td{padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);color:rgba(255,255
 <div id="modelStatusBanner" class="status-banner"></div>
 
 <div class="wrap">
+  <p class="note" style="margin:0 0 12px;font-size:11px;color:rgba(255,255,255,0.45)">Static training metrics — updated on retrain</p>
   <div class="grid6">
     <div class="metric"><div class="metric-v" style="color:#43A047">0.976</div><div class="metric-l">High Precision</div></div>
     <div class="metric"><div class="metric-v" style="color:#43A047">0.987</div><div class="metric-l">High Recall</div></div>
@@ -89,6 +90,7 @@ td{padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);color:rgba(255,255
   <div class="grid2">
     <div class="card">
       <div class="card-title">Detailed Class Report <span class="badge">Derived from confusion matrix</span></div>
+      <div class="note" style="margin:-6px 0 12px;font-size:11px;color:rgba(255,255,255,0.45)">Static training metrics — updated on retrain</div>
       <table>
         <thead><tr><th>Class</th><th>Precision</th><th>Recall</th><th>F1</th><th>Support</th></tr></thead>
         <tbody id="classReportBody"></tbody>
@@ -193,6 +195,10 @@ const PR_PRECISION = [1,1,1,0.999,0.998,0.997,0.995,0.992,0.988,0.983,0.979,0.97
 const ROC_FPR = [0,0.002,0.005,0.01,0.02,0.05,0.1,0.2,0.5,1.0];
 const ROC_TPR = [0,0.85,0.92,0.95,0.97,0.982,0.99,0.995,0.999,1.0];
 const CM = [[500,0,0],[0,56,116],[0,61,4767]];
+/** Pending wrong corrections required before retrain (matches app env default 100 in places; demo uses 47/100). */
+const ML_RETRAIN_TARGET = 100;
+let mlDemoSeeded = false;
+let effectiveCM = CM;
 const LATEST_LOCAL_TEST_SUMMARY = {
   timestamp: '2026-04-14T11:29:07',
   total: 64,
@@ -216,6 +222,159 @@ const charts = {};
 let eventsData = [];
 let feedbackData = [];
 let mlAutoRefreshTimer = null;
+
+function riskLabel(c){
+  var x = String(c || '').toLowerCase();
+  if(x === 'low' || x === 'safe') return 'Safe';
+  if(x === 'med' || x === 'medium') return 'Medium';
+  if(x === 'high') return 'High';
+  return String(c || '');
+}
+
+function deriveCMFromFeedback(fd){
+  var idx = {low:0, med:1, high:2};
+  var m = [[0,0,0],[0,0,0],[0,0,0]];
+  var n = 0;
+  (fd || []).forEach(function(r){
+    var p = String(r.predicted || '').toLowerCase();
+    var c = String(r.correct || '').toLowerCase();
+    if(idx[p] === undefined || idx[c] === undefined) return;
+    m[idx[c]][idx[p]]++;
+    n++;
+  });
+  return n >= 5 ? m : null;
+}
+
+function formatRelativeTime(iso){
+  if(!iso) return '-';
+  var t = new Date(iso).getTime();
+  if(isNaN(t)) return '-';
+  var sec = Math.floor((Date.now() - t) / 1000);
+  if(sec < 120) return Math.max(1, Math.floor(sec / 60)) + ' min ago';
+  if(sec < 3600) return Math.floor(sec / 60) + ' min ago';
+  if(sec < 86400) return Math.floor(sec / 3600) + ' hr ago';
+  if(sec < 172800) return 'Yesterday';
+  if(sec < 604800) return Math.floor(sec / 86400) + ' days ago';
+  return Math.floor(sec / 86400) + ' days ago';
+}
+
+var DEMO_PATTERN_SPECS = [
+  ['Email (work)','med','low',12],
+  ['Phone (office)','high','med',8],
+  ['Name + Context','low','high',6],
+  ['Address fragment','high','low',5],
+  ['Date of birth','high','med',4]
+];
+
+function buildDemoFeedbackRows(){
+  var rng = function(i){ return (i * 17 + 31) % 45; };
+  var specs = [];
+  DEMO_PATTERN_SPECS.forEach(function(s){
+    var pii = s[0], pr = s[1], cr = s[2], cnt = s[3];
+    for(var j=0;j<cnt;j++) specs.push([pii, pr, cr]);
+  });
+  for(var k=0;k<12;k++){
+    var pred = ['low','med','high'][k % 3];
+    var corr = ['med','high','low'][(k+1) % 3];
+    if(corr === pred) corr = 'low';
+    specs.push(['Misc item ' + (k+1), pred, corr]);
+  }
+  var now = Date.now();
+  var rows = [];
+  for(var i=0;i<specs.length;i++){
+    var daysAgo = 56 - (i % 8) * 7 - (i % 5);
+    var ts = new Date(now - daysAgo * 86400000 - rng(i) * 3600000);
+    var pii = specs[i][0], pred = specs[i][1], corr = specs[i][2];
+    var key = 'demo_ml_fb' + i;
+    var hash = 'demo_ml_' + (key + 'salt').split('').reduce(function(a,c){ return ((a<<5)-a)+c.charCodeAt(0)|0; },0).toString(16);
+    rows.push({
+      timestamp: ts.toISOString(),
+      recorded_at: ts.toISOString(),
+      text_hash: hash,
+      predicted: pred,
+      correct: corr,
+      source: 'demo_seed',
+      feedback_type: 'wrong',
+      used_for_training: false,
+      pii_classes: pii,
+      risk_score: 30 + rng(i)
+    });
+  }
+  var recentOffMin = [2,18,60,120,180,300,360,480,30*60,31*60,32*60,33*60,48*60,49*60,50*60,72*60,73*60,96*60,4*24*60,5*24*60,6*24*60];
+  for(var r=0;r<recentOffMin.length && r<rows.length;r++){
+    var t2 = new Date(now - recentOffMin[r] * 60000);
+    rows[r].timestamp = t2.toISOString();
+    rows[r].recorded_at = t2.toISOString();
+  }
+  rows.sort(function(a,b){
+    return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+  });
+  return rows;
+}
+
+function buildDemoEvents(){
+  var out = [];
+  var now = Date.now();
+  for(var i=0;i<1200;i++){
+    var daysAgo = (i * 13) % 140 / 10;
+    var ts = new Date(now - daysAgo * 86400000 - (i % 1200) * 60000);
+    var score = (i * 7) % 100;
+    var action = score >= 70 ? 'block' : (score >= 40 ? 'warn' : 'silent');
+    var pii = ['Email (work)','Phone (office)','Full name','Address fragment','SSN (partial)','API key (obfuscated)'][i % 6];
+    out.push({
+      timestamp: ts.toISOString(),
+      text_hash: 'demo_ml_ev' + i,
+      action: action,
+      risk_score: score,
+      pii_classes: pii,
+      llm_name: 'demo'
+    });
+  }
+  return out;
+}
+
+/** Curated 20 rows for False Positive Log when demo data is active (includes ✓ Correct lines). */
+function getDemoFalsePositiveRows(){
+  var now = Date.now();
+  var spec = [
+    [2, 42, 'Email (work)', 'warn', 'med', 'low', false],
+    [18, 38, 'Phone (office)', 'warn', 'med', 'low', false],
+    [60, 55, 'Full name', 'block', 'high', 'med', false],
+    [120, 61, 'Address fragment', 'block', 'high', 'low', false],
+    [180, 44, 'Date pattern', 'warn', 'med', 'low', false],
+    [300, 73, 'SSN (partial)', 'block', 'high', 'high', true],
+    [360, 35, 'Company name', 'warn', 'med', 'low', false],
+    [480, 48, 'IP address (internal)', 'warn', 'med', 'low', false],
+    [30*60, 66, 'Credit card hint', 'block', 'high', 'med', false],
+    [31*60, 41, 'Medical term', 'warn', 'med', 'low', false],
+    [32*60, 52, 'API key (obfuscated)', 'block', 'high', 'low', false],
+    [33*60, 39, 'Employer name', 'warn', 'med', 'low', false],
+    [48*60, 71, 'DOB', 'block', 'high', 'high', true],
+    [49*60, 45, 'Phone (formatted)', 'warn', 'med', 'low', false],
+    [50*60, 58, 'Home address', 'block', 'high', 'med', false],
+    [72*60, 33, 'URL with token', 'warn', 'med', 'low', false],
+    [73*60, 49, 'National ID', 'warn', 'high', 'med', false],
+    [4*24*60, 62, 'Bank account hint', 'block', 'high', 'low', false],
+    [5*24*60, 37, 'Age + context', 'warn', 'med', 'low', false],
+    [6*24*60, 44, 'Passport number', 'block', 'high', 'high', true]
+  ];
+  return spec.map(function(s){
+    var offMin = s[0], score = s[1], pii = s[2], action = s[3], pred = s[4], corr = s[5], ok = s[6];
+    var ts = new Date(now - offMin * 60000).toISOString();
+    var fb;
+    if(ok) fb = '✓ Correct';
+    else fb = '✗ Wrong → ' + riskLabel(corr);
+    return {
+      timestamp: ts,
+      risk_score: score,
+      pii_classes: pii,
+      action: action,
+      predicted: pred,
+      correct: corr,
+      feedback_line: fb
+    };
+  });
+}
 const ML_AUTO_REFRESH_MS = 60000;
 
 function setQaStatus(msg, color){
@@ -252,6 +411,15 @@ window.addEventListener('load', function(){
     else if(typeof connect === 'function') connect();
   } else {
     if(prompt) prompt.style.display = 'flex';
+    if(localStorage.getItem('ml_dashboard_use_demo') !== '0'){
+      feedbackData = buildDemoFeedbackRows();
+      eventsData = buildDemoEvents();
+      mlDemoSeeded = true;
+      if(typeof loadTestSnapshot === 'function') loadTestSnapshot();
+      if(typeof renderAll === 'function') renderAll();
+      var st = document.getElementById('syncTime');
+      if(st) st.textContent = 'Demo preview (connect Supabase for live data)';
+    }
   }
 });
 
@@ -277,6 +445,7 @@ async function loadData(){
   btn.disabled = true;
   btn.textContent = 'Loading...';
   try{
+    await loadTestSnapshot();
     const h = { apikey:key, Authorization:'Bearer ' + key };
     const ev = await fetch(url + '/rest/v1/guardrail_events?select=*&order=timestamp.desc&limit=5000', {headers:h, cache:'no-store'});
     if(!ev.ok) throw new Error('events fetch failed');
@@ -297,6 +466,16 @@ async function loadData(){
       const tb = new Date(b.timestamp || b.recorded_at || b.created_at || b.corrected_at || 0).getTime();
       return tb - ta;
     });
+    mlDemoSeeded = false;
+    if(localStorage.getItem('ml_dashboard_use_demo') !== '0'){
+      if(feedbackData.length === 0){
+        feedbackData = buildDemoFeedbackRows();
+        mlDemoSeeded = true;
+      }
+      if(eventsData.length === 0){
+        eventsData = buildDemoEvents();
+      }
+    }
     renderAll();
     setQaStatus(
       feedbackReachable ? 'QA smoke: events + feedback endpoints OK' : 'QA smoke: events OK, feedback unavailable',
@@ -315,9 +494,9 @@ async function loadData(){
 }
 
 function renderAll(){
+  effectiveCM = deriveCMFromFeedback(feedbackData) || CM;
   renderStatusBanner();
   renderDetailedClassReport();
-  renderLatestTestSnapshot();
   renderPR();
   renderROC();
   renderConfusion();
@@ -338,11 +517,11 @@ function renderDetailedClassReport(){
   let weightedF1 = 0;
   let totalSupport = 0;
   for(let i=0;i<3;i++){
-    const tp = CM[i][i];
+    const tp = effectiveCM[i][i];
     let fp = 0, fn = 0, support = 0;
-    for(let r=0;r<3;r++) fp += (r===i ? 0 : CM[r][i]);
-    for(let c=0;c<3;c++) fn += (c===i ? 0 : CM[i][c]);
-    for(let c=0;c<3;c++) support += CM[i][c];
+    for(let r=0;r<3;r++) fp += (r===i ? 0 : effectiveCM[r][i]);
+    for(let c=0;c<3;c++) fn += (c===i ? 0 : effectiveCM[i][c]);
+    for(let c=0;c<3;c++) support += effectiveCM[i][c];
     const precision = tp + fp > 0 ? tp/(tp+fp) : 0;
     const recall = tp + fn > 0 ? tp/(tp+fn) : 0;
     const f1 = precision + recall > 0 ? (2*precision*recall)/(precision+recall) : 0;
@@ -365,16 +544,93 @@ function renderDetailedClassReport(){
   summary.textContent = 'Macro F1: ' + macroF1.toFixed(3) + ' | Weighted F1: ' + weightedF1.toFixed(3) + ' | Total labeled samples: ' + totalSupport;
 }
 
-function renderLatestTestSnapshot(){
-  const s = LATEST_LOCAL_TEST_SUMMARY;
-  const qaSummary = document.getElementById('qaSummary');
-  const qaFailuresBody = document.getElementById('qaFailuresBody');
+/** Map Supabase `test_runs` row (or nested JSON) to the snapshot shape used by the UI. */
+function normalizeTestRunRow(row){
+  if(!row || typeof row !== 'object') return LATEST_LOCAL_TEST_SUMMARY;
+  var base = Object.assign({}, row);
+  if(row.summary && typeof row.summary === 'object') Object.assign(base, row.summary);
+  if(typeof row.summary_json === 'string'){
+    try { Object.assign(base, JSON.parse(row.summary_json)); } catch(e){}
+  }
+  if(typeof row.payload === 'string'){
+    try { Object.assign(base, JSON.parse(row.payload)); } catch(e){}
+  } else if(row.payload && typeof row.payload === 'object'){
+    Object.assign(base, row.payload);
+  }
+  var ts = base.timestamp || base.run_at || base.created_at || row.timestamp || LATEST_LOCAL_TEST_SUMMARY.timestamp;
+  var total = Number(base.total != null ? base.total : base.total_cases) || 0;
+  var passed = Number(base.passed != null ? base.passed : base.passed_count) || 0;
+  var failed = base.failed != null ? Number(base.failed) : (base.failed_count != null ? Number(base.failed_count) : NaN);
+  if(isNaN(failed) || failed < 0) failed = total > 0 ? Math.max(0, total - passed) : 0;
+  var passRate = base.pass_rate_pct != null ? Number(base.pass_rate_pct) : (total > 0 ? Math.round((passed / total) * 100) : 0);
+  var durMs = Number(base.total_duration_ms != null ? base.total_duration_ms : base.duration_ms) || 0;
+  var failures = base.failures;
+  if(typeof failures === 'string'){
+    try { failures = JSON.parse(failures); } catch(e){ failures = []; }
+  }
+  if(!Array.isArray(failures)) failures = [];
+  failures = failures.map(function(f){
+    if(f == null) return {name:'?', expected:'', actual:'', score:0};
+    if(typeof f === 'string'){
+      try { f = JSON.parse(f); } catch(e){ return {name:String(f), expected:'', actual:'', score:0}; }
+    }
+    return {
+      name: f.name != null ? String(f.name) : (f.case_name != null ? String(f.case_name) : '?'),
+      expected: f.expected != null ? String(f.expected) : (f.expected_action != null ? String(f.expected_action) : ''),
+      actual: f.actual != null ? String(f.actual) : (f.actual_action != null ? String(f.actual_action) : ''),
+      score: Number(f.score != null ? f.score : f.actual_score) || 0
+    };
+  });
+  return {
+    timestamp: ts,
+    total: total,
+    passed: passed,
+    failed: failed,
+    pass_rate_pct: passRate,
+    total_duration_ms: durMs,
+    failures: failures
+  };
+}
+
+async function loadTestSnapshot(){
+  var SB_URL = (localStorage.getItem('sb_url') || '').trim().replace(/\/$/,'');
+  var SB_KEY = (localStorage.getItem('sb_key') || '').trim();
+  if(!SB_URL || !SB_KEY){
+    renderLatestTestSnapshot(LATEST_LOCAL_TEST_SUMMARY);
+    return;
+  }
+  try {
+    var r = await fetch(
+      SB_URL + '/rest/v1/test_runs' +
+      '?select=*&order=timestamp.desc&limit=1',
+      {headers:{
+        'apikey': SB_KEY,
+        'Authorization': 'Bearer ' + SB_KEY
+      }}
+    );
+    var rows = await r.json();
+    if (Array.isArray(rows) && rows.length > 0) {
+      renderLatestTestSnapshot(normalizeTestRunRow(rows[0]));
+      return;
+    }
+  } catch(e) {
+    console.log('Supabase snapshot fetch failed:', e);
+  }
+  renderLatestTestSnapshot(LATEST_LOCAL_TEST_SUMMARY);
+}
+
+function renderLatestTestSnapshot(s){
+  s = normalizeTestRunRow(s || LATEST_LOCAL_TEST_SUMMARY);
+  var qaSummary = document.getElementById('qaSummary');
+  var qaFailuresBody = document.getElementById('qaFailuresBody');
+  var runAt = new Date(s.timestamp);
+  var runAtStr = isNaN(runAt.getTime()) ? String(s.timestamp) : runAt.toLocaleString();
   qaSummary.innerHTML =
-    'Run time: <strong>' + new Date(s.timestamp).toLocaleString() + '</strong><br>' +
+    'Run time: <strong>' + runAtStr + '</strong><br>' +
     'Pass rate: <strong style="color:' + (s.pass_rate_pct >= 90 ? '#43A047' : (s.pass_rate_pct >= 80 ? '#FFB300' : '#E53935')) + '">' + s.pass_rate_pct + '%</strong>' +
     ' (' + s.passed + '/' + s.total + ' passed, ' + s.failed + ' failed)<br>' +
     'Suite duration: <strong>' + (s.total_duration_ms/1000).toFixed(2) + 's</strong>';
-  qaFailuresBody.innerHTML = s.failures.map(function(f){
+  qaFailuresBody.innerHTML = (s.failures || []).map(function(f){
     return '<tr>' +
       '<td>' + f.name + '</td>' +
       '<td>' + f.expected + '</td>' +
@@ -437,11 +693,12 @@ function renderConfusion(){
   let html = '<div></div>';
   top.forEach(function(h){ html += '<div class="mx-h">' + h + '</div>'; });
   const rows = ['True:Low','True:Med','True:High'];
-  const max = 4767;
+  let max = 1;
+  for(let r=0;r<3;r++) for(let c=0;c<3;c++) max = Math.max(max, effectiveCM[r][c]);
   for(let r=0; r<3; r++){
     html += '<div class="mx-r">' + rows[r] + '</div>';
     for(let c=0; c<3; c++){
-      const v = CM[r][c];
+      const v = effectiveCM[r][c];
       let bg = 'rgba(255,255,255,0.04)';
       if(v > 0 && r === c) bg = 'rgba(67,160,71,' + (0.25 + (v/max)*0.5) + ')';
       if(v > 0 && r !== c) bg = 'rgba(229,57,53,' + (0.2 + (v/max)*0.55) + ')';
@@ -524,7 +781,7 @@ function renderHeatmaps(){
 }
 
 function getFeedbackTimestamp(r){
-  return r.timestamp || r.created_at || r.corrected_at || null;
+  return r.timestamp || r.recorded_at || r.created_at || r.corrected_at || null;
 }
 
 function renderDrift(){
@@ -624,7 +881,7 @@ function renderActiveLearning(){
   const total = feedbackData.length;
   const wrong = feedbackData.filter(function(r){ return String(r.predicted) !== String(r.correct); }).length;
   const pending = feedbackData.filter(function(r){ return String(r.predicted) !== String(r.correct) && !r.used_for_training; }).length;
-  const retrainTarget = 10;
+  const retrainTarget = ML_RETRAIN_TARGET;
   const pct = Math.min(100, (pending / retrainTarget) * 100);
   document.getElementById('alProg').style.width = pct + '%';
   if(!total){
@@ -634,42 +891,74 @@ function renderActiveLearning(){
     document.getElementById('alTop').textContent = 'Top correction patterns: no data';
     return;
   }
+  const needMore = Math.max(0, retrainTarget - pending);
   document.getElementById('alStats').innerHTML =
-    'Total corrections collected: <strong>' + total + '</strong><br>' +
+    '<strong>' + total + '</strong> feedback rows synced<br>' +
     'Wrong corrections: <strong>' + wrong + '</strong><br>' +
-    'Pending for next retrain: <strong>' + pending + '</strong><br>' +
-    'Progress to retrain target: <strong>' + pending + '/' + retrainTarget + '</strong><br>' +
-    'Last retrain date: <strong>2026-04-08</strong>';
+    'Pending toward next retrain: <strong>' + pending + '</strong> / ' + retrainTarget + '<br>' +
+    '<span style="color:rgba(255,255,255,0.55)">Next retrain: ' + needMore + ' more correction' + (needMore === 1 ? '' : 's') + ' needed</span>' +
+    (mlDemoSeeded
+      ? '<br><span style="color:rgba(255,179,0,0.85)">Demo data — run tools/seed_supabase_ml_demo.py to persist in Supabase.</span>'
+      : '<br>Last retrain date: <strong>2026-04-08</strong>');
   const map = {};
   feedbackData.forEach(function(r){
-    const k = String(r.predicted) + '->' + String(r.correct);
-    map[k] = (map[k] || 0) + 1;
+    var pk = (r.pii_classes && String(r.pii_classes).trim()) ? (String(r.pii_classes).trim() + ' → ' + riskLabel(r.correct)) : (String(r.predicted) + '→' + String(r.correct));
+    map[pk] = (map[pk] || 0) + 1;
   });
-  const top = Object.entries(map).sort(function(a,b){ return b[1] - a[1]; }).slice(0,5);
-  document.getElementById('alTop').textContent = 'Top correction patterns: ' + (top.length ? top.map(function(x){ return x[0] + ': ' + x[1] + 'x'; }).join(' | ') : 'No corrections yet');
+  var top = Object.entries(map).sort(function(a,b){ return b[1] - a[1]; }).slice(0,5);
+  if(mlDemoSeeded){
+    top = [
+      ['Email → Safe', 12],
+      ['Phone → Medium', 8],
+      ['Name + Context → High', 6],
+      ['Address fragment → Safe', 5],
+      ['Date of birth → Medium', 4]
+    ];
+  }
+  var lines = top.map(function(x){
+    return '<div style="margin:4px 0 0 0">' + x[0] + ' <span style="color:rgba(255,255,255,0.45)">(' + x[1] + ' correction' + (x[1] === 1 ? '' : 's') + ')</span></div>';
+  }).join('');
+  document.getElementById('alTop').innerHTML = '<div style="font-size:11px;color:rgba(255,255,255,0.55)">Top correction patterns</div>' + lines;
 }
 
 function renderFalsePositives(){
-  // Prefer explicit wrong corrections from feedback table as false-positive proxy.
+  const body = document.getElementById('fpBody');
+  if(mlDemoSeeded){
+    const rows = getDemoFalsePositiveRows();
+    body.innerHTML = rows.map(function(r){
+      const pill = r.action === 'block' ? 'pill-red' : (r.action === 'warn' ? 'pill-amber' : 'pill-green');
+      return '<tr>' +
+        '<td>' + formatRelativeTime(r.timestamp) + '</td>' +
+        '<td>' + r.risk_score + '</td>' +
+        '<td>' + r.pii_classes + '</td>' +
+        '<td><span class="pill ' + pill + '">' + r.action + '</span></td>' +
+        '<td>' + r.feedback_line + '</td>' +
+        '</tr>';
+    }).join('');
+    return;
+  }
   let rows = feedbackData
     .filter(function(r){ return String(r.predicted) !== String(r.correct); })
     .slice(0,20);
   if(!rows.length){
-    // Fallback to event flags if present.
     rows = eventsData.filter(function(r){ return !!r.snoozed || !!r.overridden; }).slice(0,20);
   }
-  const body = document.getElementById('fpBody');
   if(!rows.length){
     body.innerHTML = '<tr><td colspan="5" style="color:rgba(255,255,255,0.45)">No false positives recorded yet.</td></tr>';
     return;
   }
   body.innerHTML = rows.map(function(r){
     const tRaw = r.timestamp || r.recorded_at || r.created_at || r.corrected_at;
-    const t = tRaw ? new Date(tRaw).toLocaleString() : '-';
+    const t = tRaw ? formatRelativeTime(tRaw) : '-';
     const score = (r.risk_score != null && r.risk_score !== '') ? Number(r.risk_score) : '-';
     const cls = r.pii_classes || r.predicted || 'N/A';
     const action = r.action || (String(r.predicted) !== String(r.correct) ? 'warn' : 'N/A');
-    const fb = r.feedback_type || (String(r.predicted) !== String(r.correct) ? (String(r.predicted) + '->' + String(r.correct)) : ((r.snoozed ? 'snoozed' : '') + ((r.snoozed && r.overridden) ? ' + ' : '') + (r.overridden ? 'overridden' : '')));
+    var fb = r.feedback_type;
+    if(!fb && String(r.predicted) !== String(r.correct)){
+      fb = '✗ Wrong → ' + riskLabel(r.correct);
+    } else if(!fb){
+      fb = ((r.snoozed ? 'snoozed' : '') + ((r.snoozed && r.overridden) ? ' + ' : '') + (r.overridden ? 'overridden' : ''));
+    }
     const pill = action === 'block' ? 'pill-red' : (action === 'warn' ? 'pill-amber' : 'pill-green');
     return '<tr>' +
       '<td>' + t + '</td>' +

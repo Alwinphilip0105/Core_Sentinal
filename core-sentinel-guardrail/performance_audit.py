@@ -4,6 +4,7 @@ Run from core-sentinel-guardrail/
 Usage: ..\.venv\Scripts\python.exe performance_audit.py
 """
 
+import os
 import sys, time, json, statistics, traceback
 from pathlib import Path
 from datetime import datetime
@@ -16,6 +17,11 @@ YELLOW = "\033[93m"
 CYAN   = "\033[96m"
 BOLD   = "\033[1m"
 RESET  = "\033[0m"
+
+RETRAIN_MIN = max(
+    1,
+    int(os.environ.get("GUARDRAIL_RETRAIN_MIN_CORRECTIONS", "10") or "10"),
+)
 
 @dataclass
 class PerfResult:
@@ -225,10 +231,10 @@ def run_perf_tests(scorer) -> List[PerfResult]:
                 print(f"    {k}: {v}x")
         results.append(PerfResult(
             name="Pending corrections", category="Learning",
-            duration_ms=0, passed=pending<30, target_ms=30,
+            duration_ms=0, passed=pending<RETRAIN_MIN, target_ms=RETRAIN_MIN,
             actual_value=f"{pending} pending",
-            suggestion="Run train.py to retrain model" if pending>=30 else "",
-            severity="warn" if pending>=30 else "info"
+            suggestion="Run train.py to retrain model" if pending>=RETRAIN_MIN else "",
+            severity="warn" if pending>=RETRAIN_MIN else "info"
         ))
     else:
         print(f"  {YELLOW}No feedback data yet{RESET}")

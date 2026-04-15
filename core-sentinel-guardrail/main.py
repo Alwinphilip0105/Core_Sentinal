@@ -37,7 +37,9 @@ import copy
 import json
 import os
 import random
+import subprocess
 import sys
+import threading
 import webbrowser
 from collections import deque
 from datetime import datetime, timezone
@@ -52,6 +54,7 @@ from PyQt6.QtGui import QColor, QCursor, QFont, QIcon, QKeySequence, QPainter, Q
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
+    QMessageBox,
     QSystemTrayIcon,
     QToolTip,
 )
@@ -97,6 +100,86 @@ _RETRAIN_TRIGGER_MIN = max(
     1,
     int(os.environ.get("GUARDRAIL_RETRAIN_MIN_CORRECTIONS", "10") or "10"),
 )
+
+
+class _RetrainNotifier(QObject):
+    """Marshals retrain completion toasts from a worker thread to the GUI thread."""
+
+    show_success = pyqtSignal()
+    show_failure = pyqtSignal(str)
+
+
+_retrain_notifier: _RetrainNotifier | None = None
+
+
+def _train_subprocess_timeout() -> float | None:
+    """Seconds for train.py, or None = no limit. Env GUARDRAIL_TRAIN_TIMEOUT_SEC (default 4h)."""
+    raw = os.environ.get("GUARDRAIL_TRAIN_TIMEOUT_SEC", "14400").strip().lower()
+    if raw in ("0", "none", "unlimited", "off"):
+        return None
+    try:
+        sec = int(raw)
+        return None if sec < 0 else float(max(60, sec))
+    except ValueError:
+        return 14400.0
+
+
+def auto_retrain() -> None:
+    """Run merge_feedback_to_training.py then train.py in a background thread."""
+
+    def _run() -> None:
+        global _retrain_notifier
+        try:
+            guardrail_root = Path(__file__).resolve().parent
+            python = sys.executable
+            cwd = str(guardrail_root)
+            train_timeout = _train_subprocess_timeout()
+
+            merge = guardrail_root / "merge_feedback_to_training.py"
+            if merge.exists():
+                r = subprocess.run(
+                    [python, str(merge)],
+                    cwd=cwd,
+                    timeout=120,
+                )
+                if r.returncode != 0:
+                    raise RuntimeError(
+                        f"merge_feedback_to_training.py exited {r.returncode}"
+                    )
+
+            train = guardrail_root / "train.py"
+            if not train.exists():
+                alt = guardrail_root.parent / "train.py"
+                if alt.exists():
+                    train = alt
+            if not train.exists():
+                raise RuntimeError("train.py not found under guardrail or repo root")
+
+            r = subprocess.run(
+                [python, str(train)],
+                cwd=cwd,
+                timeout=train_timeout,
+            )
+            if r.returncode != 0:
+                raise RuntimeError(f"train.py exited {r.returncode}")
+
+            if _retrain_notifier is not None:
+                _retrain_notifier.show_success.emit()
+        except subprocess.TimeoutExpired:
+            print(
+                "[retrain] train.py timed out — increase GUARDRAIL_TRAIN_TIMEOUT_SEC "
+                "(default 14400) or set to 0/none for no limit.",
+                flush=True,
+            )
+            if _retrain_notifier is not None:
+                _retrain_notifier.show_failure.emit("train.py timed out (see log)")
+        except Exception as e:
+            print(f"[retrain] failed: {e}", flush=True)
+            if _retrain_notifier is not None:
+                _retrain_notifier.show_failure.emit(str(e))
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
 
 
 def _build_circular_tray_icon() -> QIcon:
@@ -230,8 +313,8 @@ class InferenceWorker(QThread):
             self.failed.emit()
 
 
-def check_feedback_and_maybe_retrain(tray: QSystemTrayIcon | None) -> None:
-    """Log feedback stats; if enough pending rows, notify user to run train.py (no auto-retrain)."""
+def check_feedback_and_maybe_retrain(bubble: RiskBubble | None) -> None:
+    """Log feedback stats; if enough pending rows, offer to retrain (merge + train) in the background."""
     stats = get_feedback_stats()
     print(
         f"[feedback] total={stats['total']} "
@@ -245,13 +328,19 @@ def check_feedback_and_maybe_retrain(tray: QSystemTrayIcon | None) -> None:
             f"[feedback] {_RETRAIN_TRIGGER_MIN}+ pending corrections — retrain recommended",
             flush=True,
         )
-        if tray is not None and QSystemTrayIcon.isSystemTrayAvailable():
-            tray.showMessage(
-                "Guardrail update available",
-                f"{stats['pending']} corrections collected. Run train.py to retrain.",
-                QSystemTrayIcon.MessageIcon.Information,
-                5000,
-            )
+        pending = int(stats.get("pending") or 0)
+        mb = QMessageBox(bubble)
+        mb.setIcon(QMessageBox.Icon.Question)
+        mb.setWindowTitle("Retrain model?")
+        mb.setText(
+            f"You have {pending} corrections collected.\n"
+            "Retrain the model now? (takes ~2 minutes)"
+        )
+        btn_yes = mb.addButton("Yes", QMessageBox.ButtonRole.YesRole)
+        mb.addButton("Later", QMessageBox.ButtonRole.NoRole)
+        mb.exec()
+        if mb.clickedButton() == btn_yes:
+            auto_retrain()
     else:
         print(
             f"[feedback] {stats['pending']} pending (need {_RETRAIN_TRIGGER_MIN} to trigger retrain)",
@@ -838,6 +927,25 @@ def main():
     bubble.context_menu_action.connect(_on_context_menu)
     bubble.monitoring_pause_changed.connect(_on_bubble_pause)
 
+    global _retrain_notifier
+    _retrain_notifier = _RetrainNotifier(bubble)
+    _retrain_notifier.show_success.connect(
+        lambda: show_toast(
+            "Core Sentinel has learned from your corrections",
+            title="Model retrained successfully",
+            parent=bubble,
+        )
+    )
+    _retrain_notifier.show_failure.connect(
+        lambda msg: show_toast(
+            f"Retrain failed: {msg}",
+            color="#E53935",
+            duration=8000,
+            parent=bubble,
+            title="Retrain error",
+        )
+    )
+
     _s = QShortcut(QKeySequence("Alt+G"), bubble)
     _s.activated.connect(bubble._toggle_monitoring)
     _s = QShortcut(QKeySequence("Alt+R"), bubble)
@@ -881,7 +989,7 @@ def main():
     )
 
     def _schedule_feedback_check() -> None:
-        QTimer.singleShot(3000, lambda: check_feedback_and_maybe_retrain(tray))
+        QTimer.singleShot(3000, lambda: check_feedback_and_maybe_retrain(bubble))
 
     if preload_ok:
         _schedule_feedback_check()
