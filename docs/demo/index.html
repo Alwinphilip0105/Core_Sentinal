@@ -1,0 +1,2550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Core Sentinel - Interactive Widget Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --text: #e8e8e8;
+      --muted: #6b7280;
+      --line: #2a2a30;
+      --widget: #1c1c1e;
+      --accent: #02c39a;
+      --warn: #ffb300;
+      --danger: #e53935;
+      --safe: #00e676;
+      --blue: #42a5f5;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(1100px 380px at 84% -8%, rgba(2, 195, 154, 0.12), transparent 55%),
+        var(--bg);
+      color: var(--text);
+      padding: 18px 12px 28px;
+    }
+
+    .page { max-width: 1100px; margin: 0 auto; }
+    h1 {
+      font-size: clamp(22px, 2.8vw, 34px);
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+    }
+    .sub {
+      color: #a8b0bf;
+      font-size: 14px;
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+
+    .controlbar {
+      position: relative;
+      z-index: 3;
+      margin-bottom: 10px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 12px;
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+    }
+    .controlbar h3 {
+      font-size: 13px;
+      color: #d4dceb;
+      font-weight: 700;
+    }
+    .btns {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+    .btn {
+      border: 1px solid #3a3e4b;
+      background: #212532;
+      color: #dce3ef;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: .2s ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn.safe { border-color: rgba(0, 230, 118, .5); }
+    .btn.warn { border-color: rgba(255, 179, 0, .5); }
+    .btn.crit { border-color: rgba(229, 57, 53, .55); }
+    .btn.scan { border-color: rgba(66, 165, 245, .5); }
+    .btn.settings { border-color: rgba(255, 255, 255, .35); }
+    .btn.reset { border-color: rgba(150, 160, 180, .4); }
+    .btn.walk { border-color: rgba(2, 195, 154, .6); background: rgba(2, 195, 154, .14); }
+    .btn.mode { border-color: rgba(255,255,255,.28); }
+    .btn.mode.active { border-color: rgba(2,195,154,.62); background: rgba(2,195,154,.15); color: #b9fff3; }
+    .btn.tour { border-color: rgba(66,165,245,.55); background: rgba(66,165,245,.14); }
+
+    .guide {
+      border: 1px solid rgba(255, 255, 255, .12);
+      background: rgba(255, 255, 255, .02);
+      border-radius: 10px;
+      padding: 8px 9px;
+      display: grid;
+      gap: 6px;
+    }
+    .guide-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .guide-top strong {
+      font-size: 12px;
+      color: #dce4f2;
+    }
+    .guide-status {
+      font-size: 11px;
+      color: #9eddd2;
+      border: 1px solid rgba(2, 195, 154, .4);
+      background: rgba(2, 195, 154, .14);
+      border-radius: 999px;
+      padding: 3px 8px;
+      white-space: nowrap;
+    }
+    .guide-steps {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      font-size: 11px;
+      color: #aeb8cb;
+    }
+    .guide-steps span {
+      border: 1px solid rgba(255, 255, 255, .12);
+      background: rgba(255, 255, 255, .03);
+      border-radius: 999px;
+      padding: 3px 7px;
+    }
+    .mode-note {
+      font-size: 11px;
+      color: #a8b1c3;
+      border: 1px dashed rgba(255,255,255,.2);
+      border-radius: 8px;
+      padding: 6px 8px;
+    }
+    .tour-nav {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      font-size: 11px;
+      color: #a8b2c4;
+    }
+    .tour-nav .mini {
+      border: 1px solid rgba(255,255,255,.24);
+      background: rgba(255,255,255,.04);
+      color: #dbe4f2;
+      border-radius: 8px;
+      padding: 4px 8px;
+      font-size: 11px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .tour-nav .mini:disabled { opacity: .45; cursor: not-allowed; }
+    .tour-chip {
+      border: 1px solid rgba(66,165,245,.5);
+      background: rgba(66,165,245,.15);
+      color: #cde6ff;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-weight: 700;
+      font-size: 10px;
+    }
+
+    .desktop {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      overflow: hidden;
+      min-height: 650px;
+      background:
+        radial-gradient(1000px 360px at 80% -10%, rgba(2, 195, 154, .12), transparent 60%),
+        linear-gradient(145deg, #0d0f16, #0a0b10);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, .45);
+      aspect-ratio: 16 / 10;
+      z-index: 0;
+    }
+
+    .browser-window {
+      position: absolute;
+      left: 4%;
+      top: 6%;
+      width: 82%;
+      height: 82%;
+      background: #181b23;
+      border: 1px solid #2d3341;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+      overflow: hidden;
+      z-index: 2;
+      transition: filter .22s ease, opacity .22s ease;
+    }
+    .browser-window.dimmed {
+      filter: blur(1px) saturate(.8) brightness(.78);
+      opacity: .88;
+    }
+    .chrome {
+      background: #111622;
+      border-bottom: 1px solid #2d3341;
+      padding: 8px;
+      display: grid;
+      gap: 6px;
+    }
+    .titlebar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .winctrl {
+      display: flex;
+      gap: 6px;
+    }
+    .winctrl span {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .winctrl .r { background: #ff5f56; }
+    .winctrl .y { background: #ffbd2e; }
+    .winctrl .g { background: #27c93f; }
+    .tabs {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .tab {
+      background: #202633;
+      border: 1px solid #343c4e;
+      color: #c5cedd;
+      border-radius: 7px 7px 0 0;
+      padding: 4px 8px;
+      font-size: 11px;
+    }
+    .tab.active {
+      background: #2a3143;
+      color: #edf2ff;
+    }
+    .model-select-wrap {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+    }
+    .model-select {
+      min-width: 170px;
+      border: 1px solid #424a5f;
+      background: #1f2532;
+      color: #eff3fd;
+      border-radius: 8px;
+      padding: 5px 28px 5px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      outline: none;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      background-image:
+        linear-gradient(45deg, transparent 50%, #b8c3d9 50%),
+        linear-gradient(135deg, #b8c3d9 50%, transparent 50%);
+      background-position:
+        calc(100% - 13px) calc(50% - 1px),
+        calc(100% - 8px) calc(50% - 1px);
+      background-size: 5px 5px, 5px 5px;
+      background-repeat: no-repeat;
+    }
+    .model-select:focus {
+      border-color: rgba(66, 165, 245, .75);
+      box-shadow: 0 0 0 2px rgba(66, 165, 245, .24);
+    }
+    .url {
+      background: #1b212e;
+      border: 1px solid #333b4f;
+      color: #aab3c4;
+      border-radius: 7px;
+      font-size: 11px;
+      padding: 5px 8px;
+      font-family: Consolas, "JetBrains Mono", monospace;
+    }
+    .chat {
+      height: calc(100% - 78px);
+      display: flex;
+      flex-direction: column;
+      background: #1a1f2b;
+    }
+    .workspace {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 44% 56%;
+    }
+    .doc-pane {
+      border-right: 1px solid #32394c;
+      background: #161b25;
+      padding: 10px;
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+      gap: 8px;
+      min-height: 0;
+    }
+    .doc-pane h4,
+    .llm-head {
+      font-size: 12px;
+      font-weight: 700;
+      color: #dce4f3;
+    }
+    .doc-note {
+      font-size: 11px;
+      line-height: 1.4;
+      color: #9da8bc;
+    }
+    .doc-body {
+      border: 1px solid #31384a;
+      border-radius: 8px;
+      background: #111722;
+      padding: 8px;
+      overflow: auto;
+      font-size: 12px;
+      line-height: 1.45;
+      color: #d4dcf0;
+      white-space: pre-wrap;
+    }
+    .doc-actions {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
+    .doc-actions button {
+      border: 1px solid #3b4358;
+      background: #222a3a;
+      color: #dce4f3;
+      border-radius: 8px;
+      padding: 6px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      text-align: left;
+    }
+    .doc-actions button:hover {
+      border-color: rgba(2, 195, 154, .45);
+    }
+    .llm-pane {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+    .llm-head {
+      padding: 10px 12px 6px;
+      color: #b4c0d7;
+    }
+    .msgs {
+      flex: 1;
+      overflow: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      font-size: 14px;
+    }
+    .msg {
+      max-width: 84%;
+      border-radius: 12px;
+      padding: 9px 11px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+    .msg.ai,
+    .msg.system {
+      background: #252c3b;
+      border: 1px solid #364055;
+      color: #e3e9f6;
+      align-self: flex-start;
+    }
+    .msg.user,
+    .msg.paste {
+      background: #163b35;
+      border: 1px solid rgba(2, 195, 154, .35);
+      color: #e3fff9;
+      align-self: flex-end;
+    }
+    .msg.user mark,
+    .msg.paste mark {
+      border-radius: 4px;
+      padding: 0 2px;
+      color: #101319;
+      font-weight: 700;
+    }
+    .hl-med { background: #ffd46b; }
+    .hl-crit { background: #ff9691; }
+
+    .composer {
+      border-top: 1px solid #32394c;
+      padding: 10px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 7px;
+      background: #171d28;
+    }
+    .composer input {
+      background: #1e2431;
+      border: 1px solid #353e53;
+      border-radius: 9px;
+      color: #e8e8e8;
+      font-size: 13px;
+      padding: 8px 10px;
+      outline: none;
+    }
+    .composer input:focus { border-color: rgba(2, 195, 154, .55); }
+    .composer button {
+      background: var(--accent);
+      border: 1px solid rgba(2, 195, 154, .68);
+      color: #04241e;
+      border-radius: 9px;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .taskbar {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 40px;
+      background: #1a1a1f;
+      border-top: 1px solid #2a2a30;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+      z-index: 1;
+      font-size: 12px;
+      color: #c2cada;
+    }
+    .tsk-left, .tsk-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .ico {
+      border: 1px solid #3a3f4c;
+      background: #252932;
+      border-radius: 8px;
+      padding: 4px 8px;
+      font-size: 11px;
+    }
+    .clock {
+      font-family: Consolas, "JetBrains Mono", monospace;
+      font-size: 11px;
+      color: #aeb8ca;
+    }
+
+    /* Floating overlay (independent) */
+    .overlay-wrap {
+      position: absolute;
+      right: 18px;
+      bottom: 54px;
+      z-index: 10;
+      touch-action: none;
+      user-select: none;
+      transition: left .35s ease, top .35s ease;
+    }
+    .overlay-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+    }
+    .fused {
+      display: flex;
+      align-items: stretch;
+      filter: drop-shadow(0 4px 20px rgba(0,0,0,.5));
+      cursor: grab;
+    }
+    .fused.dragging { cursor: grabbing; }
+    .fused.wiggle { animation: wiggle .9s ease-in-out 2; }
+    @keyframes wiggle {
+      0%,100% { transform: translateX(0); }
+      25% { transform: translateX(-8px); }
+      75% { transform: translateX(8px); }
+    }
+
+    .traffic {
+      width: 20px;
+      min-height: 40px;
+      border-radius: 8px 0 0 8px;
+      background: var(--widget);
+      border: 1px solid #2e3138;
+      border-right: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 5px 0;
+      flex: 0 0 auto;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #444a56;
+      transition: 150ms ease;
+    }
+    .dot.on.red { background: var(--danger); box-shadow: 0 0 8px rgba(229,57,53,.3); }
+    .dot.on.amber { background: #ffd740; box-shadow: 0 0 8px rgba(255,215,64,.3); }
+    .dot.on.green { background: var(--safe); box-shadow: 0 0 8px rgba(0,230,118,.3); }
+    .dot.pulse { animation: pulse .85s infinite; }
+    @keyframes pulse {
+      0%,100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.2); opacity: .62; }
+    }
+
+    .pill {
+      height: 34px;
+      width: 54px;
+      border-radius: 0 14px 14px 0;
+      background: var(--widget);
+      border: 1px solid #2e3138;
+      border-left: none;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 7px;
+      overflow: hidden;
+      transition: width 200ms ease-out;
+      position: relative;
+    }
+    .fused:hover .pill, .pill.open { width: 200px; }
+    .pill.blocked { box-shadow: inset 0 0 0 999px rgba(229,57,53,.16); }
+
+    .power {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      border: 1px solid #344050;
+      background: #10141c;
+      color: #7e8797;
+      font-size: 11px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      position: relative;
+      cursor: pointer;
+    }
+    .power.active { color: var(--accent); }
+    .status-dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--safe);
+      position: absolute;
+      right: -2px;
+      top: -2px;
+      opacity: .85;
+    }
+    .status-dot.pulse { animation: pulse 1s infinite; }
+
+    .shield {
+      width: 15px;
+      height: 15px;
+      border-radius: 4px;
+      background: linear-gradient(145deg, #02c39a, #0f8875);
+      color: #03211b;
+      font-weight: 800;
+      font-size: 10px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+    }
+
+    .slot {
+      margin-left: auto;
+      width: 20px;
+      height: 20px;
+      border-radius: 999px;
+      border: 1px solid #364255;
+      background: #111722;
+      font-size: 10px;
+      font-weight: 800;
+      color: #bac4d4;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      position: relative;
+    }
+
+    .slot .arc {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,.24);
+      border-top-color: var(--accent);
+      animation: spin .7s linear infinite;
+      display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .exp {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: 2px;
+      color: #d0d8e6;
+      font-size: 11px;
+      white-space: nowrap;
+      max-width: 0;
+      opacity: 0;
+      overflow: hidden;
+      transition: .2s ease;
+    }
+    .fused:hover .exp, .pill.open .exp {
+      max-width: 150px;
+      opacity: 1;
+    }
+    .div {
+      width: 1px;
+      height: 14px;
+      background: rgba(255,255,255,.1);
+    }
+    .action.safe { color: #abefc4; }
+    .action.warn { color: #ffe4a0; }
+    .action.block { color: #ffb1ae; }
+
+    .status-tip {
+      position: absolute;
+      left: 50%;
+      top: calc(100% + 4px);
+      transform: translateX(-50%);
+      background: rgba(28, 28, 30, 240);
+      color: #fff;
+      font-size: 11px;
+      line-height: 1.35;
+      border-radius: 6px;
+      padding: 4px 8px;
+      border: none;
+      opacity: 0;
+      transition: 200ms ease;
+      pointer-events: none;
+      white-space: nowrap;
+      z-index: 11;
+    }
+    .fused:hover .status-tip { opacity: 1; }
+
+    .toolbar {
+      width: 40px;
+      transform: translateX(24px);
+      opacity: 0;
+      transition: 180ms ease-out;
+      pointer-events: none;
+      display: grid;
+      justify-items: center;
+    }
+    .toolbar.show {
+      transform: translateX(0);
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .tb {
+      width: 40px;
+      height: 44px;
+      border: none;
+      background: transparent;
+      color: rgba(232,232,232,.42);
+      cursor: pointer;
+      font-size: 17px;
+      border-radius: 10px;
+      transition: .18s ease;
+      position: relative;
+    }
+    .tb:hover {
+      color: #fff;
+      background: rgba(255,255,255,.08);
+    }
+    .tb:active { background: rgba(255,255,255,.15); }
+    .tb.amber { color: #ffd740; }
+    .tb.blue { color: #42a5f5; }
+
+    .tb-tip {
+      position: absolute;
+      right: calc(100% + 8px);
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(28, 28, 30, 245);
+      color: #fff;
+      border-radius: 8px;
+      padding: 6px 12px;
+      min-width: 225px;
+      text-align: left;
+      border: none;
+      opacity: 0;
+      pointer-events: none;
+      transition: .2s ease;
+      z-index: 12;
+    }
+    .tb:hover .tb-tip { opacity: 1; }
+    .tb-tip b {
+      display: block;
+      font-size: 12px;
+      margin-bottom: 2px;
+    }
+    .tb-tip span {
+      font-size: 10px;
+      color: #b5bed0;
+    }
+
+    .context {
+      position: absolute;
+      min-width: 220px;
+      background: #2b2b2b;
+      color: #e8e8e8;
+      border: 1px solid #444;
+      border-radius: 8px;
+      padding: 4px;
+      font-size: 12px;
+      z-index: 20;
+      display: none;
+    }
+    .tour-highlight {
+      outline: 2px solid rgba(66,165,245,.95);
+      outline-offset: 2px;
+      box-shadow: 0 0 0 6px rgba(66,165,245,.2);
+      border-radius: 8px;
+      transition: .18s ease;
+    }
+    .ctx-item {
+      padding: 6px 24px 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .ctx-item:hover { background: #3d3d3d; }
+    .ctx-sep { height: 1px; margin: 4px 2px; background: #4a4a4a; }
+    .ctx-check {
+      float: right;
+      font-size: 10px;
+      opacity: .8;
+      margin-left: 8px;
+    }
+
+    .panel {
+      position: absolute;
+      top: 0;
+      right: -408px;
+      width: 408px;
+      height: 100%;
+      background: #fff;
+      z-index: 12;
+      display: flex;
+      flex-direction: column;
+      box-shadow: -14px 0 24px rgba(0,0,0,.38);
+      transition: 220ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .panel.open { right: 0; }
+
+    .p-head {
+      background: #1c1c1e;
+      color: #fff;
+      border-bottom: 1px solid #303036;
+      padding: 8px 10px;
+      display: grid;
+      gap: 6px;
+    }
+    .drag-dots {
+      text-align: center;
+      color: #8a8f99;
+      font-size: 10px;
+      letter-spacing: 2px;
+    }
+    .p-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .risk {
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 7px;
+      border: 1px solid rgba(255,255,255,.2);
+    }
+    .risk.safe { color: #b8eccb; background: rgba(34,197,94,.16); border-color: rgba(34,197,94,.45); }
+    .risk.med { color: #ffe0a3; background: rgba(255,179,0,.16); border-color: rgba(255,179,0,.5); }
+    .risk.high { color: #ffb1ae; background: rgba(229,57,53,.18); border-color: rgba(229,57,53,.55); }
+    .ic {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .ic button {
+      border: none;
+      background: rgba(255,255,255,.1);
+      color: #dce3f0;
+      border-radius: 6px;
+      width: 20px;
+      height: 20px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+
+    .score {
+      background: #2c2c2e;
+      color: #fff;
+      padding: 9px 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .ring {
+      width: 64px;
+      height: 64px;
+      flex: 0 0 auto;
+    }
+    .meta strong {
+      display: block;
+      font-size: 12px;
+      margin-bottom: 2px;
+    }
+    .meta span {
+      font-size: 11px;
+      color: #c4cad8;
+    }
+
+    .banner {
+      margin: 0 10px;
+      margin-top: 7px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 6px 8px;
+      display: none;
+    }
+    .banner.block { background: rgba(229,57,53,.18); border: 1px solid rgba(229,57,53,.5); color: #ffb7b4; }
+    .banner.ok { background: rgba(34,197,94,.18); border: 1px solid rgba(34,197,94,.5); color: #b8eccb; }
+
+    .feedback {
+      background: #f2f3f7;
+      border-bottom: 1px solid #e5e7ee;
+      color: #303746;
+      padding: 8px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+    }
+    .fb-btns { display: flex; gap: 6px; }
+    .fb {
+      border: 1px solid #d0d8e5;
+      border-radius: 8px;
+      background: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 8px;
+      cursor: pointer;
+    }
+
+    .issues {
+      flex: 1;
+      overflow: auto;
+      background: #fff;
+      border-bottom: 1px solid #eceef4;
+      padding: 8px 10px;
+      display: grid;
+      gap: 0;
+      align-content: start;
+    }
+    .masker {
+      margin-bottom: 8px;
+      border: 1px solid #e5e8ef;
+      border-radius: 8px;
+      background: #f8f9fc;
+      color: #4b5567;
+      font-size: 11px;
+      padding: 7px;
+      display: grid;
+      gap: 5px;
+    }
+    .masker .labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: #687184;
+    }
+    .issue {
+      position: relative;
+      border-bottom: 1px solid #f0f0f0;
+      padding: 8px 8px 8px 10px;
+      background: #fff;
+      display: grid;
+      gap: 6px;
+      transition: opacity 200ms ease;
+    }
+    .issue::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: var(--warn);
+    }
+    .issue.high::before { background: var(--danger); }
+    .issue.done { opacity: .56; }
+    .itop {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .itop b {
+      color: #262c38;
+      font-size: 12px;
+      text-decoration: none;
+    }
+    .issue.done .itop b { text-decoration: line-through; }
+    .state {
+      font-size: 11px;
+      color: #169956;
+      font-weight: 700;
+    }
+    .prev {
+      font: 10px/1.4 Consolas, "JetBrains Mono", monospace;
+      color: #667186;
+      background: #f8f9fc;
+      border-radius: 6px;
+      padding: 4px 6px;
+      word-break: break-all;
+    }
+    .ia {
+      display: flex;
+      gap: 6px;
+    }
+    .ib {
+      border-radius: 7px;
+      border: 1px solid #ced5e2;
+      background: #fff;
+      color: #2f3a4a;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 8px;
+      cursor: pointer;
+    }
+    .ib.fix {
+      border-color: rgba(2,195,154,.55);
+      background: #02c39a;
+      color: #04221c;
+    }
+    .ib:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+    }
+
+    .preview-box {
+      margin-top: 8px;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      background: #f8f9fa;
+      color: #2f3644;
+      font-size: 11px;
+      line-height: 1.45;
+      padding: 8px;
+      display: none;
+      position: relative;
+      word-break: break-word;
+    }
+    .preview-box.show { display: block; }
+    .preview-box h5 {
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+    .x {
+      border: none;
+      background: transparent;
+      color: #7e8799;
+      font-size: 14px;
+      cursor: pointer;
+      position: absolute;
+      right: 6px;
+      top: 4px;
+    }
+
+    .p-foot {
+      background: #fff;
+      padding: 8px 10px 10px;
+      display: grid;
+      gap: 7px;
+    }
+    .fa {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .fab {
+      border: 1px solid #d0d8e6;
+      border-radius: 8px;
+      background: #fff;
+      color: #344050;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 5px 9px;
+      cursor: pointer;
+    }
+    .fab.redact { background: #ffe3a9; border-color: #ffd179; color: #724d00; }
+    .fab.rephrase { background: #dbe9ff; border-color: #adc8ff; color: #18479b; }
+    .fab.fixall { background: #02c39a; border-color: rgba(2,195,154,.65); color: #04241e; }
+    .fab.proceed {
+      background: transparent;
+      border: none;
+      text-decoration: underline;
+      color: #8a94a7;
+      padding-left: 0;
+    }
+    .fab.proceed.dim {
+      opacity: .55;
+      pointer-events: none;
+    }
+
+    .toast {
+      position: absolute;
+      left: 50%;
+      bottom: 14px;
+      transform: translate(-50%, 8px);
+      opacity: 0;
+      transition: 200ms ease;
+      background: #141922;
+      border: 1px solid #36404f;
+      color: #d8dfec;
+      border-radius: 10px;
+      padding: 7px 10px;
+      font-size: 12px;
+      z-index: 25;
+      pointer-events: none;
+      max-width: 90%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+    .char {
+      position: absolute;
+      right: 18px;
+      bottom: 74px;
+      border: 1px solid #374153;
+      background: #171c25;
+      color: #dbe3f2;
+      border-radius: 10px;
+      padding: 7px 10px;
+      font-size: 12px;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: 200ms ease;
+      z-index: 25;
+      pointer-events: none;
+    }
+    .char.show { opacity: 1; transform: translateY(0); }
+
+    .modal-bg {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,.46);
+      display: none;
+      z-index: 15;
+      padding: 14px;
+      place-items: center;
+    }
+    .modal-bg.show { display: grid; }
+    .modal {
+      width: min(460px, 100%);
+      background: #1a1f29;
+      border: 1px solid #3a4453;
+      border-radius: 12px;
+      color: #e8e8e8;
+      padding: 10px;
+      box-shadow: 0 18px 38px rgba(0,0,0,.45);
+    }
+    .modal h4 {
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+    .modal .row {
+      font-size: 12px;
+      color: #d1d9e8;
+      margin-bottom: 8px;
+    }
+    .opts {
+      display: grid;
+      gap: 6px;
+      margin: 8px 0;
+    }
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #d3dcee;
+    }
+    .check input { accent-color: #0d6efd; }
+    .modal select,
+    .modal input[type="text"] {
+      width: 100%;
+      border: 1px solid #374153;
+      background: #111722;
+      color: #e8e8e8;
+      border-radius: 8px;
+      font-size: 12px;
+      padding: 7px;
+    }
+    .m-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .mb {
+      border: 1px solid #3a4454;
+      background: #232b38;
+      color: #d5deef;
+      border-radius: 8px;
+      padding: 6px 11px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .mb.primary {
+      border-color: #0d6efd;
+      background: #0d6efd;
+      color: #fff;
+    }
+
+    .files {
+      border: 1px solid #364052;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .file {
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px solid #313a4a;
+      padding: 8px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .file:last-child { border-bottom: none; }
+    .file.sel { background: rgba(13,110,253,.2); }
+
+    .scan-report {
+      width: min(560px, 100%);
+      background: #121722;
+    }
+    .rcode {
+      border: 1px solid #2e3a4d;
+      background: #0d131d;
+      border-radius: 8px;
+      padding: 8px;
+      font: 11px/1.45 Consolas, "JetBrains Mono", monospace;
+      color: #d1dcf1;
+      white-space: pre-wrap;
+      max-height: 320px;
+      overflow: auto;
+    }
+
+    .tour-pop {
+      position: absolute;
+      max-width: 290px;
+      background: #111722;
+      border: 1px solid #406089;
+      border-radius: 10px;
+      padding: 9px 10px;
+      color: #d7e3f8;
+      box-shadow: 0 12px 24px rgba(0,0,0,.45);
+      z-index: 26;
+      display: none;
+      pointer-events: none;
+    }
+    .tour-pop.show { display: block; }
+    .tour-pop h5 {
+      font-size: 12px;
+      margin-bottom: 4px;
+      color: #eaf3ff;
+    }
+    .tour-pop p {
+      font-size: 11px;
+      line-height: 1.45;
+      color: #c1d1ea;
+    }
+
+    .demo-disclaimer {
+      margin-top: 14px;
+      color: #9ba5b5;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .demo-disclaimer strong { color: #dee6f4; }
+    .demo-disclaimer ul {
+      margin: 7px 0 8px 18px;
+      display: grid;
+      gap: 3px;
+    }
+    .cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid rgba(2,195,154,.5);
+      background: rgba(2,195,154,.16);
+      color: #b8fff2;
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 999px;
+      padding: 7px 11px;
+    }
+
+    @media (max-width: 980px) {
+      .desktop {
+        min-height: 720px;
+        aspect-ratio: auto;
+      }
+      .browser-window {
+        left: 4%;
+        top: 7%;
+        width: 92%;
+        height: 66%;
+      }
+      .taskbar { height: 36px; }
+      .overlay-wrap { bottom: 48px; right: 10px; }
+      .panel { width: 100%; right: -100%; }
+      .tb-tip, .status-tip, .context { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>Interactive Widget Demo</h1>
+    <p class="sub">Core Sentinel as an independent floating desktop overlay. The browser window below is only backdrop context; the widget hovers above everything.</p>
+
+    <div class="controlbar">
+      <h3>Interactive Widget Demo — click a scenario or interact with the overlay directly</h3>
+      <div class="btns">
+        <button class="btn mode active" id="modeRisk">Mode A: Warn/Block Demo</button>
+        <button class="btn mode" id="modeOps">Mode B: Drag + File Scan</button>
+        <button class="btn safe" id="btnSafe">🟢 Paste Safe Text</button>
+        <button class="btn warn" id="btnWarn">🟡 Paste PII Text</button>
+        <button class="btn crit" id="btnCrit">🔴 Paste Critical Data</button>
+        <button class="btn scan" id="btnScan">📄 Scan Document</button>
+        <button class="btn walk" id="btnWalkthrough">▶ Auto Walkthrough</button>
+        <button class="btn tour" id="btnTour">🧭 Start Overlay Tour</button>
+        <button class="btn settings" id="btnSettings">⚙ Open Settings</button>
+        <button class="btn reset" id="btnReset">Reset Demo</button>
+      </div>
+      <div class="mode-note" id="modeNote">
+        Mode A focuses on warning/block behavior and remediation actions.
+      </div>
+      <div class="guide">
+        <div class="guide-top">
+          <strong>How it works (current phase demo)</strong>
+          <span class="guide-status" id="guideStatus">Idle: choose a scenario</span>
+        </div>
+        <div class="guide-steps">
+          <span>1) Paste intercepted</span>
+          <span>2) Risk scan runs</span>
+          <span>3) Safe/Warn/Block decision</span>
+          <span>4) Remediation actions</span>
+          <span>5) Safe version proceeds</span>
+        </div>
+        <div class="tour-nav">
+          <span class="tour-chip" id="tourStepChip">Tour idle</span>
+          <button class="mini" id="tourPrev" disabled>Prev</button>
+          <button class="mini" id="tourNext" disabled>Next</button>
+          <button class="mini" id="tourEnd" disabled>End tour</button>
+        </div>
+      </div>
+    </div>
+
+    <section class="desktop" id="desktop">
+      <div class="browser-window" id="browserWindow">
+        <div class="chrome">
+          <div class="titlebar">
+            <div class="winctrl"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+            <div class="tabs">
+              <span class="tab active">Source Document</span>
+              <span class="tab">LLM Prompt</span>
+            </div>
+            <div class="model-select-wrap">
+              <select id="modelSelect" class="model-select" aria-label="Select LLM model">
+                <option value="Claude 3.7 Sonnet" selected>Claude 3.7 Sonnet</option>
+                <option value="ChatGPT 4.1">ChatGPT 4.1</option>
+                <option value="Gemini 2.5 Pro">Gemini 2.5 Pro</option>
+              </select>
+            </div>
+          </div>
+          <div class="url">https://llm-workspace.local/prompt-lab</div>
+        </div>
+        <div class="chat">
+          <div class="workspace">
+            <div class="doc-pane">
+              <h4>Copied from document</h4>
+              <div class="doc-note">Use the quick-copy buttons to simulate selecting text in a doc and pasting it into the LLM prompt.</div>
+              <div class="doc-body">Quarterly Incident Notes
+Owner: Priya Shah
+Email: priya.shah@acme.org
+Phone: +1 415-555-1177
+Summary: Need safer prompt before sharing externally.
+              </div>
+              <div class="doc-actions">
+                <button id="copyDocSafe">Copy safe paragraph</button>
+                <button id="copyDocWarn">Copy medium-risk snippet (email/phone)</button>
+                <button id="copyDocCrit">Copy critical snippet (password/key)</button>
+              </div>
+            </div>
+            <div class="llm-pane">
+              <div class="llm-head" id="llmHead">LLM prompt box and paste log</div>
+              <div class="msgs" id="msgs">
+                <div class="msg system">Paste content from your document to see how Sentinel intercepts and classifies it.</div>
+              </div>
+            </div>
+          </div>
+          <div class="composer">
+            <input id="chatInput" placeholder="Paste text into the LLM prompt...">
+            <button id="sendBtn">Paste to LLM</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="overlay-wrap" id="overlayWrap">
+        <div class="overlay-row">
+          <div class="fused" id="fused">
+            <div class="traffic">
+              <span class="dot" id="dotR"></span>
+              <span class="dot" id="dotA"></span>
+              <span class="dot" id="dotG"></span>
+            </div>
+            <div class="pill" id="pill">
+              <div class="power active" id="powerBtn">⏻<span class="status-dot" id="sig"></span></div>
+              <div class="shield">◈</div>
+              <div class="slot" id="slot"><span id="slotText">CS</span><span class="arc" id="slotArc"></span></div>
+              <div class="exp">
+                <span class="div"></span>
+                <span id="llmTxt">Monitoring: ChatGPT</span>
+                <span class="action safe" id="actTxt">SILENT</span>
+                <span class="div"></span>
+                <span id="streakTxt">Start a streak!</span>
+              </div>
+              <div class="status-tip" id="statusTip">Monitoring: ChatGPT<br>Start a streak!</div>
+            </div>
+          </div>
+          <div class="toolbar" id="toolbar">
+            <button class="tb" data-action="rewrite">✏
+              <span class="tb-tip"><b>Rewrite text without PII</b><span>[Alt+R]</span></span>
+            </button>
+            <button class="tb amber" data-action="redact">▓
+              <span class="tb-tip"><b>Mask PII (partial digits, masked email/IP, asterisks elsewhere)</b><span>[Alt+D]</span></span>
+            </button>
+            <button class="tb blue" data-action="encrypt">🔒
+              <span class="tb-tip"><b>Encrypt sensitive content</b><span>[Alt+E]</span></span>
+            </button>
+            <button class="tb" data-action="scan">⬆
+              <span class="tb-tip"><b>Upload/scan document for PII (Gemini)</b><span>[Alt+S]</span></span>
+            </button>
+            <button class="tb" data-action="settings">⚙
+              <span class="tb-tip"><b>Open settings</b><span>[Alt+,]</span></span>
+            </button>
+          </div>
+        </div>
+        <div class="context" id="context"></div>
+      </div>
+
+      <aside class="panel" id="panel">
+        <div class="p-head">
+          <div class="drag-dots">• • •</div>
+          <div class="p-row">
+            <div class="left">
+              <span class="shield">◈</span>
+              <span>Sentinel</span>
+              <span class="risk med" id="riskBadge">Medium</span>
+            </div>
+            <div class="ic">
+              <button title="Power">⏻</button>
+              <button id="panelSettings">⚙</button>
+              <button id="panelMin">—</button>
+              <button id="panelClose">✕</button>
+            </div>
+          </div>
+        </div>
+        <div class="score">
+          <svg class="ring" viewBox="0 0 64 64">
+            <circle cx="32" cy="32" r="24" fill="none" stroke="#3c3f46" stroke-width="8"></circle>
+            <circle id="ringArc" cx="32" cy="32" r="24" fill="none" stroke="#ffb300" stroke-width="8" stroke-linecap="round" stroke-dasharray="150.8" stroke-dashoffset="150.8" transform="rotate(-90 32 32)"></circle>
+            <text id="ringTxt" x="32" y="36" text-anchor="middle" fill="#fff" font-size="14" font-weight="800">0</text>
+          </svg>
+          <div class="meta">
+            <strong>Risk score</strong>
+            <span id="tierTxt">Medium</span><br>
+            <span id="issueCountTxt">0 issues found</span>
+          </div>
+        </div>
+        <div class="banner block" id="topBanner">⊘ Paste blocked — fix required</div>
+        <div class="feedback">
+          <span>Was this correct?</span>
+          <div class="fb-btns">
+            <button class="fb" id="fbYes">✓ Correct</button>
+            <button class="fb" id="fbNo">✗ Wrong</button>
+          </div>
+        </div>
+        <div class="issues" id="issues">
+          <div class="masker">
+            <span>Masking mode</span>
+            <input id="maskSlider" type="range" min="0" max="3" value="0">
+            <div class="labels"><span>Partial</span><span>Stars</span><span>Full</span><span>Type only</span></div>
+          </div>
+          <div class="preview-box" id="previewBox">
+            <button class="x" id="previewClose">✕</button>
+            <h5 id="previewTitle">Masked version (partial):</h5>
+            <div id="previewText"></div>
+            <div style="margin-top:6px">
+              <button class="ib fix" id="previewCopy">Copy</button>
+            </div>
+          </div>
+        </div>
+        <div class="p-foot">
+          <div class="fa">
+            <button class="fab redact" id="redactBtn">Redact</button>
+            <button class="fab rephrase" id="rephraseBtn">Rephrase</button>
+            <button class="fab" id="snoozeBtn">Snooze ▾</button>
+            <button class="fab fixall" id="fixAllBtn">Fix all</button>
+            <button class="fab" id="skipAllBtn">Skip all</button>
+            <button class="fab proceed dim" id="proceedBtn">Proceed anyway</button>
+          </div>
+        </div>
+      </aside>
+
+      <div class="taskbar">
+        <div class="tsk-left">
+          <span class="ico">🪟 Start</span>
+          <span class="ico">🌐 Chrome</span>
+          <span class="ico">🟦 VS Code</span>
+          <span class="ico">📁 Explorer</span>
+        </div>
+        <div class="tsk-right">
+          <span class="clock" id="clock">12:30 PM</span>
+          <span>🔔</span>
+        </div>
+      </div>
+
+      <div class="modal-bg" id="settingsModal">
+        <div class="modal">
+          <h4>Sentinel settings</h4>
+          <div class="opts">
+            <label class="check"><input type="checkbox" checked> Monitor LLM windows only</label>
+            <label class="check"><input type="checkbox" checked> Show badge on issues</label>
+            <label class="check"><input type="checkbox" checked> Block high-risk pastes</label>
+            <label class="check"><input type="checkbox"> Play sound on block</label>
+          </div>
+          <div class="row">No snooze active. <button class="mb" id="removeSnoozeBtn">Remove snooze</button></div>
+          <div class="row">
+            Sensitivity
+            <select id="sensSelect">
+              <option>Low</option>
+              <option selected>Medium</option>
+              <option>High</option>
+              <option>Strict</option>
+            </select>
+          </div>
+          <div class="row">
+            Idle pill icon
+            <div style="display:flex;gap:6px;margin-top:4px">
+              <input type="text" value="default_idle_icon.png" readonly>
+              <button class="mb">Browse...</button>
+            </div>
+          </div>
+          <div class="m-actions">
+            <button class="mb" id="settingsCancel">Cancel</button>
+            <button class="mb primary" id="settingsSave">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-bg" id="pickerModal">
+        <div class="modal">
+          <h4>Select document to scan for PII</h4>
+          <div class="files" id="pickerFiles">
+            <div class="file sel" data-file="employee_records.pdf"><span>employee_records.pdf</span><span>14 KB</span></div>
+            <div class="file" data-file="config_backup.txt"><span>config_backup.txt</span><span>2 KB</span></div>
+            <div class="file" data-file="patient_notes.docx"><span>patient_notes.docx</span><span>8 KB</span></div>
+          </div>
+          <div class="m-actions">
+            <button class="mb" id="pickerCancel">Cancel</button>
+            <button class="mb primary" id="pickerOpen">Open</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-bg" id="reportModal">
+        <div class="modal scan-report">
+          <h4>Document Scan Report</h4>
+          <div class="rcode" id="reportText"></div>
+          <div class="m-actions">
+            <button class="mb" id="reportRedact">Redact All</button>
+            <button class="mb" id="reportExport">Export Report</button>
+            <button class="mb primary" id="reportClose">Close</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-bg" id="retrainModal">
+        <div class="modal" style="width:min(360px,100%)">
+          <h4>Retrain model?</h4>
+          <div class="row">You have <strong id="corrCount">23</strong> corrections collected.<br>Retrain the model now? (takes ~2 minutes)</div>
+          <div class="m-actions">
+            <button class="mb" id="retrainLater">Later</button>
+            <button class="mb primary" id="retrainYes">Yes</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="toast" id="toast"></div>
+      <div class="char" id="char"></div>
+      <div class="tour-pop" id="tourPop">
+        <h5 id="tourTitle">Overlay tour</h5>
+        <p id="tourBody">Start tour to see each part of the widget.</p>
+      </div>
+    </section>
+
+    <div class="demo-disclaimer">
+      <p><strong>This is a browser simulation.</strong> The real Core Sentinel desktop app provides:</p>
+      <ul>
+        <li>🧠 TinyBERT guardrail model for contextual risk scoring (not just regex)</li>
+        <li>🧬 spaCy NER for name/org/location entity recognition</li>
+        <li>⚡ System-level clipboard interception (works in ALL apps)</li>
+        <li>🔒 AES-256 encryption for reversible PII protection</li>
+        <li>📊 Supabase-powered fleet telemetry for enterprise</li>
+        <li>🔄 Active learning: model improves from your corrections</li>
+        <li>🪟 Current production target: Windows 10/11 (Linux and iOS planned later)</li>
+      </ul>
+      <a class="cta" href="https://github.com/Alwinphilip0105/Core_Sentinal" target="_blank" rel="noopener">Download the real thing →</a>
+    </div>
+  </div>
+
+  <script>
+    const patterns = {
+      ssn: /\b\d{3}-\d{2}-\d{4}\b/g,
+      creditCard: /\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b/g,
+      email: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
+      phone: /(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\b\d{3}[-.\s]?\d{4}\b/g,
+      apiKey: /(?:sk-[a-zA-Z0-9]{20,}|AKIA[A-Z0-9]{16}|ghp_[a-zA-Z0-9]{36})/g,
+      ipAddress: /\b\d{1,3}(?:\.\d{1,3}){3}\b/g,
+      fullName: /\b[A-Z][a-z]+ [A-Z][a-z]+\b/g,
+      address: /\b\d{2,5}\s+[A-Za-z0-9.\s]{3,40}(Street|St|Avenue|Ave|Road|Rd|Terrace|Lane|Ln)\b/gi,
+      db: /postgres(ql)?:\/\/[^\s]+/gi,
+      password: /password\s*[:=]\s*[^\s]+|:[^@\s]{6,}@/gi
+    };
+
+    const PRESETS = {
+      safe: "Can you explain TCP vs UDP?",
+      pii: "Review John Smith's file. Email: john.smith@company.com, phone 555-0142, at 742 Evergreen Terrace.",
+      critical: "OPENAI_API_KEY=sk-proj-abc123def456\\nDATABASE_URL=postgresql://admin:secret@db:5432/prod"
+    };
+
+    const MASK_NAMES = ["partial", "stars", "full", "type only"];
+    const q = (id) => document.getElementById(id);
+
+    const state = {
+      monitoring: true,
+      busy: false,
+      streak: 0,
+      selectedModel: "Claude 3.7 Sonnet",
+      score: 0,
+      action: "SILENT",
+      issues: [],
+      raw: "",
+      safe: "",
+      criticalMode: false,
+      selectedFile: "employee_records.pdf",
+      corrections: 0,
+      toolbarTimer: null,
+      walkthroughRunning: false,
+      mode: "risk",
+      tourActive: false,
+      tourIndex: -1
+    };
+
+    const tourSteps = [
+      {
+        target: "#fused",
+        title: "Floating pill + traffic light",
+        body: "This fused unit floats above all windows. It is independent from the browser and can be dragged anywhere on the desktop.",
+        prep: async () => {
+          q("toolbar").classList.remove("show");
+          closePanel();
+        }
+      },
+      {
+        target: "#powerBtn",
+        title: "Monitoring toggle",
+        body: "Click power to pause/resume monitoring. Dot + status text update immediately."
+      },
+      {
+        target: "#toolbar",
+        title: "Hover toolbar actions",
+        body: "Hover the pill to reveal rewrite, redact, encrypt, scan, and settings actions.",
+        prep: async () => {
+          q("toolbar").classList.add("show");
+        }
+      },
+      {
+        target: "#panel",
+        title: "Warn/Block remediation panel",
+        body: "When PII is detected, the panel slides from the right edge and lists issues with Fix/Skip controls.",
+        prep: async () => {
+          if (!state.issues.length) {
+            await analyzeAndRun(PRESETS.pii, "warn");
+          } else {
+            openPanel();
+          }
+        }
+      },
+      {
+        target: "#maskSlider",
+        title: "Masking controls",
+        body: "Use Partial / Stars / Full / Type-only masking and preview sanitized text before proceeding.",
+        prep: async () => {
+          updatePreview();
+          openPanel();
+        }
+      },
+      {
+        target: "#btnScan",
+        title: "File scan simulation",
+        body: "Use Scan Document to open picker, run progress states, and display report findings with page/line references."
+      }
+    ];
+
+    function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+    function showToast(text, color = "#d8dfec", bg = "#141922", border = "#36404f", ms = 2000) {
+      const t = q("toast");
+      t.textContent = text;
+      t.style.color = color;
+      t.style.background = bg;
+      t.style.borderColor = border;
+      t.classList.add("show");
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => t.classList.remove("show"), ms);
+    }
+
+    function showChar(text, ms = 2200) {
+      const c = q("char");
+      c.textContent = text;
+      c.classList.add("show");
+      clearTimeout(showChar._t);
+      showChar._t = setTimeout(() => c.classList.remove("show"), ms);
+    }
+
+    function setGuideStatus(text) {
+      const el = q("guideStatus");
+      if (!el) return;
+      el.textContent = text;
+    }
+
+    function clearTourHighlights() {
+      document.querySelectorAll(".tour-highlight").forEach((n) => n.classList.remove("tour-highlight"));
+    }
+
+    function setMode(mode) {
+      state.mode = mode;
+      q("modeRisk").classList.toggle("active", mode === "risk");
+      q("modeOps").classList.toggle("active", mode === "ops");
+      if (mode === "risk") {
+        q("modeNote").textContent = "Mode A focuses on warning/block behavior and remediation actions.";
+        setGuideStatus("Mode A active: run warn/block scenarios");
+      } else {
+        q("modeNote").textContent = "Mode B focuses on operational behavior: drag widget + file scan PII workflow.";
+        setGuideStatus("Mode B active: drag widget and run document scan");
+      }
+    }
+
+    function placeTourPopover(target) {
+      const pop = q("tourPop");
+      const desktop = q("desktop").getBoundingClientRect();
+      const rect = target.getBoundingClientRect();
+      const pw = pop.offsetWidth || 290;
+      const ph = pop.offsetHeight || 110;
+      let left = rect.right - desktop.left + 12;
+      let top = rect.top - desktop.top;
+      if (left + pw > desktop.width - 10) left = rect.left - desktop.left - pw - 12;
+      if (left < 10) left = 10;
+      if (top + ph > desktop.height - 10) top = desktop.height - ph - 10;
+      if (top < 10) top = 10;
+      pop.style.left = `${left}px`;
+      pop.style.top = `${top}px`;
+    }
+
+    async function showTourStep(idx) {
+      if (!state.tourActive) return;
+      const step = tourSteps[idx];
+      if (!step) return;
+      if (typeof step.prep === "function") {
+        await step.prep();
+      }
+      clearTourHighlights();
+      const target = document.querySelector(step.target);
+      if (!target) return;
+      target.classList.add("tour-highlight");
+      q("tourTitle").textContent = step.title;
+      q("tourBody").textContent = step.body;
+      q("tourStepChip").textContent = `Tour step ${idx + 1}/${tourSteps.length}`;
+      q("tourPrev").disabled = idx <= 0;
+      q("tourNext").disabled = idx >= tourSteps.length - 1;
+      q("tourPop").classList.add("show");
+      placeTourPopover(target);
+    }
+
+    async function startTour() {
+      if (state.tourActive) return;
+      state.tourActive = true;
+      state.tourIndex = 0;
+      q("tourEnd").disabled = false;
+      q("tourNext").disabled = false;
+      q("tourPrev").disabled = true;
+      setGuideStatus("Tour running: follow highlighted overlay components");
+      await showTourStep(0);
+    }
+
+    async function nextTourStep() {
+      if (!state.tourActive) return;
+      if (state.tourIndex >= tourSteps.length - 1) return;
+      state.tourIndex += 1;
+      await showTourStep(state.tourIndex);
+    }
+
+    async function prevTourStep() {
+      if (!state.tourActive) return;
+      if (state.tourIndex <= 0) return;
+      state.tourIndex -= 1;
+      await showTourStep(state.tourIndex);
+    }
+
+    function endTour(message = "Tour ended") {
+      state.tourActive = false;
+      state.tourIndex = -1;
+      q("tourPop").classList.remove("show");
+      q("tourStepChip").textContent = "Tour idle";
+      q("tourPrev").disabled = true;
+      q("tourNext").disabled = true;
+      q("tourEnd").disabled = true;
+      clearTourHighlights();
+      setGuideStatus(message);
+    }
+
+    function moveWidgetTo(xRatio, yRatio) {
+      const desktop = q("desktop");
+      const wrap = q("overlayWrap");
+      const dRect = desktop.getBoundingClientRect();
+      const w = wrap.offsetWidth;
+      const h = wrap.offsetHeight;
+      const x = Math.max(6, Math.min(dRect.width - w - 6, Math.round((dRect.width - w) * xRatio)));
+      const y = Math.max(6, Math.min(dRect.height - h - 50, Math.round((dRect.height - h - 50) * yRatio)));
+      wrap.style.left = `${x}px`;
+      wrap.style.top = `${y}px`;
+      wrap.style.right = "auto";
+      wrap.style.bottom = "auto";
+    }
+
+    async function runRiskOnlyDemo() {
+      setMode("risk");
+      await typePreset(PRESETS.pii, "warn");
+      await sleep(400);
+      await fixAll();
+      await sleep(250);
+      q("previewCopy").click();
+      await sleep(700);
+      await typePreset(PRESETS.critical, "block");
+      setGuideStatus("Risk demo complete: warn + block flows shown");
+    }
+
+    async function runOpsOnlyDemo() {
+      setMode("ops");
+      setGuideStatus("Ops demo: drag behavior");
+      q("fused").classList.add("wiggle");
+      moveWidgetTo(0.58, 0.45);
+      showToast("Drag the widget around the desktop to reposition it");
+      await sleep(1400);
+      q("fused").classList.remove("wiggle");
+      setGuideStatus("Ops demo: file scan flow");
+      openPicker();
+      await sleep(700);
+      await runScanFlow();
+      setGuideStatus("Ops demo complete: drag + scan shown");
+    }
+
+    function addMsg(type, text, html) {
+      const d = document.createElement("div");
+      d.className = `msg ${type}`;
+      if (html) d.innerHTML = html;
+      else d.textContent = text;
+      q("msgs").appendChild(d);
+      q("msgs").scrollTop = q("msgs").scrollHeight;
+    }
+
+    function clearMsgs() {
+      q("msgs").innerHTML = `
+        <div class="msg system">Paste content from your document to see how Sentinel intercepts and classifies it.</div>
+      `;
+    }
+
+    function setLights(mode) {
+      const dR = q("dotR"), dA = q("dotA"), dG = q("dotG");
+      [dR, dA, dG].forEach((d) => {
+        d.className = "dot";
+      });
+      if (mode === "not-monitoring") dR.className = "dot on red";
+      if (mode === "monitoring") dG.className = "dot on green";
+      if (mode === "analyzing") dA.className = "dot on amber pulse";
+      if (mode === "safe") dG.className = "dot on green";
+      if (mode === "warn") dA.className = "dot on amber";
+      if (mode === "block") dR.className = "dot on red";
+    }
+
+    function setActionWord(kind) {
+      const el = q("actTxt");
+      state.action = kind === "safe" ? "SILENT" : kind === "warn" ? "WARN" : "BLOCK";
+      el.textContent = state.action;
+      el.className = `action ${kind === "safe" ? "safe" : kind === "warn" ? "warn" : "block"}`;
+      q("streakTxt").textContent = state.streak >= 10 ? `🔥${state.streak} streak` : state.streak > 0 ? `✓${state.streak} safe` : "Start a streak!";
+      q("statusTip").innerHTML = `${q("llmTxt").textContent}<br>${state.streak > 0 ? `✓ ${state.streak} safe` : "Start a streak!"}`;
+    }
+
+    function setSlot(value, color = "#bac4d4", showArc = false) {
+      q("slotText").textContent = value;
+      q("slotText").style.color = color;
+      q("slotArc").style.display = showArc ? "block" : "none";
+    }
+
+    function monitoringLabel() {
+      return `Monitoring: ${state.selectedModel}`;
+    }
+
+    function syncModelUi() {
+      if (q("modelSelect")) q("modelSelect").value = state.selectedModel;
+      if (q("llmHead")) q("llmHead").textContent = `LLM prompt box and paste log (${state.selectedModel})`;
+      q("llmTxt").textContent = state.monitoring ? monitoringLabel() : "Not monitoring";
+      q("statusTip").innerHTML = `${q("llmTxt").textContent}<br>${state.streak > 0 ? `✓ ${state.streak} safe` : "Start a streak!"}`;
+    }
+
+    function setMonitoring(on) {
+      state.monitoring = on;
+      q("powerBtn").classList.toggle("active", on);
+      q("llmTxt").textContent = on ? monitoringLabel() : "Not monitoring";
+      q("statusTip").innerHTML = `${q("llmTxt").textContent}<br>${state.streak > 0 ? `✓ ${state.streak} safe` : "Start a streak!"}`;
+      if (!on) {
+        state.action = "PAUSED";
+        q("actTxt").textContent = "PAUSED";
+        q("actTxt").className = "action";
+        setLights("not-monitoring");
+      } else {
+        setActionWord("safe");
+        setLights("monitoring");
+      }
+    }
+
+    async function typeToInput(text) {
+      const input = q("chatInput");
+      input.value = "";
+      for (let i = 0; i < text.length; i++) {
+        input.value += text[i];
+        await sleep(50);
+      }
+    }
+
+    async function animateScore(to, color) {
+      const arc = q("ringArc");
+      const txt = q("ringTxt");
+      const c = 150.8;
+      arc.style.stroke = color;
+      for (let n = 0; n <= to; n += 2) {
+        txt.textContent = String(n);
+        arc.style.strokeDashoffset = String(c * (1 - n / 100));
+        await sleep(10);
+      }
+      txt.textContent = String(to);
+      arc.style.strokeDashoffset = String(c * (1 - to / 100));
+      state.score = to;
+    }
+
+    function openPanel() {
+      q("panel").classList.add("open");
+      q("browserWindow").classList.add("dimmed");
+    }
+    function closePanel() {
+      q("panel").classList.remove("open");
+      q("browserWindow").classList.remove("dimmed");
+    }
+
+    function detect(text) {
+      const out = [];
+      const add = (type, sev, re) => {
+        const m = text.match(re);
+        if (m) out.push({ type, severity: sev, value: m[0], fixed: false, skipped: false, fixing: false });
+      };
+      add("API Key", "high", patterns.apiKey);
+      add("Database URL", "high", patterns.db);
+      add("Password", "high", patterns.password);
+      add("SSN", "high", patterns.ssn);
+      add("Credit Card", "high", patterns.creditCard);
+      add("Email", "med", patterns.email);
+      add("Phone", "med", patterns.phone);
+      add("IP Address", "med", patterns.ipAddress);
+      add("Full Name", "med", patterns.fullName);
+      add("Address", "med", patterns.address);
+      const unique = [];
+      const seen = new Set();
+      for (const i of out) {
+        const key = `${i.type}|${i.value}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          unique.push(i);
+        }
+      }
+      return unique;
+    }
+
+    function classify(issues) {
+      const crit = issues.some((i) => i.severity === "high");
+      const med = issues.some((i) => i.severity === "med");
+      if (crit) return { tier: "block", score: 94 };
+      if (med) return { tier: "warn", score: 62 };
+      return { tier: "safe", score: 8 };
+    }
+
+    function maskText(text, mode = 0) {
+      let out = text;
+      const full = mode === 2;
+      const stars = mode === 1;
+      const typeOnly = mode === 3;
+      out = out.replace(patterns.email, (m) => {
+        if (full || typeOnly) return "[EMAIL]";
+        if (stars) return m.replace(/[^@.]/g, "*");
+        const [n, d] = m.split("@");
+        return `${n[0]}***.${n.slice(-1)}@${d[0]}******.com`;
+      });
+      out = out.replace(patterns.phone, (m) => full || typeOnly ? "[PHONE]" : stars ? m.replace(/\d/g, "*") : m.replace(/\d(?=\d{2})/g, "*"));
+      out = out.replace(patterns.ipAddress, () => full || typeOnly ? "[IP]" : stars ? "***.***.***.***" : "***.***.***.1");
+      out = out.replace(patterns.ssn, (m) => full || typeOnly ? "[SSN]" : stars ? "***-**-****" : "***-**-" + m.slice(-4));
+      out = out.replace(patterns.creditCard, (m) => full || typeOnly ? "[CARD]" : stars ? "**** **** **** ****" : "**** **** **** " + m.replace(/\D/g, "").slice(-4));
+      out = out.replace(patterns.apiKey, () => full || typeOnly ? "[API_KEY]" : stars ? "sk-************************" : "sk-proj-****");
+      out = out.replace(patterns.db, () => full || typeOnly ? "[DATABASE_URL]" : "postgresql://***:***@db.***:5432/***");
+      out = out.replace(patterns.password, () => full || typeOnly ? "password=[REDACTED]" : "password=********");
+      out = out.replace(patterns.fullName, () => full || typeOnly ? "[NAME]" : stars ? "******** ****" : "J*** S****");
+      out = out.replace(patterns.address, () => full || typeOnly ? "[ADDRESS]" : "7** E******** T******");
+      return out;
+    }
+
+    function highlight(text, issues) {
+      let html = text
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+      for (const it of issues) {
+        const cls = it.severity === "high" ? "hl-crit" : "hl-med";
+        const esc = it.value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+        html = html.replace(esc, `<mark class="${cls}">${esc}</mark>`);
+      }
+      return html;
+    }
+
+    function setRiskBadge(kind) {
+      const b = q("riskBadge");
+      if (kind === "safe") {
+        b.className = "risk safe";
+        b.textContent = "Safe";
+        q("tierTxt").textContent = "Safe";
+      } else if (kind === "warn") {
+        b.className = "risk med";
+        b.textContent = "Medium";
+        q("tierTxt").textContent = "Medium";
+      } else {
+        b.className = "risk high";
+        b.textContent = "High Risk";
+        q("tierTxt").textContent = "High";
+      }
+    }
+
+    function renderIssues() {
+      q("issues").querySelectorAll(".issue").forEach((n) => n.remove());
+      for (const [idx, i] of state.issues.entries()) {
+        const d = document.createElement("div");
+        d.className = `issue ${i.severity === "high" ? "high" : ""} ${i.fixed || i.skipped ? "done" : ""}`;
+        d.innerHTML = `
+          <div class="itop">
+            <b>${i.type}</b>
+            <span class="state">${i.fixed ? "✓ Fixed" : i.skipped ? "Skipped" : i.fixing ? "Fixing..." : ""}</span>
+          </div>
+          <div class="prev">${i.value}</div>
+          <div class="ia">
+            <button class="ib fix" data-fix="${idx}">Fix</button>
+            <button class="ib" data-skip="${idx}" ${i.severity === "high" ? "disabled" : ""}>Skip</button>
+          </div>`;
+        q("issues").insertBefore(d, q("previewBox"));
+      }
+      q("issueCountTxt").textContent = `${state.issues.length} issues found`;
+      bindIssueActions();
+    }
+
+    function bindIssueActions() {
+      q("issues").querySelectorAll("[data-fix]").forEach((b) => {
+        b.onclick = async () => {
+          const idx = Number(b.dataset.fix);
+          state.issues[idx].fixing = true;
+          renderIssues();
+          await sleep(200);
+          state.issues[idx].fixing = false;
+          state.issues[idx].fixed = true;
+          state.corrections += 1;
+          renderIssues();
+          updatePreview();
+          checkRetrain();
+          maybeUnlockProceed();
+        };
+      });
+      q("issues").querySelectorAll("[data-skip]").forEach((b) => {
+        b.onclick = () => {
+          const idx = Number(b.dataset.skip);
+          state.issues[idx].skipped = true;
+          renderIssues();
+        };
+      });
+    }
+
+    function updatePreview() {
+      const mode = Number(q("maskSlider").value || 0);
+      state.safe = maskText(state.raw, mode);
+      q("previewTitle").textContent = `Masked version (${MASK_NAMES[mode]}):`;
+      q("previewText").textContent = state.safe;
+      q("previewBox").classList.add("show");
+    }
+
+    async function fixAll() {
+      for (let i = 0; i < state.issues.length; i++) {
+        if (state.issues[i].fixed) continue;
+        state.issues[i].fixing = true;
+        renderIssues();
+        await sleep(200);
+        state.issues[i].fixing = false;
+        state.issues[i].fixed = true;
+        state.corrections += 1;
+        renderIssues();
+      }
+      updatePreview();
+      showToast("All fixed ✓", "#b8eccb", "rgba(34,197,94,.2)", "rgba(34,197,94,.45)");
+      checkRetrain();
+      maybeUnlockProceed();
+    }
+
+    function maybeUnlockProceed() {
+      if (!state.criticalMode) return;
+      const allFixed = state.issues.every((i) => i.fixed);
+      if (!allFixed) return;
+      q("topBanner").className = "banner ok";
+      q("topBanner").textContent = "✅ Safe to paste now";
+      q("topBanner").style.display = "block";
+      q("proceedBtn").classList.remove("dim");
+    }
+
+    async function analyzeAndRun(text, forcedTier = null) {
+      if (!state.monitoring || state.busy) return;
+      state.busy = true;
+      setGuideStatus("Step 1/5: Paste intercepted");
+      q("sendBtn").disabled = true;
+      state.raw = text;
+      state.safe = "";
+      state.criticalMode = false;
+      q("previewBox").classList.remove("show");
+      q("proceedBtn").classList.add("dim");
+      q("topBanner").style.display = "none";
+      q("slotText").style.display = "none";
+      q("slotArc").style.display = "block";
+      q("sig").classList.add("pulse");
+      setLights("analyzing");
+      setGuideStatus("Step 2/5: Risk scan running");
+      await sleep(500);
+      q("slotArc").style.display = "none";
+      q("slotText").style.display = "block";
+      q("sig").classList.remove("pulse");
+
+      state.issues = detect(text);
+      const route = forcedTier || classify(state.issues).tier;
+      const score = route === "safe" ? 8 : route === "warn" ? 62 : 94;
+
+      if (route === "safe") {
+        setGuideStatus("Step 3/5: Decision = SILENT (safe)");
+        state.streak += 1;
+        setLights("safe");
+        setSlot("✓", "#aef4c5");
+        setActionWord("safe");
+        setRiskBadge("safe");
+        await animateScore(score, "#22c55e");
+        closePanel();
+        showToast("✓ Safe", "#b8eccb", "rgba(34,197,94,.2)", "rgba(34,197,94,.45)");
+        addMsg("paste", text);
+        await sleep(220);
+        addMsg("system", "Allowed: content forwarded to the LLM.");
+        setGuideStatus("Step 5/5: Safe content proceeded");
+      } else if (route === "warn") {
+        setGuideStatus("Step 3/5: Decision = WARN");
+        state.streak = 0;
+        setLights("warn");
+        setSlot(String(score), "#ffe5a6");
+        setActionWord("warn");
+        setRiskBadge("warn");
+        showChar("😬 Heads up — check this before pasting");
+        renderIssues();
+        openPanel();
+        setGuideStatus("Step 4/5: Remediation panel opened");
+        await animateScore(score, "#ffb300");
+        addMsg("paste", text, highlight(text, state.issues));
+      } else {
+        setGuideStatus("Step 3/5: Decision = BLOCK");
+        state.streak = 0;
+        state.criticalMode = true;
+        setLights("block");
+        setSlot("🔒", "#ffb1ae");
+        setActionWord("block");
+        q("pill").classList.add("blocked");
+        setRiskBadge("block");
+        showChar("🤦 This would expose your credentials!");
+        renderIssues();
+        openPanel();
+        setGuideStatus("Step 4/5: Critical fix required");
+        await animateScore(score, "#e53935");
+        q("topBanner").className = "banner block";
+        q("topBanner").textContent = "⊘ Paste blocked — fix required";
+        q("topBanner").style.display = "block";
+        addMsg("paste", text, highlight(text, state.issues));
+      }
+      q("issueCountTxt").textContent = `${state.issues.length} issues found`;
+      q("sendBtn").disabled = false;
+      state.busy = false;
+    }
+
+    async function typePreset(text, tier) {
+      await typeToInput(text);
+      await analyzeAndRun(text, tier);
+      q("chatInput").value = "";
+    }
+
+    function regexRoute(text) {
+      const issues = detect(text);
+      if (issues.some((i) => i.severity === "high")) return "block";
+      if (issues.some((i) => i.severity === "med")) return "warn";
+      return "safe";
+    }
+
+    function openSettings() { q("settingsModal").classList.add("show"); }
+    function closeSettings() { q("settingsModal").classList.remove("show"); }
+
+    function openPicker() { q("pickerModal").classList.add("show"); }
+    function closePicker() { q("pickerModal").classList.remove("show"); }
+
+    async function runScanFlow() {
+      closePicker();
+      showToast(`Scanning ${state.selectedFile}...`, "#c0d9ff", "rgba(66,165,245,.2)", "rgba(66,165,245,.45)", 3500);
+      q("statusTip").innerHTML = `Scan: 25% — Extracting text...<br>${q("llmTxt").textContent}`;
+      await sleep(900);
+      q("statusTip").innerHTML = `Scan: 50% — Analysing with Gemini...<br>${q("llmTxt").textContent}`;
+      await sleep(900);
+      q("statusTip").innerHTML = `Scan: 75% — Scoring PII...<br>${q("llmTxt").textContent}`;
+      await sleep(900);
+      q("statusTip").innerHTML = `Scan: 100% — Complete<br>${q("llmTxt").textContent}`;
+      await sleep(500);
+      showToast("Document scanned — 7 issues found", "#ffc6c3", "rgba(229,57,53,.24)", "rgba(229,57,53,.55)", 2600);
+      q("reportText").textContent =
+`Document Scan Report
+File: ${state.selectedFile}
+Risk: HIGH (score: 82)
+Issues found: 7
+
+1. 🔴 SSN: "***-**-6789" (page 1, line 12)
+2. 🔴 SSN: "***-**-4321" (page 1, line 15)
+3. 🟡 Full Name: "Sarah Johnson" (page 1, line 3)
+4. 🟡 Full Name: "Michael Chen" (page 1, line 8)
+5. 🟡 Email: "s.johnson@company.com" (page 1, line 4)
+6. 🟡 Phone: "(555) 012-3456" (page 1, line 5)
+7. 🟡 DOB: "03/15/1985" (page 1, line 6)`;
+      q("reportModal").classList.add("show");
+    }
+
+    function checkRetrain() {
+      q("corrCount").textContent = String(state.corrections);
+      if (state.corrections >= 23) q("retrainModal").classList.add("show");
+    }
+
+    function resetDemo() {
+      state.streak = 0;
+      state.score = 0;
+      state.action = "SILENT";
+      state.issues = [];
+      state.raw = "";
+      state.safe = "";
+      state.criticalMode = false;
+      q("chatInput").value = "";
+      clearMsgs();
+      setMonitoring(true);
+      setLights("monitoring");
+      setSlot("CS");
+      setActionWord("safe");
+      q("ringTxt").textContent = "0";
+      q("ringArc").style.strokeDashoffset = "150.8";
+      q("ringArc").style.stroke = "#22c55e";
+      q("issueCountTxt").textContent = "0 issues found";
+      q("tierTxt").textContent = "Safe";
+      q("riskBadge").className = "risk safe";
+      q("riskBadge").textContent = "Safe";
+      q("topBanner").style.display = "none";
+      q("previewBox").classList.remove("show");
+      q("pill").classList.remove("blocked");
+      closePanel();
+      q("toolbar").classList.remove("show");
+      q("context").style.display = "none";
+      q("settingsModal").classList.remove("show");
+      q("pickerModal").classList.remove("show");
+      q("reportModal").classList.remove("show");
+      q("retrainModal").classList.remove("show");
+      q("proceedBtn").classList.add("dim");
+      endTour("Tour idle: start overlay tour anytime");
+      setGuideStatus("Idle: choose a scenario");
+    }
+
+    async function runWalkthrough() {
+      if (state.walkthroughRunning || state.busy) return;
+      state.walkthroughRunning = true;
+      q("btnWalkthrough").disabled = true;
+      if (state.mode === "ops") {
+        await runOpsOnlyDemo();
+      } else {
+        setGuideStatus("Walkthrough: starting safe flow");
+        await typePreset(PRESETS.safe, "safe");
+        await sleep(800);
+        setGuideStatus("Walkthrough: running warning flow");
+        await typePreset(PRESETS.pii, "warn");
+        await sleep(500);
+        await fixAll();
+        await sleep(350);
+        q("previewCopy").click();
+        await sleep(900);
+        setGuideStatus("Walkthrough: running critical flow");
+        await typePreset(PRESETS.critical, "block");
+        await sleep(500);
+        await fixAll();
+        await sleep(350);
+        q("proceedBtn").click();
+        setGuideStatus("Walkthrough complete: full Sentinel lifecycle shown");
+      }
+      q("btnWalkthrough").disabled = false;
+      state.walkthroughRunning = false;
+    }
+
+    function updateClock() {
+      const d = new Date();
+      const h = d.getHours() % 12 || 12;
+      const m = String(d.getMinutes()).padStart(2, "0");
+      const ampm = d.getHours() >= 12 ? "PM" : "AM";
+      q("clock").textContent = `${h}:${m} ${ampm}`;
+    }
+
+    // Toolbar auto-hide
+    function showToolbar() {
+      clearTimeout(state.toolbarTimer);
+      q("toolbar").classList.add("show");
+      state.toolbarTimer = setTimeout(() => {
+        if (!q("fused").matches(":hover") && !q("toolbar").matches(":hover")) q("toolbar").classList.remove("show");
+      }, 4000);
+    }
+    q("fused").addEventListener("mouseenter", showToolbar);
+    q("toolbar").addEventListener("mouseenter", () => clearTimeout(state.toolbarTimer));
+    q("toolbar").addEventListener("mouseleave", () => {
+      state.toolbarTimer = setTimeout(() => {
+        if (!q("fused").matches(":hover")) q("toolbar").classList.remove("show");
+      }, 400);
+    });
+    q("fused").addEventListener("mouseleave", () => {
+      state.toolbarTimer = setTimeout(() => {
+        if (!q("toolbar").matches(":hover")) q("toolbar").classList.remove("show");
+      }, 400);
+    });
+
+    // Draggable overlay
+    (function dragOverlay() {
+      let dragging = false, sx = 0, sy = 0, sl = 0, st = 0;
+      q("fused").addEventListener("pointerdown", (e) => {
+        if (e.target.closest(".power")) return;
+        dragging = true;
+        q("fused").classList.add("dragging");
+        const wrap = q("overlayWrap"), desktop = q("desktop").getBoundingClientRect(), rect = wrap.getBoundingClientRect();
+        wrap.style.left = `${rect.left - desktop.left}px`;
+        wrap.style.top = `${rect.top - desktop.top}px`;
+        wrap.style.right = "auto";
+        wrap.style.bottom = "auto";
+        sx = e.clientX;
+        sy = e.clientY;
+        sl = parseFloat(wrap.style.left) || 0;
+        st = parseFloat(wrap.style.top) || 0;
+        q("fused").setPointerCapture(e.pointerId);
+      });
+      q("fused").addEventListener("pointermove", (e) => {
+        if (!dragging) return;
+        const desktop = q("desktop").getBoundingClientRect();
+        const wrap = q("overlayWrap");
+        let nl = sl + (e.clientX - sx);
+        let nt = st + (e.clientY - sy);
+        nl = Math.max(6, Math.min(desktop.width - wrap.offsetWidth - 6, nl));
+        nt = Math.max(6, Math.min(desktop.height - wrap.offsetHeight - 50, nt));
+        wrap.style.left = `${nl}px`;
+        wrap.style.top = `${nt}px`;
+      });
+      q("fused").addEventListener("pointerup", (e) => {
+        dragging = false;
+        q("fused").classList.remove("dragging");
+        q("fused").releasePointerCapture(e.pointerId);
+      });
+    })();
+
+    // Context menu
+    function hideContext() { q("context").style.display = "none"; }
+    document.addEventListener("click", hideContext);
+    q("fused").addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      q("context").innerHTML = `
+        <div class="ctx-item" data-act="settings">Settings</div>
+        <div class="ctx-item" data-act="pause">Pause monitoring <span class="ctx-check">${state.monitoring ? "✓" : ""}</span></div>
+        <div class="ctx-sep"></div>
+        <div class="ctx-item" data-act="scan">Scan file for PII...</div>
+        <div class="ctx-item" data-act="report">View report</div>
+        <div class="ctx-sep"></div>
+        <div class="ctx-item" data-act="dash">📊 My Privacy Dashboard</div>
+        <div class="ctx-sep"></div>
+        <div class="ctx-item" data-act="quit">Quit</div>
+      `;
+      const root = q("desktop").getBoundingClientRect();
+      q("context").style.left = `${e.clientX - root.left}px`;
+      q("context").style.top = `${e.clientY - root.top}px`;
+      q("context").style.display = "block";
+      q("context").querySelectorAll(".ctx-item").forEach((it) => {
+        it.onclick = () => {
+          const a = it.dataset.act;
+          hideContext();
+          if (a === "settings") openSettings();
+          if (a === "pause") setMonitoring(!state.monitoring);
+          if (a === "scan") openPicker();
+          if (a === "report") q("reportModal").classList.add("show");
+          if (a === "dash") showToast("Opening Privacy Dashboard...");
+          if (a === "quit") showToast("Demo mode: quit disabled");
+        };
+      });
+    });
+
+    // Keyboard shortcuts
+    document.addEventListener("keydown", (e) => {
+      if (!e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k === "r") { e.preventDefault(); showToast("Rewritten and copied"); }
+      if (k === "d") { e.preventDefault(); showToast("Masked and copied"); }
+      if (k === "e") { e.preventDefault(); showToast("Encrypted and copied", "#c0d9ff", "rgba(66,165,245,.2)", "rgba(66,165,245,.45)"); }
+      if (k === "s") { e.preventDefault(); openPicker(); }
+      if (k === ",") { e.preventDefault(); openSettings(); }
+    });
+
+    // Bind UI
+    q("modeRisk").onclick = () => setMode("risk");
+    q("modeOps").onclick = () => setMode("ops");
+    q("modelSelect").onchange = (e) => {
+      state.selectedModel = e.target.value;
+      syncModelUi();
+      showToast(`Target model set: ${state.selectedModel}`, "#c0d9ff", "rgba(66,165,245,.2)", "rgba(66,165,245,.45)", 1400);
+    };
+    q("btnSafe").onclick = () => typePreset(PRESETS.safe, "safe");
+    q("btnWarn").onclick = () => typePreset(PRESETS.pii, "warn");
+    q("btnCrit").onclick = () => typePreset(PRESETS.critical, "block");
+    q("copyDocSafe").onclick = () => {
+      q("chatInput").value = PRESETS.safe;
+      q("sendBtn").click();
+    };
+    q("copyDocWarn").onclick = () => {
+      q("chatInput").value = PRESETS.pii;
+      q("sendBtn").click();
+    };
+    q("copyDocCrit").onclick = () => {
+      q("chatInput").value = PRESETS.critical;
+      q("sendBtn").click();
+    };
+    q("btnScan").onclick = openPicker;
+    q("btnWalkthrough").onclick = runWalkthrough;
+    q("btnTour").onclick = startTour;
+    q("btnSettings").onclick = openSettings;
+    q("btnReset").onclick = resetDemo;
+    q("tourPrev").onclick = prevTourStep;
+    q("tourNext").onclick = nextTourStep;
+    q("tourEnd").onclick = () => endTour("Tour ended");
+
+    async function typePreset(text, tier) {
+      await typeToInput(text);
+      await analyzeAndRun(text, tier);
+      q("chatInput").value = "";
+    }
+
+    q("sendBtn").onclick = async () => {
+      const txt = q("chatInput").value.trim();
+      if (!txt || state.busy || !state.monitoring) return;
+      const route = regexRoute(txt);
+      await analyzeAndRun(txt, route);
+      q("chatInput").value = "";
+    };
+    q("chatInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        q("sendBtn").click();
+      }
+    });
+
+    q("powerBtn").onclick = (e) => {
+      e.stopPropagation();
+      setMonitoring(!state.monitoring);
+      showToast(state.monitoring ? "Monitoring enabled" : "Monitoring paused");
+    };
+
+    q("toolbar").querySelectorAll(".tb").forEach((b) => {
+      b.onclick = () => {
+        const a = b.dataset.action;
+        if (a === "rewrite") showToast("Rewritten and copied");
+        if (a === "redact") showToast("Masked and copied");
+        if (a === "encrypt") showToast("Encrypted and copied", "#c0d9ff", "rgba(66,165,245,.2)", "rgba(66,165,245,.45)");
+        if (a === "scan") openPicker();
+        if (a === "settings") openSettings();
+      };
+    });
+
+    q("panelClose").onclick = closePanel;
+    q("panelMin").onclick = closePanel;
+    q("panelSettings").onclick = openSettings;
+    q("redactBtn").onclick = () => updatePreview();
+    q("rephraseBtn").onclick = () => {
+      q("previewTitle").textContent = "Rephrased version:";
+      q("previewText").textContent = maskText(state.raw, 3);
+      q("previewBox").classList.add("show");
+    };
+    q("fixAllBtn").onclick = fixAll;
+    q("skipAllBtn").onclick = () => {
+      state.issues.forEach((i) => i.skipped = true);
+      renderIssues();
+      showToast("Skipped all");
+    };
+    q("snoozeBtn").onclick = () => showToast("No snooze active");
+    q("maskSlider").oninput = () => updatePreview();
+    q("previewClose").onclick = () => q("previewBox").classList.remove("show");
+    q("previewCopy").onclick = async () => {
+      const txt = q("previewText").textContent;
+      try { await navigator.clipboard.writeText(txt); } catch {}
+      showToast("✓ Fixed — safe version copied", "#b8eccb", "rgba(34,197,94,.2)", "rgba(34,197,94,.45)");
+      closePanel();
+      if (txt) {
+        addMsg("paste", txt);
+        addMsg("system", "Safe version accepted and forwarded to the LLM.");
+      }
+    };
+    q("proceedBtn").onclick = () => {
+      if (q("proceedBtn").classList.contains("dim")) return;
+      const txt = state.safe || maskText(state.raw, 0);
+      addMsg("paste", txt);
+      addMsg("system", "Proceed override confirmed by user.");
+      closePanel();
+      showToast("Auto-pasted safe version", "#b8eccb", "rgba(34,197,94,.2)", "rgba(34,197,94,.45)");
+    };
+    q("fbYes").onclick = () => showToast("Thanks for feedback ✓", "#b8eccb", "rgba(34,197,94,.2)", "rgba(34,197,94,.45)");
+    q("fbNo").onclick = () => {
+      state.corrections += 1;
+      showToast("Correction recorded");
+      checkRetrain();
+    };
+
+    q("settingsCancel").onclick = closeSettings;
+    q("settingsSave").onclick = () => {
+      closeSettings();
+      showToast("Saved ✓", "#b8eccb", "rgba(34,197,94,.2)", "rgba(34,197,94,.45)");
+    };
+    q("removeSnoozeBtn").onclick = () => showToast("No snooze active");
+
+    q("pickerFiles").querySelectorAll(".file").forEach((f) => {
+      f.onclick = () => {
+        q("pickerFiles").querySelectorAll(".file").forEach((x) => x.classList.remove("sel"));
+        f.classList.add("sel");
+        state.selectedFile = f.dataset.file;
+      };
+    });
+    q("pickerCancel").onclick = closePicker;
+    q("pickerOpen").onclick = runScanFlow;
+
+    q("reportClose").onclick = () => q("reportModal").classList.remove("show");
+    q("reportExport").onclick = () => showToast("Report exported");
+    q("reportRedact").onclick = () => showToast("Redact All complete ✓", "#b8eccb", "rgba(34,197,94,.2)", "rgba(34,197,94,.45)");
+
+    q("retrainLater").onclick = () => q("retrainModal").classList.remove("show");
+    q("retrainYes").onclick = async () => {
+      q("retrainModal").classList.remove("show");
+      showToast("Retraining...", "#c0d9ff", "rgba(66,165,245,.2)", "rgba(66,165,245,.45)", 1400);
+      await sleep(1500);
+      showToast("✓ Model updated successfully", "#b8eccb", "rgba(34,197,94,.2)", "rgba(34,197,94,.45)");
+      state.corrections = 0;
+    };
+
+    ["settingsModal", "pickerModal", "reportModal", "retrainModal"].forEach((id) => {
+      q(id).addEventListener("click", (e) => {
+        if (e.target.id === id) q(id).classList.remove("show");
+      });
+    });
+
+    setInterval(updateClock, 1000);
+    updateClock();
+    resetDemo();
+    syncModelUi();
+
+    (function autoScenarioFromQuery() {
+      const params = new URLSearchParams(window.location.search);
+      const s = (params.get("scenario") || "").toLowerCase();
+      if (!s) return;
+      const run = async () => {
+        if (s === "safe") await typePreset(PRESETS.safe, "safe");
+        if (s === "warn") await typePreset(PRESETS.pii, "warn");
+        if (s === "critical" || s === "block") await typePreset(PRESETS.critical, "block");
+        if (s === "scan") {
+          openPicker();
+          await sleep(400);
+          await runScanFlow();
+        }
+      };
+      window.setTimeout(run, 350);
+    })();
+  </script>
+</body>
+</html>

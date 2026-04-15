@@ -14,6 +14,22 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
       border-bottom:1px solid rgba(255,255,255,0.07)}
 .hdr-title{font-size:17px;font-weight:700;color:#fff}
 .hdr-sub{font-size:11px;color:rgba(255,255,255,0.35);margin-top:1px}
+.top-row{display:flex;align-items:center;gap:12px}
+.btn{background:#02C39A;color:#fff;border:none;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer}
+.btn:hover{background:#019B7A}
+.demo-strip{max-width:1100px;margin:14px auto 0;padding:0 24px}
+.demo-box{background:#12122a;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:10px;display:grid;gap:8px}
+.demo-top{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.demo-top strong{font-size:12px;color:#dce7ff}
+.demo-status{font-size:11px;color:#9eddd2;border:1px solid rgba(2,195,154,.4);background:rgba(2,195,154,.12);border-radius:999px;padding:3px 8px}
+.demo-btns{display:flex;flex-wrap:wrap;gap:7px}
+.mini-btn{border:1px solid #3a3e4b;background:#212532;color:#dce3ef;border-radius:999px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer}
+.mini-btn:hover{transform:translateY(-1px)}
+.mini-btn.safe{border-color:rgba(67,160,71,.55)}
+.mini-btn.warn{border-color:rgba(255,179,0,.55)}
+.mini-btn.crit{border-color:rgba(229,57,53,.62)}
+.mini-btn.rec{border-color:rgba(2,195,154,.55)}
+.mini-btn.walk{border-color:rgba(66,165,245,.55);background:rgba(66,165,245,.14)}
 .wrap{max-width:1100px;margin:0 auto;padding:20px 24px}
 .stats-row{display:grid;grid-template-columns:repeat(5,1fr);
             gap:12px;margin-bottom:20px}
@@ -84,8 +100,27 @@ td{padding:7px 8px;border-bottom:1px solid
     <div class="hdr-title">🛡 My Privacy Dashboard</div>
     <div class="hdr-sub">Core Sentinel · Generated 2026-04-13 08:12</div>
   </div>
-  <div style="font-size:11px;color:rgba(255,255,255,0.3)">
-    Local data only · Nothing leaves your machine
+  <div class="top-row">
+    <button class="btn" onclick="goBackToHub()">← Back</button>
+    <div style="font-size:11px;color:rgba(255,255,255,0.3)">
+      Local data only · Nothing leaves your machine
+    </div>
+  </div>
+</div>
+
+<div class="demo-strip">
+  <div class="demo-box">
+    <div class="demo-top">
+      <strong>🎬 Dashboard demo mode (for users)</strong>
+      <span class="demo-status" id="demoStatus">Ready: choose a user behavior scenario</span>
+    </div>
+    <div class="demo-btns">
+      <button class="mini-btn safe" id="demoSafe">Safe Day</button>
+      <button class="mini-btn warn" id="demoMixed">Mixed Day</button>
+      <button class="mini-btn crit" id="demoCritical">Critical Day</button>
+      <button class="mini-btn rec" id="demoRecovery">Recovery Week</button>
+      <button class="mini-btn walk" id="demoWalk">▶ Auto Walkthrough</button>
+    </div>
   </div>
 </div>
 
@@ -94,27 +129,27 @@ td{padding:7px 8px;border-bottom:1px solid
   <!-- STATS ROW -->
   <div class="stats-row">
     <div class="stat">
-      <div class="stat-num" style="color:#2E7D32">
+      <div class="stat-num" id="statPrivacy" style="color:#2E7D32">
         73</div>
       <div class="stat-lbl">Privacy score</div>
     </div>
     <div class="stat">
-      <div class="stat-num" style="color:#02C39A">
+      <div class="stat-num" id="statPastes" style="color:#02C39A">
         493</div>
       <div class="stat-lbl">Pastes this week</div>
     </div>
     <div class="stat">
-      <div class="stat-num" style="color:#E53935">
+      <div class="stat-num" id="statBlocked" style="color:#E53935">
         157</div>
       <div class="stat-lbl">Blocked this week</div>
     </div>
     <div class="stat">
-      <div class="stat-num" style="color:#FFB300">
+      <div class="stat-num" id="statStreak" style="color:#FFB300">
         0</div>
       <div class="stat-lbl">Current streak</div>
     </div>
     <div class="stat">
-      <div class="stat-num" style="color:#43A047">
+      <div class="stat-num" id="statBest" style="color:#43A047">
         4</div>
       <div class="stat-lbl">Best streak ever</div>
     </div>
@@ -125,16 +160,16 @@ td{padding:7px 8px;border-bottom:1px solid
     <div class="card">
       <div class="card-title">🎭 Your security persona</div>
       <div class="persona">
-        <div class="persona-face">😱</div>
+        <div class="persona-face" id="personaFace">😱</div>
         <div class="persona-right">
-          <div class="persona-name">Danger Dave</div>
-          <span class="persona-badge"
+          <div class="persona-name" id="personaName">Danger Dave</div>
+          <span class="persona-badge" id="personaBadge"
             style="background:#E5393522;
                    color:#E53935">
             High Risk
           </span>
-          <div class="persona-msg"><strong>32% of your pastes are blocked</strong> — you frequently paste credentials and sensitive data. Privacy score: <strong>73/100</strong>. Build better habits before something leaks.</div>
-          <div class="tip">🔑 Never paste API keys or passwords — use a secrets manager</div><div class="tip">📋 Scan before pasting: credentials? SSNs? card numbers?</div><div class="tip">🔒 Enable auto-redact mode to silently fix pastes</div>
+          <div class="persona-msg" id="personaMsg"><strong>32% of your pastes are blocked</strong> — you frequently paste credentials and sensitive data. Privacy score: <strong>73/100</strong>. Build better habits before something leaks.</div>
+          <div id="personaTips"><div class="tip">🔑 Never paste API keys or passwords — use a secrets manager</div><div class="tip">📋 Scan before pasting: credentials? SSNs? card numbers?</div><div class="tip">🔒 Enable auto-redact mode to silently fix pastes</div></div>
         </div>
       </div>
     </div>
@@ -143,20 +178,20 @@ td{padding:7px 8px;border-bottom:1px solid
       <div class="card-title">🔥 Safe paste streak</div>
       <div style="text-align:center;padding:10px 0">
         <div class="score-circle">
-          <div class="score-num">0</div>
+          <div class="score-num" id="streakCircleNum">0</div>
           <div class="score-lbl">streak</div>
         </div>
-        <div style="font-size:12px;color:rgba(255,255,255,0.5);
+        <div id="bestStreakTxt" style="font-size:12px;color:rgba(255,255,255,0.5);
                     margin-bottom:6px">
           Best ever: <strong style="color:#FFB300">
             4</strong> safe pastes in a row
         </div>
-        <div style="font-size:11px;color:rgba(255,255,255,0.35);
+        <div id="nextMilestoneTxt" style="font-size:11px;color:rgba(255,255,255,0.35);
                     margin-bottom:8px">
           Next milestone: 5 pastes
         </div>
         <div class="streak-bar">
-          <div class="streak-fill" style="width:0%"></div>
+          <div class="streak-fill" id="streakFill" style="width:0%"></div>
         </div>
         <div style="display:flex;justify-content:space-between;
                     font-size:9px;color:rgba(255,255,255,0.2);
@@ -184,7 +219,7 @@ td{padding:7px 8px;border-bottom:1px solid
   <div class="card" style="margin-bottom:16px">
     <div class="card-title">
       🌡️ Risky hours heatmap
-      — you are riskiest at <strong style="color:#E53935">9pm</strong>
+      — you are riskiest at <strong id="riskyHourTxt" style="color:#E53935">9pm</strong>
     </div>
     <div class="hm-grid"><div class="hm-cell" title="0am: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="1am: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="2am: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="3am: avg risk 18" style="background:rgba(255,179,0,0.42391304347826086);border:none"></div><div class="hm-cell" title="4am: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="5am: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="6am: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="7am: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="8am: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="9am: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="10am: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="11am: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="12pm: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="1pm: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="2pm: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="3pm: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="4pm: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="5pm: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="6pm: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="7pm: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="8pm: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="9pm: avg risk 46" style="background:rgba(229,57,53,0.85);border:2px solid #E53935"></div><div class="hm-cell" title="10pm: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div><div class="hm-cell" title="11pm: avg risk 0" style="background:rgba(255,255,255,0.06);border:none"></div></div>
     <div class="hm-xl">
@@ -362,6 +397,92 @@ const TREND_WARN   = [0, 0, 0, 0, 0, 192, 0];
 const TREND_SAFE   = [0, 0, 0, 0, 0, 144, 0];
 const PII_LABELS   = ["med", "O", "high"];
 const PII_VALUES   = [255, 56, 38];
+let trendChart = null;
+let piiChart = null;
+let walkthroughRunning = false;
+
+const SCENARIOS = {
+  safe: {
+    status: "Safe day loaded: mostly clean pastes",
+    stats: { privacy: 94, pastes: 122, blocked: 2, streak: 12, best: 16 },
+    persona: {
+      face: "😎",
+      name: "Careful Casey",
+      badge: "Low Risk",
+      badgeBg: "#43A04722",
+      badgeColor: "#66BB6A",
+      msg: "<strong>98% of your pastes are safe</strong> — strong habits and low leakage risk. Privacy score: <strong>94/100</strong>.",
+      tips: [
+        "✅ Keep using pre-paste scan for unfamiliar docs",
+        "✅ Continue rotating credentials outside chat prompts",
+        "✅ Share this workflow with teammates"
+      ]
+    },
+    trend: { block: [0,0,0,1,0,1,0], warn: [2,3,1,2,2,3,1], safe: [16,14,19,17,15,18,20] },
+    pii: { labels: ["email", "name", "phone"], values: [5, 4, 3] },
+    riskyHour: "10am"
+  },
+  mixed: {
+    status: "Mixed day loaded: warnings increase and streak drops",
+    stats: { privacy: 78, pastes: 376, blocked: 44, streak: 3, best: 9 },
+    persona: {
+      face: "😬",
+      name: "Rushed Riley",
+      badge: "Medium Risk",
+      badgeBg: "#FFB30022",
+      badgeColor: "#FFB300",
+      msg: "<strong>12% of your pastes are blocked</strong> — repeated contact + customer snippets are pushing risk up. Privacy score: <strong>78/100</strong>.",
+      tips: [
+        "⚠ Review pasted client summaries for identifiers",
+        "⚠ Use mask mode for names and contact details",
+        "⚠ Slow down during end-of-day prompt drafting"
+      ]
+    },
+    trend: { block: [2,4,6,5,7,10,10], warn: [18,22,25,20,24,27,23], safe: [35,33,29,31,27,26,24] },
+    pii: { labels: ["email", "phone", "address"], values: [42, 33, 21] },
+    riskyHour: "8pm"
+  },
+  critical: {
+    status: "Critical day loaded: block-heavy behavior and urgent remediation",
+    stats: { privacy: 61, pastes: 493, blocked: 157, streak: 0, best: 4 },
+    persona: {
+      face: "😱",
+      name: "Danger Dave",
+      badge: "High Risk",
+      badgeBg: "#E5393522",
+      badgeColor: "#E53935",
+      msg: "<strong>32% of your pastes are blocked</strong> — you frequently paste credentials and sensitive data. Privacy score: <strong>61/100</strong>.",
+      tips: [
+        "🔑 Never paste API keys or passwords — use a secrets manager",
+        "📋 Scan before pasting: credentials? SSNs? card numbers?",
+        "🔒 Enable auto-redact mode to silently fix pastes"
+      ]
+    },
+    trend: { block: [9,12,15,18,20,45,38], warn: [16,18,20,23,24,35,28], safe: [17,15,14,13,12,9,8] },
+    pii: { labels: ["api key", "password", "ssn"], values: [54, 47, 39] },
+    riskyHour: "9pm"
+  },
+  recovery: {
+    status: "Recovery week loaded: hygiene improves and blocks fall",
+    stats: { privacy: 88, pastes: 350, blocked: 24, streak: 8, best: 12 },
+    persona: {
+      face: "🙂",
+      name: "Reforming Robin",
+      badge: "Improving",
+      badgeBg: "#02C39A22",
+      badgeColor: "#02C39A",
+      msg: "<strong>Block rate down 68%</strong> from last week after enabling redaction and scan-first flow. Privacy score: <strong>88/100</strong>.",
+      tips: [
+        "📈 Keep daily streak above 5 for two weeks",
+        "📈 Continue replacing secrets with placeholders",
+        "📈 Watch evening prompts where mistakes still spike"
+      ]
+    },
+    trend: { block: [18,15,12,9,7,6,5], warn: [28,24,20,18,16,15,14], safe: [16,20,23,26,29,31,34] },
+    pii: { labels: ["email", "name", "token"], values: [21, 14, 11] },
+    riskyHour: "7pm"
+  }
+};
 
 const CHART_DEFAULTS = {
   responsive: true,
@@ -390,7 +511,7 @@ const CHART_DEFAULTS = {
 };
 
 // Trend chart
-new Chart(document.getElementById('trendChart'), {
+trendChart = new Chart(document.getElementById('trendChart'), {
   type: 'bar',
   data: {
     labels: TREND_LABELS,
@@ -420,7 +541,7 @@ new Chart(document.getElementById('trendChart'), {
 
 // PII chart
 if (PII_LABELS.length > 0) {
-  new Chart(document.getElementById('piiChart'), {
+  piiChart = new Chart(document.getElementById('piiChart'), {
     type: 'bar',
     data: {
       labels: PII_LABELS,
@@ -440,6 +561,80 @@ if (PII_LABELS.length > 0) {
     }
   });
 }
+
+function goBackToHub(){
+  if(document.referrer){
+    history.back();
+    return;
+  }
+  window.location.href = '../index.html';
+}
+
+function setDemoStatus(text){
+  const el = document.getElementById("demoStatus");
+  if (el) el.textContent = text;
+}
+
+function renderTips(tips){
+  const wrap = document.getElementById("personaTips");
+  wrap.innerHTML = tips.map((tip) => `<div class="tip">${tip}</div>`).join("");
+}
+
+function applyScenario(name){
+  const cfg = SCENARIOS[name];
+  if (!cfg) return;
+  document.getElementById("statPrivacy").textContent = String(cfg.stats.privacy);
+  document.getElementById("statPastes").textContent = String(cfg.stats.pastes);
+  document.getElementById("statBlocked").textContent = String(cfg.stats.blocked);
+  document.getElementById("statStreak").textContent = String(cfg.stats.streak);
+  document.getElementById("statBest").textContent = String(cfg.stats.best);
+  document.getElementById("streakCircleNum").textContent = String(cfg.stats.streak);
+  document.getElementById("bestStreakTxt").innerHTML = `Best ever: <strong style="color:#FFB300">${cfg.stats.best}</strong> safe pastes in a row`;
+  document.getElementById("nextMilestoneTxt").textContent = `Next milestone: ${Math.max(cfg.stats.streak + 2, 5)} pastes`;
+  document.getElementById("streakFill").style.width = `${Math.min(100, (cfg.stats.streak / 10) * 100)}%`;
+  document.getElementById("personaFace").textContent = cfg.persona.face;
+  document.getElementById("personaName").textContent = cfg.persona.name;
+  const badge = document.getElementById("personaBadge");
+  badge.textContent = cfg.persona.badge;
+  badge.style.background = cfg.persona.badgeBg;
+  badge.style.color = cfg.persona.badgeColor;
+  document.getElementById("personaMsg").innerHTML = cfg.persona.msg;
+  renderTips(cfg.persona.tips);
+  document.getElementById("riskyHourTxt").textContent = cfg.riskyHour;
+  setDemoStatus(cfg.status);
+  if (trendChart) {
+    trendChart.data.datasets[0].data = cfg.trend.block;
+    trendChart.data.datasets[1].data = cfg.trend.warn;
+    trendChart.data.datasets[2].data = cfg.trend.safe;
+    trendChart.update();
+  }
+  if (piiChart) {
+    piiChart.data.labels = cfg.pii.labels;
+    piiChart.data.datasets[0].data = cfg.pii.values;
+    piiChart.update();
+  }
+}
+
+async function runDashboardWalkthrough(){
+  if (walkthroughRunning) return;
+  walkthroughRunning = true;
+  setDemoStatus("Walkthrough running: safe → mixed → critical → recovery");
+  applyScenario("safe");
+  await new Promise((r) => setTimeout(r, 1100));
+  applyScenario("mixed");
+  await new Promise((r) => setTimeout(r, 1100));
+  applyScenario("critical");
+  await new Promise((r) => setTimeout(r, 1100));
+  applyScenario("recovery");
+  setDemoStatus("Walkthrough complete: user can see behavior change over time");
+  walkthroughRunning = false;
+}
+
+document.getElementById("demoSafe").addEventListener("click", () => applyScenario("safe"));
+document.getElementById("demoMixed").addEventListener("click", () => applyScenario("mixed"));
+document.getElementById("demoCritical").addEventListener("click", () => applyScenario("critical"));
+document.getElementById("demoRecovery").addEventListener("click", () => applyScenario("recovery"));
+document.getElementById("demoWalk").addEventListener("click", runDashboardWalkthrough);
 </script>
 </body>
 </html>

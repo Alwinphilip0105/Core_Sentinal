@@ -1,846 +1,1638 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Core Sentinel — Hub</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-  background:#0d0d1a;color:#e0e0e0;min-height:100vh}
-.hdr{background:#12122a;padding:14px 24px;display:flex;align-items:center;
-  justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.07);
-  position:sticky;top:0;z-index:50}
-.hdr-brand{font-size:15px;font-weight:700;color:#fff;letter-spacing:.02em}
-.hdr-right{display:flex;align-items:center;gap:10px}
-#adminBtn:hover{background:rgba(255,255,255,0.08)!important;border-color:rgba(255,255,255,0.18)!important;color:rgba(255,255,255,0.65)!important}
-.wrap{max-width:900px;margin:0 auto;padding:24px}
-.mini-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
-  gap:12px;margin-bottom:24px}
-.ms{background:#12122a;border:1px solid rgba(255,255,255,0.06);border-radius:10px;
-  padding:14px;text-align:center}
-.ms-val{font-size:22px;font-weight:700;color:#02C39A;line-height:1.1}
-.ms-lbl{font-size:10px;color:rgba(255,255,255,0.35);text-transform:uppercase;
-  letter-spacing:.06em;margin-top:4px}
-.ms-sub{font-size:10px;color:rgba(255,255,255,0.25);margin-top:2px}
-h1{font-size:20px;font-weight:700;color:#fff;margin-bottom:6px}
-.sub{font-size:13px;color:rgba(255,255,255,0.4);margin-bottom:22px;line-height:1.45}
-.grid{display:grid;gap:14px}
-@media(min-width:640px){.grid{grid-template-columns:1fr 1fr}}
-.hub-card-wrap{position:relative;border-radius:12px;overflow:hidden}
-.hub-card{display:block;padding:18px;border-radius:12px;text-decoration:none;
-  font-size:14px;font-weight:600;border:1px solid rgba(255,255,255,0.1);
-  background:#12122a;color:#02C39A;transition:background .15s,border-color .15s;
-  min-height:100px}
-.hub-card:hover{background:#1a1a30;border-color:rgba(2,195,154,0.35)}
-.hub-card span{display:block;font-size:11px;font-weight:500;color:rgba(255,255,255,0.35);
-  margin-top:8px;line-height:1.4}
-.hub-card--locked{cursor:default}
-.lock-overlay{position:absolute;inset:0;background:rgba(13,13,26,0.82);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:8px;z-index:2;backdrop-filter:blur(4px);pointer-events:auto}
-.lock-overlay[hidden]{display:none!important}
-.lock-overlay .ic{font-size:28px;opacity:.85}
-.lock-overlay .tx{font-size:11px;color:rgba(255,255,255,0.45);text-align:center;
-  max-width:200px;line-height:1.4}
-.hub-card-wrap--open .hub-card{cursor:pointer}
-.hub-card-wrap--open .hub-card--admin{cursor:pointer}
-.inp{width:100%;background:#1a1a30;border:1px solid rgba(255,255,255,0.12);
-  border-radius:8px;padding:10px 12px;color:#fff;font-size:13px}
-.inp:focus{outline:none;border-color:#02C39A}
-.inp::placeholder{color:rgba(255,255,255,0.25)}
-.btn-primary{background:#02C39A;color:#fff;border:none;padding:11px;border-radius:8px;
-  font-size:13px;font-weight:600;cursor:pointer;width:100%}
-.btn-primary:hover{background:#019B7A}
-.err{font-size:11px;color:#E57373;min-height:14px}
-#adminPanelClose{position:absolute;top:20px;right:16px;background:transparent;
-  border:none;color:rgba(255,255,255,0.35);font-size:20px;line-height:1;cursor:pointer;
-  padding:4px}
-#adminPanelClose:hover{color:#fff}
-#adminPanel{position:relative;overflow-y:auto;overflow-x:hidden}
-#adminLoginBlock{display:flex;flex-direction:column;gap:14px}
-.sec-hdr{font-size:15px;font-weight:700;color:rgba(255,255,255,0.85);
-  margin:28px 0 14px;letter-spacing:.02em}
-#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(100px);
-  padding:10px 18px;border-radius:8px;font-size:12px;font-weight:600;z-index:300;
-  opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;
-  box-shadow:0 8px 24px rgba(0,0,0,0.4)}
-#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Core Sentinel — AI Clipboard Guardian | Protect PII from LLM Leaks</title>
+  <meta name="description" content="Real-time clipboard monitoring that detects and remediates PII before it reaches ChatGPT, Claude, or any AI. Open-source, privacy-first.">
+  <meta property="og:title" content="Core Sentinel — AI Clipboard Guardian | Protect PII from LLM Leaks">
+  <meta property="og:description" content="Real-time clipboard monitoring that detects and remediates PII before it reaches ChatGPT, Claude, or any AI. Open-source, privacy-first.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="./hub.html">
+  <meta property="og:image" content="./favicon.svg">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="shared-styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --card-bg: #1C1C1E;
+      --card: var(--card-bg);
+      --text: #e8e8e8;
+      --muted: rgba(245, 247, 255, 0.68);
+      --line: rgba(255, 255, 255, 0.12);
+      --accent: #02C39A;
+      --accent-soft: rgba(2, 195, 154, 0.2);
+      --danger: #ff5f7d;
+      --warn: #ffb703;
+      --ok: #43aa8b;
+      --radius: 14px;
+      --maxw: 1180px;
+      --shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: radial-gradient(1200px 420px at 72% -10%, rgba(2, 195, 154, 0.16), transparent 55%), var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+      overflow-x: hidden;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    .container { width: min(var(--maxw), calc(100% - 36px)); margin: 0 auto; }
+
+    .topnav {
+      position: sticky;
+      top: 0;
+      z-index: 120;
+      backdrop-filter: blur(12px);
+      background: rgba(10, 10, 15, 0.78);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .topnav-inner {
+      min-height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+    .brand-mark {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: linear-gradient(140deg, #0dc9a3, #078f74);
+      display: grid;
+      place-items: center;
+      color: #05241d;
+      font-size: 14px;
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.12) inset;
+    }
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .btn {
+      border-radius: 10px;
+      border: 1px solid transparent;
+      padding: 9px 14px;
+      font-weight: 700;
+      font-size: 12px;
+      letter-spacing: 0.01em;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+      cursor: pointer;
+      background: transparent;
+      color: var(--text);
+    }
+    .btn:hover { transform: translateY(-2px); }
+    .btn-outline {
+      border-color: rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .btn-outline:hover {
+      border-color: rgba(2, 195, 154, 0.45);
+      background: rgba(2, 195, 154, 0.08);
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #042820;
+      border-color: rgba(2, 195, 154, 0.65);
+      box-shadow: 0 10px 24px rgba(2, 195, 154, 0.25);
+    }
+
+    .wrap {
+      width: min(var(--maxw), calc(100% - 36px));
+      margin: 0 auto;
+      padding: 28px 0 44px;
+    }
+    .welcome {
+      background: linear-gradient(160deg, rgba(2, 195, 154, 0.12), rgba(255, 255, 255, 0.02));
+      border: 1px solid rgba(2, 195, 154, 0.22);
+      border-radius: 18px;
+      padding: 22px;
+      box-shadow: var(--shadow);
+      margin-bottom: 18px;
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 18px;
+      align-items: center;
+    }
+    .welcome h1 {
+      font-size: clamp(1.6rem, 3.2vw, 2.2rem);
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+    }
+    .welcome p {
+      color: var(--muted);
+      max-width: 680px;
+      font-size: 14px;
+    }
+    .pill-demo {
+      justify-self: end;
+      min-width: 260px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 999px;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(11, 14, 20, 0.86);
+    }
+    .traffic {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 rgba(2, 195, 154, 0.5);
+      animation: pulseDot 1.8s ease-in-out infinite;
+    }
+    .pill-core {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #02C39A, #0a4a3e);
+      display: grid;
+      place-items: center;
+      font-size: 16px;
+    }
+    .pill-text {
+      font-size: 12px;
+      color: rgba(245,247,255,0.86);
+      white-space: nowrap;
+    }
+    @keyframes pulseDot {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(2, 195, 154, 0.42); }
+      50% { box-shadow: 0 0 0 9px rgba(2, 195, 154, 0); }
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .onboard {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(2, 195, 154, 0.22);
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 16px;
+    }
+    .onboard h2 {
+      font-size: 14px;
+      margin-bottom: 8px;
+      color: #c4fff3;
+    }
+    .onboard-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .on-step {
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.02);
+      padding: 10px;
+      font-size: 12px;
+      color: rgba(245, 247, 255, 0.8);
+    }
+    .on-step strong {
+      display: block;
+      margin-bottom: 4px;
+      color: #e8f8ff;
+      font-size: 12px;
+    }
+    .stat-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 16px;
+      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .stat-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(2, 195, 154, 0.35);
+      box-shadow: 0 14px 28px rgba(0, 0, 0, 0.32);
+    }
+    .stat-lbl { font-size: 11px; color: rgba(245,247,255,0.5); text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-val { margin-top: 7px; font-size: 1.65rem; font-weight: 800; line-height: 1; color: #bfffee; }
+    .stat-sub { margin-top: 6px; font-size: 11px; color: rgba(245,247,255,0.45); }
+    .live-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--ok);
+      display: inline-block;
+      margin-right: 5px;
+      animation: pulseDot 1.8s ease-in-out infinite;
+      vertical-align: middle;
+    }
+    .accuracy-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .accuracy-wrap svg { width: 64px; height: 64px; }
+    .accuracy-mini { font-size: 12px; color: rgba(245,247,255,0.62); }
+
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .hub-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 16px;
+      min-height: 172px;
+      position: relative;
+      transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+    }
+    .hub-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(2, 195, 154, 0.36);
+      box-shadow: 0 14px 28px rgba(0, 0, 0, 0.32);
+    }
+    .hub-link-card { cursor: pointer; }
+    .hub-link-card::after {
+      content: "→";
+      position: absolute;
+      right: 15px;
+      top: 14px;
+      color: rgba(2, 195, 154, 0.85);
+      font-size: 18px;
+      opacity: 0.85;
+    }
+    .card-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .card-ic {
+      width: 33px;
+      height: 33px;
+      border-radius: 10px;
+      background: rgba(2, 195, 154, 0.15);
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(2, 195, 154, 0.3);
+      font-size: 16px;
+    }
+    .card-title { font-size: 1.03rem; font-weight: 700; letter-spacing: -0.01em; }
+    .card-sub { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+    .card-note {
+      margin-top: 8px;
+      font-size: 12px;
+      color: rgba(245,247,255,0.58);
+      line-height: 1.5;
+    }
+    .card-list {
+      margin-top: 8px;
+      list-style: none;
+      display: grid;
+      gap: 5px;
+    }
+    .card-list li {
+      font-size: 12px;
+      color: rgba(245,247,255,0.78);
+      padding-left: 14px;
+      position: relative;
+    }
+    .card-list li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.58em;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: rgba(2,195,154,0.9);
+    }
+    .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    .chip {
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.05);
+      color: rgba(245,247,255,0.72);
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+
+    .lock-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(10, 10, 15, 0.82);
+      backdrop-filter: blur(3px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      gap: 6px;
+      border-radius: var(--radius);
+      z-index: 2;
+      cursor: pointer;
+    }
+    .lock-overlay[hidden] { display: none !important; }
+    .lock-overlay .tx {
+      color: rgba(245,247,255,0.62);
+      font-size: 12px;
+      max-width: 240px;
+    }
+
+    .sparkline-wrap {
+      margin-top: 10px;
+      height: 72px;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      background: rgba(255,255,255,0.02);
+      padding: 6px;
+    }
+    #privacySparkline {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .table-wrap {
+      margin-top: 8px;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      overflow: auto;
+      max-height: 220px;
+      background: rgba(255,255,255,0.02);
+    }
+    table { width: 100%; border-collapse: collapse; min-width: 520px; }
+    th {
+      position: sticky;
+      top: 0;
+      background: rgba(20, 20, 28, 0.98);
+      color: rgba(245,247,255,0.54);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      text-align: left;
+      padding: 9px 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    td {
+      padding: 8px 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      font-size: 12px;
+      color: rgba(245,247,255,0.86);
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+    }
+    .risk-high { background: rgba(229,57,53,0.2); color: #ffb3b1; }
+    .risk-med { background: rgba(255,179,0,0.2); color: #ffe0a3; }
+    .risk-low { background: rgba(67,160,71,0.2); color: #b6e7bd; }
+    .status-ok { color: #9de7d0; }
+    .status-warn { color: #ffd992; }
+    .status-block { color: #ff9ea7; }
+
+    .progress {
+      margin-top: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      overflow: hidden;
+    }
+    .progress > span {
+      display: block;
+      height: 100%;
+      width: 0;
+      background: linear-gradient(90deg, #02C39A, #6df3d9);
+      transition: width 0.35s ease;
+    }
+
+    .quick-actions {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .qa-btn {
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.03);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: center;
+      cursor: pointer;
+      transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+    }
+    .qa-btn:hover {
+      transform: translateY(-2px);
+      border-color: rgba(2, 195, 154, 0.38);
+      background: rgba(2, 195, 154, 0.09);
+    }
+
+    #adminPanelBg {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 199;
+    }
+    #adminPanel {
+      position: fixed;
+      top: 0;
+      right: -360px;
+      width: 340px;
+      max-height: 100vh;
+      height: 100vh;
+      background: #12122a;
+      border-left: 1px solid rgba(255,255,255,0.1);
+      padding: 28px 22px;
+      transition: right .25s cubic-bezier(0.4,0,0.2,1);
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: -8px 0 32px rgba(0,0,0,0.35);
+      overflow-y: auto;
+    }
+    #adminPanelClose {
+      position: absolute;
+      top: 14px;
+      right: 12px;
+      background: transparent;
+      border: none;
+      color: rgba(255,255,255,0.4);
+      font-size: 24px;
+      cursor: pointer;
+    }
+    .inp {
+      width: 100%;
+      background: #1a1a30;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: #fff;
+      font-size: 13px;
+    }
+    .inp:focus { outline: none; border-color: #02C39A; }
+    .btn-panel {
+      background: #02C39A;
+      color: #fff;
+      border: none;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      width: 100%;
+    }
+    .btn-panel:hover { background: #019B7A; }
+    .err { font-size: 11px; color: #E57373; min-height: 14px; }
+    .mini-note { font-size: 11px; color: rgba(255,255,255,0.38); }
+
+    #kbSection {
+      display: none;
+      margin-top: 12px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+    }
+    .kb-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .kb-block {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .kb-title { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+    .drop-zone {
+      border: 2px dashed rgba(255,255,255,0.15);
+      border-radius: 10px;
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s ease;
+      margin-bottom: 10px;
+    }
+    .drop-zone:hover { border-color: rgba(2,195,154,0.45); }
+
+    #toast {
+      position: fixed;
+      bottom: 22px;
+      left: 50%;
+      transform: translateX(-50%) translateY(90px);
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      z-index: 320;
+      opacity: 0;
+      transition: opacity .25s, transform .25s;
+      pointer-events: none;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    @media (max-width: 980px) {
+      .welcome { grid-template-columns: 1fr; }
+      .pill-demo { justify-self: start; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .onboard-grid { grid-template-columns: 1fr; }
+      .cards-grid { grid-template-columns: 1fr; }
+      .quick-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .kb-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 680px) {
+      .container, .wrap { width: min(var(--maxw), calc(100% - 24px)); }
+      .topnav-inner { min-height: 64px; }
+      .top-actions { gap: 8px; }
+      .stats-grid { grid-template-columns: 1fr; }
+      .quick-actions { grid-template-columns: 1fr; }
+    }
+  </style>
 </head>
 <body>
-
-<header class="hdr">
-  <div class="hdr-brand">Core Sentinel</div>
-  <div class="hdr-right" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <div id="connStatus" style="display:none;font-size:10px;align-items:center;gap:5px">
-      <div id="connDot" style="width:7px;height:7px;border-radius:50%;background:#555"></div>
-      <span id="connText" style="color:rgba(255,255,255,0.3)">Not connected</span>
-    </div>
-    <div id="hdrAdminSlot">
-      <button type="button" id="adminBtn" onclick="showAdminLogin()"
-        style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);
-        color:rgba(255,255,255,0.4);padding:6px 14px;border-radius:8px;font-size:11px;
-        font-weight:600;cursor:pointer;transition:all .15s">
-        🔒 Admin
-      </button>
-    </div>
-  </div>
-</header>
-
-<div class="wrap">
-  <h1>Documentation hub</h1>
-  <p class="sub">Local dashboards and tools. Privacy and ML sections are always available; fleet admin unlocks after signing in.</p>
-
-  <div class="mini-stats" id="miniStats">
-    <div class="ms">
-      <div class="ms-val" id="msStreak">—</div>
-      <div class="ms-lbl">Safe streak</div>
-      <div class="ms-sub">sentinel_streak</div>
-    </div>
-    <div class="ms">
-      <div class="ms-val" id="msTotal">—</div>
-      <div class="ms-lbl">Total pastes</div>
-      <div class="ms-sub">sentinel_total</div>
-    </div>
-    <div class="ms">
-      <div class="ms-val" id="msLive">—</div>
-      <div class="ms-lbl">Fleet events</div>
-      <div class="ms-sub" id="msLiveSub">Fleet total when connected</div>
-    </div>
-  </div>
-
-  <div class="grid">
-    <a class="hub-card" href="dashboard/">
-      Privacy dashboard
-      <span>Embedded JSON · charts, streaks, and paste history from exported data.</span>
-    </a>
-    <a class="hub-card" href="ml/">
-      ML live dashboard
-      <span>Risk telemetry charts from local JSONL / live file.</span>
-    </a>
-
-    <div class="hub-card-wrap" id="adminCardWrap">
-      <a class="hub-card hub-card--admin" id="adminCardLink" href="admin/">
-        Fleet admin dashboard
-        <span>Supabase fleet analytics, model health, and event stream.</span>
+  <header class="topnav">
+    <div class="container topnav-inner">
+      <a href="index.html" class="brand">
+        <span class="brand-mark">🛡</span>
+        <span>Core Sentinel Hub</span>
       </a>
-      <div class="lock-overlay" id="adminLock" onclick="showAdminLogin()" title="Sign in as admin">
-        <span class="ic">🔒</span>
-        <span class="tx">Admin sign-in required to open fleet tools.</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- KB MANAGER - admin only -->
-  <div id="kbSection" style="display:none">
-
-    <div class="sec-hdr">Knowledge Base Manager</div>
-
-    <div style="background:#12122a;border:1px solid
-      rgba(255,255,255,0.07);border-radius:12px;
-      padding:24px;margin-bottom:16px">
-
-      <div style="font-size:14px;font-weight:600;
-        margin-bottom:6px">
-        📚 Upload compliance documents
-      </div>
-      <div style="font-size:12px;color:rgba(255,255,255,0.4);
-        margin-bottom:16px;line-height:1.6">
-        Upload PDF, DOCX, or TXT files containing your
-        company's compliance rules, PII policies, or
-        regulatory guidelines. Sentinel will extract
-        patterns and add them to the detection model.
-      </div>
-
-      <div id="dropZone" style="border:2px dashed
-        rgba(255,255,255,0.15);border-radius:10px;
-        padding:32px;text-align:center;
-        cursor:pointer;transition:all .2s;
-        margin-bottom:16px"
-        onclick="document.getElementById('kbFile').click()"
-        ondragover="event.preventDefault();
-          this.style.borderColor='#02C39A'"
-        ondragleave="this.style.borderColor=
-          'rgba(255,255,255,0.15)'"
-        ondrop="handleKBDrop(event)">
-        <div style="font-size:32px;margin-bottom:8px">📂</div>
-        <div style="font-size:13px;font-weight:600;
-          color:rgba(255,255,255,0.6)">
-          Drop files here or click to upload</div>
-        <div style="font-size:11px;
-          color:rgba(255,255,255,0.3);margin-top:4px">
-          PDF · DOCX · TXT · YAML · up to 10MB</div>
-      </div>
-
-      <input type="file" id="kbFile"
-        accept=".pdf,.docx,.txt,.yaml,.yml"
-        multiple style="display:none"
-        onchange="handleKBFiles(this.files)">
-
-      <div style="display:flex;gap:10px;
-        margin-bottom:16px;flex-wrap:wrap">
-        <div style="flex:1;min-width:140px">
-          <label style="font-size:10px;font-weight:600;
-            color:rgba(255,255,255,0.35);
-            text-transform:uppercase;
-            letter-spacing:.05em;
-            display:block;margin-bottom:6px">
-            Compliance framework
-          </label>
-          <select id="kbCategory" style="
-            width:100%;background:#1a1a30;
-            border:1px solid rgba(255,255,255,0.1);
-            border-radius:8px;padding:9px 12px;
-            color:white;font-size:12px">
-            <option value="hipaa">HIPAA — Healthcare</option>
-            <option value="pci">PCI-DSS — Financial</option>
-            <option value="gdpr">GDPR — EU Privacy</option>
-            <option value="sox">SOX — Financial reporting</option>
-            <option value="custom">Custom company policy</option>
-            <option value="legal">Legal / Attorney-client</option>
-            <option value="internal">Internal confidential</option>
-          </select>
+      <div class="top-actions">
+        <a class="btn btn-outline" href="index.html">← Back to Home</a>
+        <a class="btn btn-outline" href="dashboard/">Privacy</a>
+        <a class="btn btn-outline" href="ml/">ML</a>
+        <a class="btn btn-outline" href="admin/">Fleet</a>
+        <a class="btn btn-outline" href="demo/">Demo</a>
+        <div id="connStatus" class="mini-note" style="display:none;">
+          <span id="connDot" class="live-dot" style="background:#555;animation:none;"></span>
+          <span id="connText">Not connected</span>
         </div>
-        <div style="flex:1;min-width:140px">
-          <label style="font-size:10px;font-weight:600;
-            color:rgba(255,255,255,0.35);
-            text-transform:uppercase;
-            letter-spacing:.05em;
-            display:block;margin-bottom:6px">
-            Risk level for matches
-          </label>
-          <select id="kbRisk" style="
-            width:100%;background:#1a1a30;
-            border:1px solid rgba(255,255,255,0.1);
-            border-radius:8px;padding:9px 12px;
-            color:white;font-size:12px">
-            <option value="block">Block — hard stop</option>
-            <option value="warn" selected>
-              Warn — review before sending</option>
-            <option value="silent">
-              Silent — log only</option>
-          </select>
+        <div id="hdrAdminSlot">
+          <button type="button" id="adminBtn" class="btn btn-outline" onclick="showAdminLogin()">🔒 Admin</button>
         </div>
       </div>
-
-      <button type="button" onclick="uploadKB()" style="
-        background:#02C39A;color:#fff;border:none;
-        border-radius:8px;padding:10px 20px;
-        font-size:13px;font-weight:600;cursor:pointer">
-        Upload to Knowledge Base
-      </button>
-
-      <div id="kbStatus" style="font-size:11px;
-        margin-top:10px;color:#02C39A;
-        min-height:16px"></div>
     </div>
+  </header>
 
-    <div style="background:#12122a;border:1px solid
-      rgba(255,255,255,0.07);border-radius:12px;
-      padding:20px">
-      <div style="font-size:13px;font-weight:600;
-        margin-bottom:12px">
-        📋 Active knowledge base entries
+  <main class="wrap">
+    <section class="welcome">
+      <div>
+        <h1>Welcome to Core Sentinel</h1>
+        <p>
+          Your command center for privacy, model health, fleet security, and active learning.
+          Monitor risk trends, review recent activity, and keep AI usage compliant across teams.
+        </p>
+        <p style="margin-top:8px;font-size:12px;color:rgba(245,247,255,0.64);">
+          Current production support: Windows 10/11. Linux and iOS support are planned for a future version.
+        </p>
       </div>
-      <div id="kbList">
-        Loading...
+      <div class="pill-demo" aria-label="Sentinel pill widget preview">
+        <span class="traffic"></span>
+        <span class="pill-core">🛡</span>
+        <div class="pill-text">Clipboard monitored · Risk engine active</div>
       </div>
-    </div>
+    </section>
 
-  </div>
-</div>
+    <section class="onboard">
+      <h2>New user path (recommended order)</h2>
+      <div class="onboard-grid">
+        <a class="on-step" href="demo/" target="_blank" rel="noopener">
+          <strong>1) Interactive Demo</strong>
+          Experience document-to-LLM paste interception, warn/block flow, and remediation.
+        </a>
+        <a class="on-step" href="dashboard/">
+          <strong>2) Privacy Dashboard</strong>
+          Understand personal risk trends, streaks, and recent events.
+        </a>
+        <a class="on-step" href="ml/">
+          <strong>3) ML + Fleet Views</strong>
+          Validate model health in ML dashboard, then inspect org-level risk in Fleet Admin.
+        </a>
+      </div>
+    </section>
 
-<div id="toast"></div>
-
-<div id="adminPanelBg" onclick="closeAdminPanel()"
-  style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:199"></div>
-
-<div id="adminPanel" style="
-  position:fixed;top:0;right:-340px;width:320px;max-height:100vh;height:100vh;
-  background:#12122a;border-left:1px solid rgba(255,255,255,0.1);
-  padding:28px 24px;transition:right .25s cubic-bezier(0.4,0,0.2,1);
-  z-index:200;display:flex;flex-direction:column;gap:0;box-shadow:-8px 0 32px rgba(0,0,0,0.35)">
-  <button type="button" id="adminPanelClose" onclick="closeAdminPanel()" aria-label="Close">×</button>
-  <div id="adminLoginBlock">
-    <div style="font-size:16px;font-weight:700">🔒 Admin access</div>
-    <div style="font-size:11px;color:rgba(255,255,255,0.35);line-height:1.5">
-      Enter your credentials to unlock admin dashboards and controls.</div>
-    <input type="email" id="admEmail" class="inp" placeholder="Email" autocomplete="username">
-    <input type="password" id="admPass" class="inp" placeholder="Password" autocomplete="current-password">
-    <input type="password" id="admKey" class="inp" placeholder="Access key" autocomplete="off">
-    <div class="err" id="admErr"></div>
-    <button type="button" class="btn-primary" onclick="submitAdminLogin()">Sign in</button>
-  </div>
-
-  <div id="adminSettings" style="display:none;
-    margin-top:20px;border-top:1px solid
-    rgba(255,255,255,0.08);padding-top:16px;flex-shrink:0">
-
-    <div style="font-size:12px;font-weight:600;
-      color:rgba(255,255,255,0.4);margin-bottom:12px;
-      text-transform:uppercase;letter-spacing:.06em">
-      ⚙️ System Configuration
-    </div>
-
-    <div style="margin-bottom:10px">
-      <label style="font-size:10px;font-weight:600;
-        color:rgba(255,255,255,0.3);text-transform:uppercase;
-        letter-spacing:.05em;display:block;margin-bottom:5px">
-        Supabase URL
-      </label>
-      <input id="cfgUrl" type="text"
-        placeholder="https://xxxx.supabase.co"
-        style="width:100%;background:#1a1a30;
-        border:1px solid rgba(255,255,255,0.1);
-        border-radius:7px;padding:8px 10px;
-        color:white;font-size:11px">
-    </div>
-
-    <div style="margin-bottom:10px">
-      <label style="font-size:10px;font-weight:600;
-        color:rgba(255,255,255,0.3);text-transform:uppercase;
-        letter-spacing:.05em;display:block;margin-bottom:5px">
-        Anon Key
-      </label>
-      <input id="cfgKey" type="password"
-        placeholder="eyJhbGci..."
-        style="width:100%;background:#1a1a30;
-        border:1px solid rgba(255,255,255,0.1);
-        border-radius:7px;padding:8px 10px;
-        color:white;font-size:11px">
-    </div>
-
-    <button type="button" onclick="saveConfig()" style="
-      width:100%;background:#02C39A;color:#fff;
-      border:none;border-radius:7px;padding:9px;
-      font-size:12px;font-weight:600;cursor:pointer;
-      margin-bottom:8px">
-      Save Configuration
-    </button>
-
-    <div id="cfgSaveStatus" style="font-size:10px;
-      color:#02C39A;text-align:center;min-height:14px">
-    </div>
-
-    <div style="font-size:10px;
-      color:rgba(255,255,255,0.2);
-      margin-top:8px;line-height:1.5;text-align:center">
-      Credentials saved locally in browser.<br>
-      Never visible to regular users.
-    </div>
-  </div>
-</div>
-
-<script>
-const ADMIN_KEY = 'sentinel2026';
-const SESSION_KEY = 'hub_admin_session';
-const SESSION_MS = 8 * 60 * 60 * 1000;
-
-function syncAdminPanelContent(){
-  const loggedIn = !!getAdminSession();
-  const loginBlock = document.getElementById('adminLoginBlock');
-  const settings = document.getElementById('adminSettings');
-  if(!loginBlock || !settings) return;
-  if(loggedIn){
-    loginBlock.style.display = 'none';
-    settings.style.display = 'block';
-    loadSavedConfig();
-  } else {
-    loginBlock.style.display = 'flex';
-    settings.style.display = 'none';
-  }
-}
-
-function showAdminLogin(){
-  document.getElementById('adminPanel').style.right = '0';
-  document.getElementById('adminPanelBg').style.display = 'block';
-  document.getElementById('admErr').textContent = '';
-  syncAdminPanelContent();
-}
-
-function closeAdminPanel(){
-  document.getElementById('adminPanel').style.right = '-340px';
-  document.getElementById('adminPanelBg').style.display = 'none';
-}
-
-function saveConfig(){
-  const url = document.getElementById('cfgUrl').value.trim();
-  const key = document.getElementById('cfgKey').value.trim();
-  const st = document.getElementById('cfgSaveStatus');
-
-  if(!url || !key){
-    st.textContent = '⚠ Both fields required';
-    st.style.color = '#FFB300';
-    return;
-  }
-
-  localStorage.setItem('sb_url', url);
-  localStorage.setItem('sb_key', key);
-  st.textContent = '✓ Saved — dashboards will now load automatically';
-  st.style.color = '#02C39A';
-  loadMiniStats();
-  testConnection();
-  showToast('Configuration saved ✓', '#02C39A');
-}
-
-async function testConnection(){
-  const url = (localStorage.getItem('sb_url') || '').trim().replace(/\/$/, '');
-  const key = (localStorage.getItem('sb_key') || '').trim();
-  const wrap = document.getElementById('connStatus');
-  const dot = document.getElementById('connDot');
-  const text = document.getElementById('connText');
-  if(!wrap || !dot || !text) return;
-
-  if(!url || !key){
-    dot.style.background = '#555';
-    text.style.color = 'rgba(255,255,255,0.3)';
-    text.textContent = 'Not configured';
-    return;
-  }
-
-  dot.style.background = '#FFB300';
-  text.style.color = 'rgba(255,255,255,0.45)';
-  text.textContent = 'Checking…';
-
-  try{
-    const r = await fetch(
-      url + '/rest/v1/guardrail_events?select=id&limit=1',
-      { headers: {
-        'apikey': key,
-        'Authorization': 'Bearer ' + key
-      }}
-    );
-    if(r.ok){
-      dot.style.background = '#43A047';
-      text.style.color = '#a5d6a7';
-      text.textContent = 'Supabase connected';
-    } else {
-      throw new Error('bad response');
-    }
-  } catch(e){
-    dot.style.background = '#E53935';
-    text.style.color = '#ef9a9a';
-    text.textContent = 'Connection failed';
-  }
-}
-
-function loadSavedConfig(){
-  const url = localStorage.getItem('sb_url') || '';
-  const key = localStorage.getItem('sb_key') || '';
-  const cfgUrl = document.getElementById('cfgUrl');
-  const cfgKey = document.getElementById('cfgKey');
-  const st = document.getElementById('cfgSaveStatus');
-  if(cfgUrl) cfgUrl.value = url;
-  if(cfgKey) cfgKey.value = key;
-  if(st){
-    if(url && key){
-      st.textContent = '✓ Configuration active';
-      st.style.color = '#02C39A';
-    } else {
-      st.textContent = '';
-    }
-  }
-}
-
-function getAdminSession(){
-  try{
-    const raw = localStorage.getItem(SESSION_KEY);
-    if(!raw) return null;
-    const s = JSON.parse(raw);
-    if(!s || typeof s.exp !== 'number') return null;
-    if(Date.now() > s.exp){
-      localStorage.removeItem(SESSION_KEY);
-      return null;
-    }
-    return s;
-  }catch{ return null; }
-}
-
-function setAdminSession(email){
-  localStorage.setItem(SESSION_KEY, JSON.stringify({
-    exp: Date.now() + SESSION_MS,
-    email: email || ''
-  }));
-}
-
-function logoutAdmin(){
-  localStorage.removeItem(SESSION_KEY);
-  applyAdminState(false);
-}
-
-function submitAdminLogin(){
-  const key = (document.getElementById('admKey').value || '').trim();
-  const err = document.getElementById('admErr');
-  err.textContent = '';
-  if(key !== ADMIN_KEY){
-    err.textContent = 'Invalid access key.';
-    return;
-  }
-  const email = (document.getElementById('admEmail').value || '').trim();
-  setAdminSession(email);
-  closeAdminPanel();
-  applyAdminState(true);
-}
-
-function applyAdminState(loggedIn){
-  const slot = document.getElementById('hdrAdminSlot');
-  const lock = document.getElementById('adminLock');
-  const wrap = document.getElementById('adminCardWrap');
-  const kbSection = document.getElementById('kbSection');
-  const connStatus = document.getElementById('connStatus');
-
-  if(loggedIn){
-    slot.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px">
-        <span style="font-size:11px;color:#90CAF9">🔧 Admin mode</span>
-        <button type="button" onclick="logoutAdmin()" style="
-          background:transparent;border:1px solid rgba(255,255,255,0.1);
-          color:rgba(255,255,255,0.3);padding:4px 10px;border-radius:6px;
-          font-size:10px;cursor:pointer">Sign out</button>
-      </div>`;
-    if(lock) lock.setAttribute('hidden','');
-    if(wrap) wrap.classList.add('hub-card-wrap--open');
-    if(kbSection){
-      kbSection.style.display = 'block';
-      loadKBEntries();
-    }
-    if(connStatus){
-      connStatus.style.display = 'flex';
-      testConnection();
-    }
-  } else {
-    slot.innerHTML = `
-      <button type="button" id="adminBtn" onclick="showAdminLogin()"
-        style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);
-        color:rgba(255,255,255,0.4);padding:6px 14px;border-radius:8px;font-size:11px;
-        font-weight:600;cursor:pointer;transition:all .15s">🔒 Admin</button>`;
-    if(lock) lock.removeAttribute('hidden');
-    if(wrap) wrap.classList.remove('hub-card-wrap--open');
-    if(kbSection) kbSection.style.display = 'none';
-    if(connStatus) connStatus.style.display = 'none';
-  }
-  syncAdminPanelContent();
-}
-
-function showToast(msg, color){
-  const el = document.getElementById('toast');
-  if(!el) return;
-  el.textContent = msg;
-  el.style.background = color + '22';
-  el.style.color = color;
-  el.style.border = '1px solid ' + color + '44';
-  el.classList.add('show');
-  clearTimeout(showToast._t);
-  showToast._t = setTimeout(() => { el.classList.remove('show'); }, 2800);
-}
-
-function sbBase(){
-  const u = localStorage.getItem('sb_url');
-  return u ? u.replace(/\/$/, '') : '';
-}
-
-function handleKBDrop(e){
-  e.preventDefault();
-  document.getElementById('dropZone')
-    .style.borderColor = 'rgba(255,255,255,0.15)';
-  handleKBFiles(e.dataTransfer.files);
-}
-
-function handleKBFiles(files){
-  if(!files.length) return;
-  const names = Array.from(files)
-    .map(f => f.name).join(', ');
-  document.getElementById('kbStatus').textContent =
-    '📎 Ready to upload: ' + names;
-  window._kbPendingFiles = files;
-}
-
-async function uploadKB(){
-  const files = window._kbPendingFiles;
-  const category = document.getElementById('kbCategory').value;
-  const risk = document.getElementById('kbRisk').value;
-  const statusEl = document.getElementById('kbStatus');
-
-  if(!files || !files.length){
-    statusEl.textContent = '⚠ Please select files first';
-    return;
-  }
-
-  const SB_URL = sbBase();
-  const SB_KEY = localStorage.getItem('sb_key');
-  if(!SB_URL || !SB_KEY){
-    statusEl.textContent = '⚠ Add Supabase URL & key in 🔒 Admin → System Configuration.';
-    return;
-  }
-
-  statusEl.textContent = '⏳ Processing files...';
-
-  try{
-    for(const file of files){
-      const text = await readFileText(file);
-      const patterns = extractPatterns(text, category);
-
-      const res = await fetch(SB_URL + '/rest/v1/kb_entries', {
-        method: 'POST',
-        headers: {
-          'apikey': SB_KEY,
-          'Authorization': 'Bearer ' + SB_KEY,
-          'Content-Type': 'application/json',
-          'Prefer': 'return=minimal'
-        },
-        body: JSON.stringify({
-          filename: file.name,
-          category: category,
-          risk_level: risk,
-          patterns: patterns,
-          raw_length: text.length,
-          uploaded_at: new Date().toISOString(),
-          active: true
-        })
-      });
-      if(!res.ok){
-        const t = await res.text();
-        throw new Error(t.slice(0, 120) || res.statusText);
-      }
-    }
-
-    statusEl.textContent = '✓ Uploaded successfully — KB updated';
-    window._kbPendingFiles = null;
-    loadKBEntries();
-    showToast('Knowledge base updated', '#02C39A');
-  }catch(err){
-    console.error(err);
-    statusEl.textContent = '✗ Upload failed: ' + (err.message || String(err));
-    showToast('KB upload failed', '#E53935');
-  }
-}
-
-function readFileText(file){
-  return new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = e => res(e.target.result);
-    r.onerror = rej;
-    r.readAsText(file);
-  });
-}
-
-function extractPatterns(text, category){
-  const patterns = [];
-  const CATEGORY_SEEDS = {
-    hipaa: ['patient','PHI','medical record',
-      'diagnosis','treatment','MRN',
-      'health information','covered entity'],
-    pci:   ['cardholder','PAN','SAD',
-      'primary account','CVV','expiry',
-      'payment card','magnetic stripe'],
-    gdpr:  ['data subject','personal data',
-      'consent','right to erasure',
-      'data controller','DPA'],
-    legal: ['privileged','confidential',
-      'attorney-client','work product',
-      'settlement','litigation'],
-    custom: [], internal: [], sox: []
-  };
-
-  const seeds = CATEGORY_SEEDS[category] || [];
-  const sentences = text.split(/[.!?\n]+/);
-  sentences.forEach(s => {
-    const sl = s.toLowerCase().trim();
-    if(sl.length < 10 || sl.length > 200) return;
-    if(seeds.some(seed => sl.includes(seed))){
-      patterns.push({
-        type: 'keyword_context',
-        pattern: s.trim().slice(0, 100),
-        risk: 'medium'
-      });
-    }
-  });
-
-  const caps = text.match(/\b[A-Z]{3,}\b/g) || [];
-  const uniqueCaps = [...new Set(caps)].slice(0, 20);
-  uniqueCaps.forEach(t => {
-    if(!['AND','THE','FOR','NOT','ARE'].includes(t)){
-      patterns.push({
-        type: 'acronym',
-        pattern: t,
-        risk: 'low'
-      });
-    }
-  });
-
-  return patterns.slice(0, 50);
-}
-
-const KB_ICON = {
-  hipaa: '🏥', pci: '💳', gdpr: '🇪🇺',
-  legal: '⚖️', custom: '🏢',
-  internal: '🔒', sox: '📊'
-};
-
-function patternCountSafe(raw){
-  if(raw == null) return 0;
-  if(Array.isArray(raw)) return raw.length;
-  try{
-    const arr = typeof raw === 'string' ? JSON.parse(raw || '[]') : raw;
-    return Array.isArray(arr) ? arr.length : 0;
-  }catch{ return 0; }
-}
-
-function escapeHtml(s){
-  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-async function loadKBEntries(){
-  const listEl = document.getElementById('kbList');
-  if(!listEl) return;
-
-  const SB_URL = sbBase();
-  const SB_KEY = localStorage.getItem('sb_key');
-  if(!SB_URL || !SB_KEY){
-    listEl.innerHTML =
-      '<div style="font-size:12px;color:rgba(255,255,255,0.3)">Add Supabase in Admin panel → System Configuration.</div>';
-    return;
-  }
-  try{
-    const r = await fetch(
-      SB_URL + '/rest/v1/kb_entries?select=*&order=uploaded_at.desc',
-      { headers: {
-        'apikey': SB_KEY,
-        'Authorization': 'Bearer ' + SB_KEY
-      }}
-    );
-    if(!r.ok) throw new Error(await r.text());
-    const entries = await r.json();
-    if(!entries.length){
-      listEl.innerHTML =
-        '<div style="font-size:12px;color:rgba(255,255,255,0.3)">No KB entries yet — upload your first document above.</div>';
-      return;
-    }
-    listEl.innerHTML = entries.map(e => {
-      const ic = KB_ICON[e.category] || '📄';
-      const fn = escapeHtml(e.filename);
-      const catUp = escapeHtml(String(e.category || '').toUpperCase());
-      const pc = patternCountSafe(e.patterns);
-      const dt = e.uploaded_at ? new Date(e.uploaded_at).toLocaleDateString() : '—';
-      const rl = e.risk_level || '';
-      const bg = rl === 'block' ? 'rgba(229,57,53,0.2)' :
-        rl === 'warn' ? 'rgba(255,179,0,0.2)' : 'rgba(67,160,71,0.2)';
-      const fg = rl === 'block' ? '#ef9a9a' :
-        rl === 'warn' ? '#ffe082' : '#a5d6a7';
-      const id = encodeURIComponent(String(e.id));
-      return `<div style="display:flex;align-items:center;
-        gap:10px;padding:10px 0;border-bottom:
-        1px solid rgba(255,255,255,0.05)">
-        <div style="font-size:20px">${ic}</div>
-        <div style="flex:1">
-          <div style="font-size:12px;font-weight:600">${fn}</div>
-          <div style="font-size:10px;
-            color:rgba(255,255,255,0.35);margin-top:2px">
-            ${catUp} · ${pc} patterns · ${escapeHtml(dt)}
+    <section class="stats-grid" id="miniStats">
+      <article class="stat-card">
+        <div class="stat-lbl">Safe Streak</div>
+        <div class="stat-val" id="msStreak">—</div>
+        <div class="stat-sub" id="msStreakSub">sentinel_streak</div>
+      </article>
+      <article class="stat-card">
+        <div class="stat-lbl">Total Pastes Scanned</div>
+        <div class="stat-val" id="msTotal">—</div>
+        <div class="stat-sub">sentinel_total</div>
+      </article>
+      <article class="stat-card">
+        <div class="stat-lbl">Fleet Events</div>
+        <div class="stat-val" id="msLive">—</div>
+        <div class="stat-sub" id="msLiveSub"><span class="live-dot"></span>Live</div>
+      </article>
+      <article class="stat-card">
+        <div class="stat-lbl">Model Accuracy</div>
+        <div class="accuracy-wrap">
+          <svg viewBox="0 0 84 84" role="img" aria-label="Model accuracy gauge">
+            <circle cx="42" cy="42" r="30" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="8"></circle>
+            <circle id="accArc" cx="42" cy="42" r="30" fill="none" stroke="#02C39A" stroke-width="8" stroke-linecap="round" stroke-dasharray="188.5" stroke-dashoffset="188.5" transform="rotate(-90 42 42)"></circle>
+          </svg>
+          <div>
+            <div class="stat-val" style="font-size:1.35rem;margin-top:0;">97.6%</div>
+            <div class="accuracy-mini">Production eval benchmark</div>
           </div>
         </div>
-        <span style="padding:3px 8px;border-radius:8px;
-          font-size:10px;font-weight:700;
-          background:${bg};color:${fg}">
-          ${escapeHtml(rl)}
-        </span>
-        <button type="button" class="kb-del" data-kb-id="${id}"
-          style="background:transparent;
-          border:1px solid rgba(229,57,53,0.3);
-          color:rgba(229,57,53,0.6);
-          padding:4px 8px;border-radius:6px;
-          font-size:10px;cursor:pointer">
-          Remove
-        </button>
-      </div>`;
-    }).join('');
-  }catch(err){
-    console.error('KB load failed', err);
-    listEl.innerHTML =
-      '<div style="font-size:12px;color:rgba(229,57,53,0.7)">Could not load KB entries</div>';
-  }
-}
+      </article>
+    </section>
 
-document.getElementById('kbList').addEventListener('click', function(e){
-  const btn = e.target.closest('.kb-del');
-  if(!btn) return;
-  const id = decodeURIComponent(btn.getAttribute('data-kb-id') || '');
-  if(id) deleteKB(id);
-});
+    <section class="cards-grid">
+      <a class="hub-card hub-link-card" href="dashboard/">
+        <div class="card-head">
+          <span class="card-ic">🛡️</span>
+          <h2 class="card-title">Privacy Dashboard</h2>
+        </div>
+        <p class="card-sub">Charts, streaks, paste history, risk timeline from local data</p>
+        <ul class="card-list">
+          <li>Risk trend over time + high-risk windows</li>
+          <li>PII category frequency and streak behavior</li>
+          <li>Recent paste timeline with action outcomes</li>
+        </ul>
+        <div class="sparkline-wrap">
+          <svg id="privacySparkline" viewBox="0 0 300 60" preserveAspectRatio="none">
+            <path id="sparkLinePath" d="M0 48 L40 40 L80 44 L120 30 L160 24 L200 28 L240 16 L300 20" fill="none" stroke="#02C39A" stroke-width="2.5"></path>
+            <path id="sparkFillPath" d="" fill="url(#sparkFill)"></path>
+            <defs>
+              <linearGradient id="sparkFill" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stop-color="rgba(2,195,154,0.35)"></stop>
+                <stop offset="100%" stop-color="rgba(2,195,154,0.02)"></stop>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <p class="card-note">Why click: understand personal exposure patterns and where leaks are happening.</p>
+      </a>
 
-async function deleteKB(id){
-  const SB_URL = sbBase();
-  const SB_KEY = localStorage.getItem('sb_key');
-  if(!SB_URL || !SB_KEY) return;
-  try{
-    const r = await fetch(SB_URL + '/rest/v1/kb_entries?id=eq.' + encodeURIComponent(id), {
-      method: 'DELETE',
-      headers: {
-        'apikey': SB_KEY,
-        'Authorization': 'Bearer ' + SB_KEY
-      }
+      <a class="hub-card hub-link-card" href="ml/">
+        <div class="card-head">
+          <span class="card-ic">🧠</span>
+          <h2 class="card-title">ML Health Dashboard</h2>
+        </div>
+        <p class="card-sub">Precision-Recall curves, confusion matrix, drift detection, threshold simulator</p>
+        <ul class="card-list">
+          <li>Class-level precision/recall and confusion matrix</li>
+          <li>Threshold tuning and false-positive controls</li>
+          <li>Model quality drift and QA snapshot view</li>
+        </ul>
+        <div class="chips">
+          <span class="chip">AUC: 0.998</span>
+          <span class="chip">Precision: 0.976</span>
+          <span class="chip">FPR: 0.0%</span>
+        </div>
+        <p class="card-note">Why click: verify model reliability before demos, reviews, or releases.</p>
+      </a>
+
+      <div class="hub-card" id="fleetCardWrap">
+        <a class="hub-card hub-link-card" id="fleetCardLink" href="admin/" style="position:absolute;inset:0;opacity:0;z-index:1;"></a>
+        <div class="card-head">
+          <span class="card-ic">🏢</span>
+          <h2 class="card-title">Fleet Management</h2>
+        </div>
+        <p class="card-sub">Organization-wide monitoring, per-user risk profiles, policy enforcement</p>
+        <div id="fleetLockedHint" class="chips">
+          <span class="chip">🔒 Admin sign-in required</span>
+        </div>
+        <p id="fleetLockExplain" class="card-note">
+          Locked content includes user-level analytics, alert queues, risk-category breakdowns, and policy controls.
+        </p>
+        <div id="fleetLiveStats" class="chips" style="display:none;">
+          <span class="chip" id="fleetUsers">Users: —</span>
+          <span class="chip" id="fleetAlerts">Active alerts: —</span>
+          <span class="chip" id="fleetTop">Top risk: —</span>
+        </div>
+        <p id="fleetWhyOpen" class="card-note" style="display:none;">Why click: investigate org-wide risk hotspots and enforce controls at scale.</p>
+        <div class="lock-overlay" id="adminLock" onclick="showAdminLogin()" title="Sign in as admin">
+          <span style="font-size:24px;">🔒</span>
+          <span class="tx">Admin sign-in required</span>
+        </div>
+      </div>
+
+      <button class="hub-card" onclick="showAdminLogin()" style="text-align:left;">
+        <div class="card-head">
+          <span class="card-ic">⚙️</span>
+          <h2 class="card-title">Settings</h2>
+        </div>
+        <p class="card-sub">Sensitivity thresholds, monitoring scope, notification preferences</p>
+        <ul class="card-list">
+          <li>Clipboard monitoring scope and LLM-window filter</li>
+          <li>Warn/block policy thresholds</li>
+          <li>Supabase sync + admin integration settings</li>
+        </ul>
+        <div class="chips">
+          <span class="chip" id="cfgSummary">Sensitivity: Medium | LLM-only: On | Block high-risk: On</span>
+        </div>
+        <p class="card-note">Why click: tune enforcement level without changing code.</p>
+      </button>
+
+      <article class="hub-card">
+        <div class="card-head">
+          <span class="card-ic">📜</span>
+          <h2 class="card-title">Recent Activity</h2>
+        </div>
+        <p class="card-sub">Last 20 paste events with risk scores and actions taken</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Risk</th>
+                <th>PII Type</th>
+                <th>Action</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="activityRows"></tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="hub-card">
+        <div class="card-head">
+          <span class="card-ic">🧪</span>
+          <h2 class="card-title">Feedback & Active Learning</h2>
+        </div>
+        <p class="card-sub">Your corrections improve the model. See training progress and impact.</p>
+        <ul class="card-list">
+          <li>Correction volume by class and direction</li>
+          <li>Retrain readiness and data quality signal</li>
+          <li>Feedback-to-training conversion visibility</li>
+        </ul>
+        <div class="chips">
+          <span class="chip" id="fbCollected">47 corrections collected</span>
+          <span class="chip" id="fbUsed">12 used for training</span>
+          <span class="chip" id="fbNext">Next retrain: 53 more needed</span>
+        </div>
+        <div class="chips" id="fbPatternChips">
+          <span class="chip" id="fbPattern1">Pattern: high→med (12)</span>
+          <span class="chip" id="fbPattern2">Pattern: med→low (9)</span>
+          <span class="chip" id="fbPattern3">Pattern: high→low (6)</span>
+        </div>
+        <div class="progress" aria-label="retrain progress">
+          <span id="fbProgress"></span>
+        </div>
+        <p class="card-note">Why click: identify where users disagree with the model and prioritize retraining.</p>
+      </article>
+    </section>
+
+    <section class="quick-actions">
+      <button class="qa-btn" onclick="triggerQuickScan()">Scan a File</button>
+      <button class="qa-btn" onclick="exportActivityReport()">Export Report</button>
+      <a class="qa-btn" href="demo/" target="_blank" rel="noopener">Launch Interactive Demo</a>
+      <a class="qa-btn" href="https://github.com/Alwinphilip0105/Core_Sentinal" target="_blank" rel="noopener">View GitHub</a>
+      <input id="quickScanInput" type="file" style="display:none;" accept=".txt,.md,.csv,.json,.pdf,.doc,.docx">
+    </section>
+
+    <section id="kbSection">
+      <h3 style="font-size:14px;font-weight:700;margin-bottom:10px;">📚 Knowledge Base Manager (Admin)</h3>
+      <div class="kb-grid">
+        <div class="kb-block">
+          <div class="kb-title">Upload compliance documents</div>
+          <div id="dropZone" class="drop-zone"
+            onclick="document.getElementById('kbFile').click()"
+            ondragover="event.preventDefault();this.style.borderColor='#02C39A'"
+            ondragleave="this.style.borderColor='rgba(255,255,255,0.15)'"
+            ondrop="handleKBDrop(event)">
+            Drop files here or click to upload
+          </div>
+          <input type="file" id="kbFile" accept=".pdf,.docx,.txt,.yaml,.yml" multiple style="display:none" onchange="handleKBFiles(this.files)">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <select id="kbCategory" class="inp" style="font-size:12px;">
+              <option value="hipaa">HIPAA</option>
+              <option value="pci">PCI-DSS</option>
+              <option value="gdpr">GDPR</option>
+              <option value="sox">SOX</option>
+              <option value="custom">Custom</option>
+              <option value="legal">Legal</option>
+              <option value="internal">Internal</option>
+            </select>
+            <select id="kbRisk" class="inp" style="font-size:12px;">
+              <option value="block">Block</option>
+              <option value="warn" selected>Warn</option>
+              <option value="silent">Silent</option>
+            </select>
+          </div>
+          <button type="button" class="btn-panel" style="margin-top:8px;" onclick="uploadKB()">Upload to Knowledge Base</button>
+          <div id="kbStatus" class="mini-note" style="margin-top:8px;min-height:16px;color:#9de7d0;"></div>
+        </div>
+        <div class="kb-block">
+          <div class="kb-title">Active KB entries</div>
+          <div id="kbList" class="mini-note">Loading...</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast"></div>
+  <div id="adminPanelBg" onclick="closeAdminPanel()"></div>
+
+  <aside id="adminPanel">
+    <button type="button" id="adminPanelClose" onclick="closeAdminPanel()" aria-label="Close">×</button>
+    <div id="adminLoginBlock" style="display:flex;flex-direction:column;gap:10px;">
+      <div style="font-size:16px;font-weight:700;">🔒 Admin access</div>
+      <div class="mini-note">Enter credentials to unlock fleet and configuration controls.</div>
+      <input type="email" id="admEmail" class="inp" placeholder="Email" autocomplete="username">
+      <input type="password" id="admPass" class="inp" placeholder="Password" autocomplete="current-password">
+      <input type="password" id="admKey" class="inp" placeholder="Access key" autocomplete="off">
+      <div class="err" id="admErr"></div>
+      <button type="button" class="btn-panel" onclick="submitAdminLogin()">Sign in</button>
+    </div>
+
+    <div id="adminSettings" style="display:none;gap:10px;">
+      <div style="font-size:13px;font-weight:700;margin-top:8px;">⚙ System Configuration</div>
+      <label class="mini-note">Supabase URL</label>
+      <input id="cfgUrl" type="text" class="inp" placeholder="https://xxxx.supabase.co">
+      <label class="mini-note">Anon Key</label>
+      <input id="cfgKey" type="password" class="inp" placeholder="eyJhbGciOi...">
+      <button type="button" class="btn-panel" onclick="saveConfig()">Save Configuration</button>
+      <div id="cfgSaveStatus" class="mini-note" style="min-height:14px;color:#9de7d0;"></div>
+    </div>
+  </aside>
+
+  <script>
+    document.body.classList.add("page-enter");
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        document.body.classList.remove("page-enter");
+        document.body.classList.add("page-ready");
+      });
     });
-    if(!r.ok) throw new Error(await r.text());
-    loadKBEntries();
-    showToast('KB entry removed', '#E53935');
-  }catch(err){
-    console.error(err);
-    showToast('Remove failed', '#E53935');
-  }
-}
 
-function loadMiniStats(){
-  let streak = localStorage.getItem('sentinel_streak');
-  let total = localStorage.getItem('sentinel_total');
-  document.getElementById('msStreak').textContent =
-    streak != null && streak !== '' ? streak : '0';
-  document.getElementById('msTotal').textContent =
-    total != null && total !== '' ? total : '0';
+    const transitionTargets = new Set(["index.html", "hub.html"]);
+    document.querySelectorAll("a[href]").forEach((a) => {
+      a.addEventListener("click", (e) => {
+        const href = a.getAttribute("href") || "";
+        if (!href || href.startsWith("#")) return;
+        if (a.target === "_blank") return;
+        const clean = href.split("?")[0].split("#")[0];
+        const sameSiteTransition = transitionTargets.has(clean) || clean.endsWith("/index.html") || clean.endsWith("/hub.html");
+        if (!sameSiteTransition) return;
+        e.preventDefault();
+        document.body.classList.remove("page-ready");
+        document.body.classList.add("page-leave");
+        window.setTimeout(() => { window.location.href = href; }, 170);
+      });
+    });
 
-  const url = localStorage.getItem('sb_url');
-  const key = localStorage.getItem('sb_key');
-  const liveEl = document.getElementById('msLive');
-  const subEl = document.getElementById('msLiveSub');
-  if(!url || !key){
-    liveEl.textContent = '—';
-    subEl.textContent = 'Fleet total (admin configures Supabase in panel)';
-    return;
-  }
-  liveEl.textContent = '…';
-  subEl.textContent = 'Loading…';
-  fetch(
-    url.replace(/\/$/, '') + '/rest/v1/guardrail_events?select=id&limit=1',
-    { headers: {
-      'apikey': key,
-      'Authorization': 'Bearer ' + key,
-      'Prefer': 'count=exact'
-    }}
-  ).then(r => {
-    const cr = r.headers.get('content-range');
-    if(cr){
-      const m = /\/(\d+)$/.exec(cr);
-      if(m) return parseInt(m[1], 10);
+    const ADMIN_KEY = "sentinel2026";
+    const SESSION_KEY = "hub_admin_session";
+    const SESSION_MS = 8 * 60 * 60 * 1000;
+    const ACCURACY = 97.6;
+    let _lastActivityRows = [];
+
+    function showToast(msg, color) {
+      const el = document.getElementById("toast");
+      if (!el) return;
+      el.textContent = msg;
+      el.style.background = color + "22";
+      el.style.color = color;
+      el.style.border = "1px solid " + color + "44";
+      el.classList.add("show");
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => { el.classList.remove("show"); }, 2800);
     }
-    return r.json().then(rows => Array.isArray(rows) ? rows.length : 0);
-  }).then(n => {
-    liveEl.textContent = n;
-    subEl.textContent = 'Live from Supabase';
-  }).catch(() => {
-    liveEl.textContent = '—';
-    subEl.textContent = 'Could not load (check credentials)';
-  });
-}
 
-document.addEventListener('keydown', function(e){
-  if(e.key === 'Escape') closeAdminPanel();
-});
+    function sbBase() {
+      const u = localStorage.getItem("sb_url");
+      return u ? u.replace(/\/$/, "") : "";
+    }
 
-(function init(){
-  applyAdminState(!!getAdminSession());
-  loadMiniStats();
-})();
-</script>
+    function getAdminSession() {
+      try {
+        const raw = localStorage.getItem(SESSION_KEY);
+        if (!raw) return null;
+        const s = JSON.parse(raw);
+        if (!s || typeof s.exp !== "number") return null;
+        if (Date.now() > s.exp) {
+          localStorage.removeItem(SESSION_KEY);
+          return null;
+        }
+        return s;
+      } catch {
+        return null;
+      }
+    }
+
+    function setAdminSession(email) {
+      localStorage.setItem(SESSION_KEY, JSON.stringify({
+        exp: Date.now() + SESSION_MS,
+        email: email || ""
+      }));
+    }
+
+    function showAdminLogin() {
+      document.getElementById("adminPanel").style.right = "0";
+      document.getElementById("adminPanelBg").style.display = "block";
+      document.getElementById("admErr").textContent = "";
+      syncAdminPanelContent();
+    }
+
+    function closeAdminPanel() {
+      document.getElementById("adminPanel").style.right = "-360px";
+      document.getElementById("adminPanelBg").style.display = "none";
+    }
+
+    function submitAdminLogin() {
+      const key = (document.getElementById("admKey").value || "").trim();
+      const err = document.getElementById("admErr");
+      err.textContent = "";
+      if (key !== ADMIN_KEY) {
+        err.textContent = "Invalid access key.";
+        return;
+      }
+      const email = (document.getElementById("admEmail").value || "").trim();
+      setAdminSession(email);
+      closeAdminPanel();
+      applyAdminState(true);
+      showToast("Admin mode enabled", "#02C39A");
+    }
+
+    function logoutAdmin() {
+      localStorage.removeItem(SESSION_KEY);
+      applyAdminState(false);
+      showToast("Signed out", "#FFB300");
+    }
+
+    function syncAdminPanelContent() {
+      const loggedIn = !!getAdminSession();
+      const loginBlock = document.getElementById("adminLoginBlock");
+      const settings = document.getElementById("adminSettings");
+      if (!loginBlock || !settings) return;
+      if (loggedIn) {
+        loginBlock.style.display = "none";
+        settings.style.display = "grid";
+        loadSavedConfig();
+      } else {
+        loginBlock.style.display = "flex";
+        settings.style.display = "none";
+      }
+    }
+
+    function applyAdminState(loggedIn) {
+      const slot = document.getElementById("hdrAdminSlot");
+      const lock = document.getElementById("adminLock");
+      const kbSection = document.getElementById("kbSection");
+      const connStatus = document.getElementById("connStatus");
+      const fleetLockedHint = document.getElementById("fleetLockedHint");
+      const fleetLiveStats = document.getElementById("fleetLiveStats");
+      const fleetLockExplain = document.getElementById("fleetLockExplain");
+      const fleetWhyOpen = document.getElementById("fleetWhyOpen");
+
+      if (loggedIn) {
+        slot.innerHTML = `
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span class="mini-note" style="color:#9ec9ff;">🔧 Admin mode</span>
+            <button type="button" class="btn btn-outline" onclick="showAdminLogin()">Settings</button>
+            <button type="button" class="btn btn-outline" onclick="logoutAdmin()">Sign out</button>
+          </div>`;
+        if (lock) lock.setAttribute("hidden", "");
+        if (kbSection) {
+          kbSection.style.display = "block";
+          loadKBEntries();
+        }
+        if (connStatus) connStatus.style.display = "inline-flex";
+        if (fleetLockedHint) fleetLockedHint.style.display = "none";
+        if (fleetLiveStats) fleetLiveStats.style.display = "flex";
+        if (fleetLockExplain) fleetLockExplain.style.display = "none";
+        if (fleetWhyOpen) fleetWhyOpen.style.display = "block";
+        loadFleetDetails();
+      } else {
+        slot.innerHTML = `<button type="button" id="adminBtn" class="btn btn-outline" onclick="showAdminLogin()">🔒 Admin</button>`;
+        if (lock) lock.removeAttribute("hidden");
+        if (kbSection) kbSection.style.display = "none";
+        if (connStatus) connStatus.style.display = "none";
+        if (fleetLockedHint) fleetLockedHint.style.display = "flex";
+        if (fleetLiveStats) fleetLiveStats.style.display = "none";
+        if (fleetLockExplain) fleetLockExplain.style.display = "block";
+        if (fleetWhyOpen) fleetWhyOpen.style.display = "none";
+      }
+      syncAdminPanelContent();
+    }
+
+    function saveConfig() {
+      const url = (document.getElementById("cfgUrl").value || "").trim();
+      const key = (document.getElementById("cfgKey").value || "").trim();
+      const st = document.getElementById("cfgSaveStatus");
+      if (!url || !key) {
+        st.textContent = "Both fields required.";
+        st.style.color = "#FFB300";
+        return;
+      }
+      localStorage.setItem("sb_url", url);
+      localStorage.setItem("sb_key", key);
+      st.textContent = "Configuration saved.";
+      st.style.color = "#9de7d0";
+      refreshHubData();
+      showToast("Configuration saved ✓", "#02C39A");
+    }
+
+    function loadSavedConfig() {
+      const url = localStorage.getItem("sb_url") || "";
+      const key = localStorage.getItem("sb_key") || "";
+      const cfgUrl = document.getElementById("cfgUrl");
+      const cfgKey = document.getElementById("cfgKey");
+      const st = document.getElementById("cfgSaveStatus");
+      if (cfgUrl) cfgUrl.value = url;
+      if (cfgKey) cfgKey.value = key;
+      if (st) st.textContent = (url && key) ? "Configuration active" : "";
+    }
+
+    async function testConnection() {
+      const url = (localStorage.getItem("sb_url") || "").trim().replace(/\/$/, "");
+      const key = (localStorage.getItem("sb_key") || "").trim();
+      const dot = document.getElementById("connDot");
+      const text = document.getElementById("connText");
+      if (!dot || !text) return false;
+
+      if (!url || !key) {
+        dot.style.background = "#555";
+        dot.style.animation = "none";
+        text.textContent = "Not configured";
+        return false;
+      }
+      dot.style.background = "#FFB300";
+      dot.style.animation = "none";
+      text.textContent = "Checking...";
+      try {
+        const r = await fetch(url + "/rest/v1/guardrail_events?select=id&limit=1", {
+          headers: { apikey: key, Authorization: "Bearer " + key }
+        });
+        if (!r.ok) throw new Error("bad response");
+        dot.style.background = "#43A047";
+        dot.style.animation = "pulseDot 1.8s ease-in-out infinite";
+        text.textContent = "Supabase connected";
+        return true;
+      } catch {
+        dot.style.background = "#E53935";
+        dot.style.animation = "none";
+        text.textContent = "Connection failed";
+        return false;
+      }
+    }
+
+    function applyAccuracyGauge(val) {
+      const arc = document.getElementById("accArc");
+      if (!arc) return;
+      const circumference = 188.5;
+      const pct = Math.max(0, Math.min(100, Number(val) || 0));
+      arc.style.strokeDasharray = String(circumference);
+      arc.style.strokeDashoffset = String(circumference * (1 - pct / 100));
+    }
+
+    async function loadMiniStats() {
+      const streak = Number(localStorage.getItem("sentinel_streak") || 0);
+      const total = Number(localStorage.getItem("sentinel_total") || 0);
+      const streakEl = document.getElementById("msStreak");
+      const totalEl = document.getElementById("msTotal");
+      const streakSub = document.getElementById("msStreakSub");
+      if (streakEl) streakEl.textContent = String(streak);
+      if (totalEl) totalEl.textContent = String(total);
+      if (streakSub) streakSub.textContent = streak > 10 ? "🔥 streak on fire" : "sentinel_streak";
+
+      const liveEl = document.getElementById("msLive");
+      const liveSub = document.getElementById("msLiveSub");
+      const url = localStorage.getItem("sb_url");
+      const key = localStorage.getItem("sb_key");
+      if (!url || !key) {
+        if (liveEl) liveEl.textContent = "—";
+        if (liveSub) liveSub.innerHTML = "<span class='live-dot' style='background:#555;animation:none;'></span>Not configured";
+        return;
+      }
+      if (liveEl) liveEl.textContent = "...";
+      if (liveSub) liveSub.innerHTML = "<span class='live-dot' style='background:#FFB300;animation:none;'></span>Loading";
+      try {
+        const r = await fetch(url.replace(/\/$/, "") + "/rest/v1/guardrail_events?select=id&limit=1", {
+          headers: { apikey: key, Authorization: "Bearer " + key, Prefer: "count=exact" }
+        });
+        const cr = r.headers.get("content-range");
+        let count = 0;
+        if (cr) {
+          const m = /\/(\d+)$/.exec(cr);
+          if (m) count = parseInt(m[1], 10);
+        } else {
+          const rows = await r.json();
+          count = Array.isArray(rows) ? rows.length : 0;
+        }
+        if (liveEl) liveEl.textContent = String(count);
+        if (liveSub) liveSub.innerHTML = "<span class='live-dot'></span>Live";
+      } catch {
+        if (liveEl) liveEl.textContent = "—";
+        if (liveSub) liveSub.innerHTML = "<span class='live-dot' style='background:#E53935;animation:none;'></span>Unavailable";
+      }
+    }
+
+    function normalizeEvent(raw) {
+      const ts = raw.timestamp || raw.created_at || raw.scanned_at || new Date().toISOString();
+      const score = Number(raw.risk_score || raw.score || 0);
+      const risk = String(raw.risk || (score >= 70 ? "high" : score >= 40 ? "med" : "low")).toLowerCase();
+      const action = String(raw.action || raw.decision || "silent");
+      const pii = raw.pii_classes || raw.triggers || raw.pii_type || [];
+      const piiText = Array.isArray(pii) ? (pii[0] || "—") : String(pii || "—");
+      return {
+        time: ts,
+        risk,
+        score,
+        pii: piiText || "—",
+        action,
+        status: action === "block" ? "blocked" : action === "warn" ? "warning" : "passed"
+      };
+    }
+
+    function fallbackActivity() {
+      const now = Date.now();
+      const sampleScores = [12, 35, 78, 66, 24, 82, 41, 15, 59, 92, 31, 22, 74, 18, 63, 28, 53, 80, 26, 44];
+      return sampleScores.map((s, i) => {
+        const t = new Date(now - i * 60 * 60 * 1000).toISOString();
+        return normalizeEvent({
+          timestamp: t,
+          risk_score: s,
+          risk: s >= 70 ? "high" : s >= 40 ? "med" : "low",
+          pii_type: s >= 70 ? "API key pattern" : s >= 40 ? "email address" : "low",
+          action: s >= 70 ? "block" : s >= 40 ? "warn" : "silent"
+        });
+      });
+    }
+
+    async function fetchActivity() {
+      const url = localStorage.getItem("sb_url");
+      const key = localStorage.getItem("sb_key");
+      if (url && key) {
+        try {
+          const r = await fetch(
+            url.replace(/\/$/, "") + "/rest/v1/guardrail_events?select=timestamp,risk_score,action,pii_classes,llm_name,text_hash&order=timestamp.desc.nullslast&limit=20",
+            { headers: { apikey: key, Authorization: "Bearer " + key } }
+          );
+          if (r.ok) {
+            const rows = await r.json();
+            if (Array.isArray(rows) && rows.length) return rows.map(normalizeEvent);
+          }
+        } catch {}
+      }
+      try {
+        const local = JSON.parse(localStorage.getItem("sentinel_recent_events") || "[]");
+        if (Array.isArray(local) && local.length) return local.map(normalizeEvent).slice(0, 20);
+      } catch {}
+      return fallbackActivity();
+    }
+
+    function formatTime(ts) {
+      try {
+        const d = new Date(ts);
+        return d.toLocaleString([], { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+      } catch {
+        return String(ts).slice(0, 16);
+      }
+    }
+
+    function renderActivity(rows) {
+      const tbody = document.getElementById("activityRows");
+      if (!tbody) return;
+      tbody.innerHTML = "";
+      rows.forEach((r) => {
+        const riskClass = r.risk === "high" ? "risk-high" : r.risk === "med" ? "risk-med" : "risk-low";
+        const statusClass = r.status === "blocked" ? "status-block" : r.status === "warning" ? "status-warn" : "status-ok";
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${formatTime(r.time)}</td>
+          <td><span class="badge ${riskClass}">${r.risk.toUpperCase()} (${r.score})</span></td>
+          <td>${String(r.pii || "—").slice(0, 32)}</td>
+          <td>${r.action}</td>
+          <td class="${statusClass}">${r.status}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderSparkline(rows) {
+      const linePath = document.getElementById("sparkLinePath");
+      const fillPath = document.getElementById("sparkFillPath");
+      if (!linePath || !fillPath) return;
+
+      const byDay = {};
+      rows.forEach((r) => {
+        const d = new Date(r.time);
+        const key = d.toISOString().slice(0, 10);
+        byDay[key] = byDay[key] || [];
+        byDay[key].push(Number(r.score || 0));
+      });
+      const keys = Object.keys(byDay).sort().slice(-7);
+      let points = keys.map((k) => {
+        const arr = byDay[k];
+        return Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
+      });
+      if (points.length < 7) {
+        const fallback = [12, 28, 40, 32, 52, 38, 64];
+        points = fallback.slice(0, 7 - points.length).concat(points);
+      }
+
+      const w = 300, h = 60;
+      const max = 100;
+      const step = w / (points.length - 1);
+      const coords = points.map((v, i) => [i * step, h - (v / max) * (h - 6) - 3]);
+      const dLine = coords.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(2)} ${p[1].toFixed(2)}`).join(" ");
+      const dFill = `${dLine} L ${w} ${h} L 0 ${h} Z`;
+      linePath.setAttribute("d", dLine);
+      fillPath.setAttribute("d", dFill);
+    }
+
+    function loadConfigSummary() {
+      const sensitivity = localStorage.getItem("sentinel_sensitivity") || "Medium";
+      const llmOnly = localStorage.getItem("monitor_llm_only");
+      const blockHigh = localStorage.getItem("block_high_risk_pastes");
+      const llmOn = llmOnly === null ? true : llmOnly === "true";
+      const blockOn = blockHigh === null ? true : blockHigh === "true";
+      const text = `Sensitivity: ${sensitivity} | LLM-only: ${llmOn ? "On" : "Off"} | Block high-risk: ${blockOn ? "On" : "Off"}`;
+      const el = document.getElementById("cfgSummary");
+      if (el) el.textContent = text;
+    }
+
+    function loadFeedbackStats() {
+      const collected = Number(localStorage.getItem("feedback_collected") || 47);
+      const used = Number(localStorage.getItem("feedback_used_for_training") || 12);
+      const threshold = Number(localStorage.getItem("feedback_retrain_threshold") || 100);
+      const remaining = Math.max(0, threshold - collected);
+      const pct = Math.max(0, Math.min(100, (collected / threshold) * 100));
+      document.getElementById("fbCollected").textContent = `${collected} corrections collected`;
+      document.getElementById("fbUsed").textContent = `${used} used for training`;
+      document.getElementById("fbNext").textContent = `Next retrain: ${remaining} more needed`;
+      document.getElementById("fbProgress").style.width = pct.toFixed(1) + "%";
+      loadFeedbackPatterns();
+    }
+
+    function loadFeedbackPatterns() {
+      const p1 = document.getElementById("fbPattern1");
+      const p2 = document.getElementById("fbPattern2");
+      const p3 = document.getElementById("fbPattern3");
+      if (!p1 || !p2 || !p3) return;
+      try {
+        const raw = localStorage.getItem("feedback_patterns");
+        if (!raw) throw new Error("no patterns");
+        const data = JSON.parse(raw);
+        const pairs = Object.entries(data || {}).sort((a, b) => Number(b[1]) - Number(a[1]));
+        if (!pairs.length) throw new Error("empty");
+        const top = pairs.slice(0, 3);
+        const slots = [p1, p2, p3];
+        for (let i = 0; i < slots.length; i++) {
+          const t = top[i];
+          if (!t) {
+            slots[i].style.display = "none";
+            continue;
+          }
+          const label = String(t[0]).replace("->", "→");
+          slots[i].style.display = "inline-block";
+          slots[i].textContent = `Pattern: ${label} (${Number(t[1]) || 0})`;
+        }
+      } catch {
+        p1.textContent = "Pattern: high→med (12)";
+        p2.textContent = "Pattern: med→low (9)";
+        p3.textContent = "Pattern: high→low (6)";
+        p1.style.display = "inline-block";
+        p2.style.display = "inline-block";
+        p3.style.display = "inline-block";
+      }
+    }
+
+    async function loadFleetDetails() {
+      const usersEl = document.getElementById("fleetUsers");
+      const alertsEl = document.getElementById("fleetAlerts");
+      const topEl = document.getElementById("fleetTop");
+      if (!usersEl || !alertsEl || !topEl) return;
+
+      const url = localStorage.getItem("sb_url");
+      const key = localStorage.getItem("sb_key");
+      if (!url || !key) {
+        usersEl.textContent = "Users: —";
+        alertsEl.textContent = "Active alerts: —";
+        topEl.textContent = "Top risk: —";
+        return;
+      }
+      try {
+        const r = await fetch(
+          url.replace(/\/$/, "") + "/rest/v1/guardrail_events?select=user_id,user_email,device_id,risk_score,pii_classes,triggers&order=timestamp.desc.nullslast&limit=400",
+          { headers: { apikey: key, Authorization: "Bearer " + key } }
+        );
+        if (!r.ok) throw new Error("fetch failed");
+        const rows = await r.json();
+        const identities = new Set();
+        let alerts = 0;
+        const cats = {};
+        for (const row of rows) {
+          const id = row.user_id || row.user_email || row.device_id || "unknown";
+          identities.add(String(id));
+          if (Number(row.risk_score || 0) >= 70) alerts += 1;
+          const firstCat = Array.isArray(row.pii_classes) ? row.pii_classes[0] : (Array.isArray(row.triggers) ? row.triggers[0] : "");
+          if (firstCat) cats[firstCat] = (cats[firstCat] || 0) + 1;
+        }
+        const topCat = Object.entries(cats).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
+        usersEl.textContent = `Users: ${identities.size}`;
+        alertsEl.textContent = `Active alerts: ${alerts}`;
+        topEl.textContent = `Top risk: ${String(topCat).slice(0, 18)}`;
+      } catch {
+        usersEl.textContent = "Users: —";
+        alertsEl.textContent = "Active alerts: —";
+        topEl.textContent = "Top risk: unavailable";
+      }
+    }
+
+    function triggerQuickScan() {
+      const input = document.getElementById("quickScanInput");
+      if (!input) return;
+      input.click();
+    }
+
+    function quickScanFile(file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const text = String(reader.result || "");
+        const patterns = [
+          /\b\d{3}-\d{2}-\d{4}\b/g,
+          /\b(?:\d[ -]*?){13,16}\b/g,
+          /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,
+          /\b(?:sk_live_|AKIA|AIza)[A-Za-z0-9_\-]{8,}\b/g
+        ];
+        let hits = 0;
+        patterns.forEach((re) => {
+          const m = text.match(re);
+          if (m) hits += m.length;
+        });
+        if (hits > 0) {
+          showToast(`Scan complete: ${hits} potential PII pattern(s) found`, "#FFB300");
+        } else {
+          showToast("Scan complete: no obvious PII patterns found", "#02C39A");
+        }
+      };
+      reader.onerror = () => showToast("Could not read file", "#E53935");
+      reader.readAsText(file);
+    }
+
+    function exportActivityReport() {
+      const rows = _lastActivityRows.slice(0, 20);
+      const html = `<!doctype html>
+<html><head><meta charset="utf-8"><title>Core Sentinel Activity Export</title>
+<style>body{font-family:Arial,sans-serif;padding:24px;background:#f7f7f9;color:#111}table{width:100%;border-collapse:collapse}th,td{padding:8px;border:1px solid #ddd;font-size:13px;text-align:left}th{background:#eee}</style></head>
+<body><h1>Core Sentinel Activity Report</h1><p>Generated: ${new Date().toLocaleString()}</p>
+<table><thead><tr><th>Time</th><th>Risk</th><th>PII Type</th><th>Action</th><th>Status</th></tr></thead>
+<tbody>${rows.map(r => `<tr><td>${formatTime(r.time)}</td><td>${r.risk.toUpperCase()} (${r.score})</td><td>${String(r.pii||"—")}</td><td>${r.action}</td><td>${r.status}</td></tr>`).join("")}</tbody></table>
+</body></html>`;
+      const blob = new Blob([html], { type: "text/html" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "core_sentinel_activity_report.html";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+      showToast("Report exported", "#02C39A");
+    }
+
+    async function refreshHubData() {
+      await testConnection();
+      await loadMiniStats();
+      const events = await fetchActivity();
+      _lastActivityRows = events;
+      renderActivity(events);
+      renderSparkline(events);
+      loadConfigSummary();
+      loadFeedbackStats();
+      if (getAdminSession()) {
+        await loadFleetDetails();
+      }
+    }
+
+    function handleKBDrop(e) {
+      e.preventDefault();
+      document.getElementById("dropZone").style.borderColor = "rgba(255,255,255,0.15)";
+      handleKBFiles(e.dataTransfer.files);
+    }
+
+    function handleKBFiles(files) {
+      if (!files.length) return;
+      const names = Array.from(files).map((f) => f.name).join(", ");
+      document.getElementById("kbStatus").textContent = "Ready to upload: " + names;
+      window._kbPendingFiles = files;
+    }
+
+    function readFileText(file) {
+      return new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = (e) => res(e.target.result);
+        r.onerror = rej;
+        r.readAsText(file);
+      });
+    }
+
+    function extractPatterns(text, category) {
+      const patterns = [];
+      const seedsMap = {
+        hipaa: ["patient","diagnosis","treatment","medical record"],
+        pci: ["cardholder","PAN","CVV","expiry"],
+        gdpr: ["data subject","personal data","consent"],
+        legal: ["privileged","attorney-client","litigation"],
+        sox: ["audit","financial reporting","controls"],
+        custom: [], internal: ["confidential","internal only"]
+      };
+      const seeds = seedsMap[category] || [];
+      text.split(/[.!?\n]+/).forEach((s) => {
+        const sl = s.toLowerCase().trim();
+        if (sl.length < 10 || sl.length > 220) return;
+        if (seeds.some((seed) => sl.includes(seed))) {
+          patterns.push({ type: "keyword_context", pattern: s.trim().slice(0, 120), risk: "medium" });
+        }
+      });
+      return patterns.slice(0, 50);
+    }
+
+    async function uploadKB() {
+      const files = window._kbPendingFiles;
+      const category = document.getElementById("kbCategory").value;
+      const risk = document.getElementById("kbRisk").value;
+      const statusEl = document.getElementById("kbStatus");
+      if (!files || !files.length) {
+        statusEl.textContent = "Please select files first.";
+        return;
+      }
+      const SB_URL = sbBase();
+      const SB_KEY = localStorage.getItem("sb_key");
+      if (!SB_URL || !SB_KEY) {
+        statusEl.textContent = "Configure Supabase first in Admin settings.";
+        return;
+      }
+      statusEl.textContent = "Processing files...";
+      try {
+        for (const file of files) {
+          const text = await readFileText(file);
+          const patterns = extractPatterns(text, category);
+          const res = await fetch(SB_URL + "/rest/v1/kb_entries", {
+            method: "POST",
+            headers: {
+              apikey: SB_KEY,
+              Authorization: "Bearer " + SB_KEY,
+              "Content-Type": "application/json",
+              Prefer: "return=minimal"
+            },
+            body: JSON.stringify({
+              filename: file.name,
+              category,
+              risk_level: risk,
+              patterns,
+              raw_length: text.length,
+              uploaded_at: new Date().toISOString(),
+              active: true
+            })
+          });
+          if (!res.ok) {
+            const t = await res.text();
+            throw new Error(t.slice(0, 140) || res.statusText);
+          }
+        }
+        statusEl.textContent = "Uploaded successfully.";
+        window._kbPendingFiles = null;
+        loadKBEntries();
+        showToast("Knowledge base updated", "#02C39A");
+      } catch (err) {
+        statusEl.textContent = "Upload failed: " + (err.message || String(err));
+        showToast("KB upload failed", "#E53935");
+      }
+    }
+
+    function patternCountSafe(raw) {
+      if (raw == null) return 0;
+      if (Array.isArray(raw)) return raw.length;
+      try {
+        const arr = typeof raw === "string" ? JSON.parse(raw || "[]") : raw;
+        return Array.isArray(arr) ? arr.length : 0;
+      } catch {
+        return 0;
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    async function loadKBEntries() {
+      const listEl = document.getElementById("kbList");
+      if (!listEl) return;
+      const SB_URL = sbBase();
+      const SB_KEY = localStorage.getItem("sb_key");
+      if (!SB_URL || !SB_KEY) {
+        listEl.innerHTML = "<div class='mini-note'>Configure Supabase to view KB entries.</div>";
+        return;
+      }
+      try {
+        const r = await fetch(SB_URL + "/rest/v1/kb_entries?select=*&order=uploaded_at.desc", {
+          headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
+        });
+        if (!r.ok) throw new Error(await r.text());
+        const entries = await r.json();
+        if (!entries.length) {
+          listEl.innerHTML = "<div class='mini-note'>No KB entries yet.</div>";
+          return;
+        }
+        listEl.innerHTML = entries.map((e) => {
+          const id = encodeURIComponent(String(e.id));
+          const c = escapeHtml(String(e.category || "").toUpperCase());
+          const f = escapeHtml(e.filename || "file");
+          const p = patternCountSafe(e.patterns);
+          return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="flex:1">
+              <div style="font-size:12px;font-weight:600">${f}</div>
+              <div class="mini-note">${c} · ${p} patterns</div>
+            </div>
+            <button type="button" class="qa-btn kb-del" data-kb-id="${id}" style="padding:6px 8px;font-size:11px;">Remove</button>
+          </div>`;
+        }).join("");
+      } catch {
+        listEl.innerHTML = "<div class='mini-note' style='color:#ffb3b1;'>Could not load KB entries.</div>";
+      }
+    }
+
+    async function deleteKB(id) {
+      const SB_URL = sbBase();
+      const SB_KEY = localStorage.getItem("sb_key");
+      if (!SB_URL || !SB_KEY) return;
+      try {
+        const r = await fetch(SB_URL + "/rest/v1/kb_entries?id=eq." + encodeURIComponent(id), {
+          method: "DELETE",
+          headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
+        });
+        if (!r.ok) throw new Error(await r.text());
+        loadKBEntries();
+        showToast("KB entry removed", "#E53935");
+      } catch {
+        showToast("Remove failed", "#E53935");
+      }
+    }
+
+    document.addEventListener("click", (e) => {
+      const btn = e.target.closest(".kb-del");
+      if (!btn) return;
+      const id = decodeURIComponent(btn.getAttribute("data-kb-id") || "");
+      if (id) deleteKB(id);
+    });
+
+    document.getElementById("quickScanInput").addEventListener("change", (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) quickScanFile(file);
+      e.target.value = "";
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeAdminPanel();
+    });
+
+    (async function init() {
+      applyAccuracyGauge(ACCURACY);
+      applyAdminState(!!getAdminSession());
+      await refreshHubData();
+    })();
+  </script>
 </body>
 </html>

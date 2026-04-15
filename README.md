@@ -1,184 +1,174 @@
-# Core Sentinel — ML Guardrail for LLM Chat Windows
+# Core Sentinel - AI Clipboard Guardian
 
-> A Grammarly-style floating overlay that detects and protects Personally Identifiable Information (PII) when pasting content into LLM chat windows like ChatGPT, Claude, Gemini, and Comet.
+[![License: MIT](https://img.shields.io/badge/License-MIT-02C39A.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB.svg)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D4.svg)](docs/WINDOWS_SETUP.md)
+[![Model](https://img.shields.io/badge/Model-TinyBERT-5C6BC0.svg)](core-sentinel-guardrail/train.py)
+[![UI](https://img.shields.io/badge/UI-PyQt6-41CD52.svg)](core-sentinel-guardrail/main.py)
 
-**Repository layout:** see **[REPO_LAYOUT.md](REPO_LAYOUT.md)** (folders, entry points, what belongs where).
+Core Sentinel is a desktop-first, privacy-focused guardrail that intercepts clipboard pastes into LLM chat windows (ChatGPT, Claude, Gemini, Copilot, and others), detects sensitive content, scores risk, and offers one-click remediation.
 
----
+> **Platform support:** Windows 10/11 is supported today. Linux and iOS support are planned for future releases.
 
-## What it does
+## Why Core Sentinel
 
-Core Sentinel sits quietly in the corner of your screen. The moment you paste sensitive content into an LLM window, it intercepts, scores, and gives you options — redact, rephrase, encrypt, or proceed. It only activates when you are using an LLM, leaving all other applications completely unaffected.
+- Prevent accidental leakage of PII, secrets, and regulated data into AI tools.
+- Run locally by default; clipboard content stays on your machine unless you opt into sync.
+- Combine deterministic pattern matching with ML-based contextual risk scoring.
+- Improve over time with feedback-driven active learning.
 
----
+## Table of Contents
 
-## Demo
-
-### 1. Floating pill — idle vs active
-
-The pill stays in the corner at low opacity. When you hover, it darkens and shows options. The color changes based on risk level.
-
-| State | Color | Meaning |
-|-------|-------|---------|
-| Grey pill | No color | Not in LLM window — not monitoring |
-| Green dot | Green | Monitoring active — LLM detected |
-| Amber badge | Amber | Medium risk paste detected |
-| Red badge + number | Red | High risk — N issues found |
-
----
-
-### 2. Safe paste — no interruption
-
-Paste: `"The meeting is on Tuesday at 3pm in conference room B."`
-
-Result: Spinner briefly appears, returns to idle. No badge, no popup. Event logged silently to `events.csv` (or the primary structured log when legacy CSV is disabled).
-
----
-
-### 3. Medium risk — warn only
-
-Paste: `"Please contact John at john.smith@company.com or call 212-555-0134."`
-
-Result: Badge appears on pill with count. Click the pill to open the panel.
-
-![Panel showing issues](screenshot_panel_issues.png)
-
-The panel shows each detected PII item with Fix / Skip buttons. The score wheel shows 70 in amber.
-
----
-
-### 4. High risk — block with remediation
-
-Paste: `"My SSN is 123-45-6789 and card 4532-1234-5678-9012"`
-
-Result: Panel opens immediately showing HIGH risk items. Four actions available at the bottom:
-
-| Button | What it does |
-|--------|-------------|
-| **Redact** | Partially masks PII — `****-****-****-9012` |
-| **Rephrase** | Rewrites naturally — `"their payment method"` |
-| **Fix all** | Replaces with label — `[credit card pattern]` |
-| **Snooze ▾** | Pause alerts for 5 min / 10 min / 30 min / 1 hr |
-
----
-
-### 5. Panel — safe state
-
-![Panel safe state](screenshot_panel_safe.png)
-
-When no PII is detected the panel shows a shield and "No PII detected" with general best practice tips.
-
----
-
-### 6. Toolbar on hover
-
-Hover over the pill to reveal the vertical toolbar:
-
-![Toolbar](screenshot_toolbar.png)
-
-| Icon | Action | Shortcut |
-|------|--------|----------|
-| ⏻ | Toggle monitoring on/off | Alt+G |
-| ✎ | Rephrase clipboard text | Alt+R |
-| ▓ | Redact PII from clipboard | Alt+D |
-| 🔒 | Encrypt clipboard content | Alt+E |
-| 📄 | Scan a file for PII | Alt+S |
-| ⚙ | Open settings | Alt+, |
-
----
-
-### 7. Settings panel
-
-![Settings](screenshot_settings.png)
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Monitor LLM windows only | ON | Only activates in ChatGPT, Claude, etc. |
-| Block high-risk pastes | ON | Shows panel for high-risk content |
-| Show badge count | ON | Red number on pill |
-| Auto-redact on block | OFF | Automatically redacts without asking |
-| Sound on block | OFF | Audio alert on high-risk detection |
-| Sensitivity | Medium | Low / Medium / High / Strict |
-
----
-
-### 8. Document scan
-
-Click the scan icon in the toolbar to scan any file for PII.
-
-Supported formats: PDF · DOCX · XLSX · PPTX · PNG · JPG · TXT
-
-![Document scan report](screenshot_doc_scan.png)
-
-The scan report shows:
-
-- Overall risk score and level
-- Every page where PII was found
-- Exact PII spans highlighted with their class
-- Gemini AI findings (if API key is set)
-
----
-
-## Model performance
-
-Trained on 9,711 examples (17k raw, balanced to 3-class). **Test set: 5,500 examples.**
-
-| Class | Precision | Recall | F1 | Support |
-|-------|-----------|--------|-----|---------|
-| **low** | 1.000 | 1.000 | **1.000** | 500 |
-| **med** | 0.478 | 0.326 | 0.387 | 172 |
-| **high** | 0.976 | 0.987 | **0.982** | 4828 |
-
-- **Overall accuracy:** 97.0%
-- **Macro F1:** 0.790
-
-**Training improvements (v1 → v2):** Added 3,000 synthetic low-risk examples (Faker), Financial PII XLSX as a 4th training source, and a balanced split (6,000 high / 3,000 med / 3,000 low). Low-class F1 improved from 0.00 to 1.00; macro F1 from 0.662 to 0.790; accuracy 96.9% → 97.0%.
-
-**Key design decision:** The model errs toward over-flagging medium content as high rather than under-flagging. A false positive (unnecessary warning) is far less harmful than a false negative (missed SSN or API key).
-
----
+- [Architecture](#architecture)
+- [Start Here (New Users)](#start-here-new-users)
+- [Model Card](#model-card)
+- [Dashboards](#dashboards)
+- [Interactive Widget Demo](#-interactive-widget-demo)
+- [Quick Start](#quick-start)
+- [Project Structure](#project-structure)
+- [Training and Evaluation](#training-and-evaluation)
+- [Contributing](#contributing)
+- [Security and Privacy](#security-and-privacy)
+- [License](#license)
 
 ## Architecture
 
-```
-Clipboard paste (Ctrl+V)
-        │
-        ▼
-active_window_llm.py ──► Not LLM? → Skip entirely
-        │
-        ▼ (LLM detected)
-guardrail_runtime.py ──► Duplicate in last 60s? → Skip
-        │
-        ▼
-InferenceWorker (QThread)
-        │
-        ├── infer.py (TinyBERT sliding window, 128 tokens/chunk)
-        ├── risk_mapping.py (regex: SSN, card, JWT, email...)
-        └── kb_loader.py (company-specific rules)
-        │
-        ▼
-get_action() → silent / warn / block
-        │
-        ▼
-ui_risk_bubble.py ──► update pill color + badge
-        │
-        ▼ (warn or block)
-ui_remediation_dialog.py ──► show panel with Fix/Skip/Redact
-        │
-        ▼
-feedback_store.py ──► log user correction
-events.csv ──────────► log every decision (optional legacy CSV)
+```mermaid
+flowchart TD
+    A[Clipboard Paste Event] --> B{LLM Window Detected?}
+    B -- No --> Z[Skip]
+    B -- Yes --> C[Text Extraction + Chunking]
+    C --> D[Layer 1: Regex and Pattern Rules]
+    C --> E[Layer 2: spaCy NER]
+    C --> F[Layer 3: TinyBERT Classifier]
+    D --> G[Risk Aggregator]
+    E --> G
+    F --> G
+    G --> H{Decision}
+    H -->|Silent| I[Allow Paste]
+    H -->|Warn| J[Show Warning State]
+    H -->|Block| K[Open Remediation Panel]
+    K --> L[Redact / Rephrase / Encrypt / Override]
+    L --> M[Feedback + Telemetry]
+    M --> N[Active Learning Queue]
 ```
 
----
+### Runtime Pipeline (high level)
 
-## Quick start
+1. Detect paste event in supported LLM window context.
+2. Normalize and chunk text for model-safe inference.
+3. Run regex and structured matchers for high-confidence patterns.
+4. Run NER to recover contextual entities.
+5. Run classifier to capture semantic leakage risk.
+6. Aggregate into final 0-100 risk score.
+7. Route to silent, warn, or block.
+8. Capture optional correction feedback for retraining.
+
+## Start Here (New Users)
+
+If you're new to Core Sentinel, use this order:
+
+1. Launch the **interactive demo**: [▶ Demo](https://alwinphilip0105.github.io/Core_Sentinal/demo/)
+2. Open the **website guided walkthrough**: [Landing page](https://alwinphilip0105.github.io/Core_Sentinal/)
+3. Explore dashboards from the **hub**: [Dashboard hub](https://alwinphilip0105.github.io/Core_Sentinal/hub.html)
+4. For local setup, continue to [Quick Start](#quick-start).
+
+> **Current platform:** Windows 10/11 only. Linux and iOS support are planned in future releases.
+
+## Model Card
+
+| Field | Value |
+|---|---|
+| Base architecture | `huawei-noah/TinyBERT_General_4L_312D` |
+| Parameters | ~14M |
+| Input strategy | Sliding windows (tokenized chunks) |
+| Labeling modes | 3-class and policy-driven 9-class support |
+| Training data | Synthetic PII corpus plus curated task data |
+| Privacy policy | No real user clipboard data required for base training |
+| Deployment target | Local desktop inference |
+
+### Current benchmark snapshot
+
+| Metric | Value |
+|---|---|
+| High-class Precision | 0.976 |
+| High-class Recall | 0.987 |
+| High-class F1 | 0.982 |
+| Overall Accuracy | 97.0% |
+| Macro F1 | 0.790 |
+| ROC-AUC (dashboard target) | up to 0.998 |
+
+For full metrics and evaluation scripts, see `core-sentinel-guardrail/evaluate_test.py` and generated reports under `core-sentinel-guardrail/reports/`.
+
+## Dashboards
+
+Core Sentinel ships with multiple dashboards for users, operators, and admins.
+
+### Privacy Dashboard
+
+- Risk timeline and score trends
+- Streak tracking
+- Recent event history
+
+![Privacy Dashboard Preview](docs/hub-preview-top.png)
+
+### ML Health Dashboard
+
+- Precision/Recall views
+- Confusion matrix
+- Drift and threshold simulation
+
+![ML Dashboard Preview](docs/hub-preview-full.png)
+
+### Fleet Admin Dashboard
+
+- Organization-level monitoring
+- Alert and policy controls
+- Risk category rollups
+
+![Fleet Dashboard Preview](docs/hub-preview-full.png)
+
+Additional UI previews:
+
+- Landing page (desktop): `docs/index-preview-desktop-viewport.png`
+- Landing page (mobile): `docs/index-preview-mobile.png`
+
+## 🎮 Interactive Widget Demo
+
+Try Core Sentinel's overlay widget right in your browser — no installation required.
+
+**[▶ Launch Interactive Demo](https://alwinphilip0105.github.io/Core_Sentinal/demo/)**
+
+The demo simulates a full document-to-LLM workflow with live interception:
+- 📄 Copy text from a source document pane into an LLM prompt box
+- 🟢 Safe paste → allowed and forwarded to the LLM
+- 🟡 Medium-risk paste (names/emails/phones) → remediation panel opens
+- 🔴 Critical paste (passwords/keys) → blocked until fixed or overridden
+- 📄 Scan documents → detect PII with page/line locations
+- ⚙️ Open settings, right-click context menu, drag the widget
+- 🔄 Hover the pill to see monitoring status and streak counter
+- 🧭 Guided overlay tour + separate mode demos (risk flow vs drag/scan flow)
+
+Website integration:
+- Landing page embeds the live demo in `docs/index.html` (`#live-demo`)
+- Hub includes quick access link in `docs/hub.html`
+- Standalone source page: [`docs/demo/index.html`](docs/demo/index.html)
+
+> **Note:** The browser demo uses regex pattern matching. The real desktop
+> app adds TinyBERT ML inference + spaCy NER for significantly deeper
+> contextual detection.
+
+![Interactive Demo Preview](docs/demo-separated-tour-preview.png)
+
+## Quick Start
 
 ### Prerequisites
 
 - Windows 10/11 (x64)
-- Python 3.11
-- Visual C++ Redistributable 2022 — [download](https://aka.ms/vs/17/release/vc_redist.x64.exe)
+- Python 3.11+
+- Visual C++ Redistributable 2022 ([download](https://aka.ms/vs/17/release/vc_redist.x64.exe))
+
+Planned platform roadmap: Linux and iOS support in a future version.
 
 ### Install
 
@@ -195,282 +185,114 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
 ### Configure (optional)
 
-Create a `.env` file in the project root (you can copy **`.env.example`** to `.env` and edit). When you start the app with **`run_guardrail.py`**, the launcher reads `.env` into the process environment (shell variables still take precedence if already set).
+Copy `.env.example` to `.env` at repo root and set values as needed:
 
 ```env
-# Gemini AI for document scanning (free tier)
-# Get key at: https://aistudio.google.com/app/apikey
-GEMINI_API_KEY=your-key-here
-
-# Supabase for cloud sync (free tier)
-# Get at: https://supabase.com
+GEMINI_API_KEY=your-key
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
-
-# Optional: mirror each risk telemetry row to Supabase (see docs/sql/risk_telemetry.sql)
-# GUARDRAIL_TELEMETRY_SUPABASE=1
-
-# Optional: POST each telemetry JSON to your own HTTPS endpoint (Zapier, Edge Function, etc.)
-# GUARDRAIL_TELEMETRY_WEBHOOK_URL=https://example.com/ingest
-
-# Optional tuning
-GUARDRAIL_BLOCKING_PRELOAD=0
-GUARDRAIL_DEBUG_WINDOW=0
 ```
-
-For **GitHub sync, backup scope, and recovery** after disk loss or a new machine, see **[docs/BACKUP_AND_RECOVERY.md](docs/BACKUP_AND_RECOVERY.md)**.
-
-For a **production-style workflow** (branching, secrets, tests before ship, ML release order, demo checklist), see **[docs/PRODUCTION_AND_RELEASE.md](docs/PRODUCTION_AND_RELEASE.md)**. Contributors: **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
 ### Run
 
 ```powershell
-cd Core_Sentinal
 .venv\Scripts\python.exe run_guardrail.py
 ```
 
-The pill appears in the bottom-right corner. Open ChatGPT or Claude in your browser and start pasting.
+The pill UI should appear in the bottom-right corner. Open an LLM web app and paste sample text to test.
 
----
+## Project Structure
 
-## Training your own model
+```text
+Core_Sentinal/
+|- run_guardrail.py
+|- launchers/
+|- docs/
+|  |- index.html
+|  |- hub.html
+|  |- dashboard/
+|  |- ml/
+|- core-sentinel-guardrail/
+|  |- main.py
+|  |- infer.py
+|  |- risk_mapping.py
+|  |- ui_risk_bubble.py
+|  |- ui_remediation_dialog.py
+|  |- document_scanner.py
+|  |- feedback_store.py
+|  |- train.py
+|  |- evaluate_test.py
+|  |- config/
+|  |- models/
+|  |- logs/
+|  |- reports/
+|- CONTRIBUTING.md
+|- LICENSE
+```
+
+For a detailed folder map, see [REPO_LAYOUT.md](REPO_LAYOUT.md).
+
+## Training and Evaluation
+
+### Typical workflow
 
 ```powershell
 cd core-sentinel-guardrail
-
-# Build dataset
 python data.py
-
-# Train TinyBERT classifier
-$env:ALLOW_TORCH_LOAD_PRE26 = '1'
 python train.py
-
-# Evaluate with PR curve
 python evaluate_test.py
-
-# Calibrate thresholds from PR curve
 python calibrate_thresholds.py
-
-# Run smoke tests
 python adversarial_tests.py
 ```
 
----
+### Feedback-driven relearning
 
-## Company knowledge base
+- Corrections are captured from UI feedback actions.
+- Pending corrections can be merged into retraining data.
+- New weights are generated and validated before release.
 
-Create `config/company_policy.yaml` with your company's custom rules:
+See:
 
-```yaml
-company: "Acme Corp"
-version: "1.0"
+- [Feedback loop guide](core-sentinel-guardrail/FEEDBACK_TRAINING_LOOP.md)
+- [GitHub feedback sync](core-sentinel-guardrail/GITHUB_FEEDBACK_SYNC.md)
+- [Production release checklist](docs/PRODUCTION_AND_RELEASE.md)
 
-custom_pii_patterns:
-  - name: "Employee ID"
-    regex: "EMP-\\d{6}"
-    risk: "high"
-  - name: "Project code"
-    regex: "PRJ-[A-Z]{3}-\\d{4}"
-    risk: "med"
+## Contributing
 
-forbidden_terms:
-  - "confidential"
-  - "internal only"
-  - "trade secret"
+We welcome contributions across UI, detection quality, model robustness, and docs.
 
-sensitivity_overrides:
-  FINANCIAL: "block"
-  AUTH: "block"
-  NAME: "warn"
-```
+1. Read [CONTRIBUTING.md](CONTRIBUTING.md).
+2. Create a feature branch.
+3. Add tests or validation evidence for your change.
+4. Run local checks and include a clear PR summary.
 
-Set the path:
+### Suggested contribution areas
 
-```powershell
-$env:GUARDRAIL_KB_PATH = "config/company_policy.yaml"
-```
+- Reduce false positives without lowering high-risk recall.
+- Improve remediation UX and keyboard flow.
+- Expand supported window detection patterns.
+- Improve docs and dashboard observability.
 
-To deploy across multiple companies, host the YAML in a private GitHub repo and set:
+## Security and Privacy
 
-```powershell
-$env:GUARDRAIL_KB_URL = "https://raw.githubusercontent.com/org/repo/main/policy.yaml"
-$env:GUARDRAIL_KB_TOKEN = "your-github-token"
-```
+- Local-first by default.
+- No mandatory telemetry.
+- Optional Supabase sync is opt-in.
+- No real clipboard data is required for baseline model training.
 
----
+For backup and recovery boundaries (what is versioned vs local-only), see [docs/BACKUP_AND_RECOVERY.md](docs/BACKUP_AND_RECOVERY.md).
 
-## Feedback and relearning
+## Documentation Index
 
-Every paste decision is logged. Users can correct wrong flags using the Correct / Wrong buttons that appear after each detection.
-
-```
-User clicks "Wrong" on a false positive
-        │
-        ▼
-feedback_store.jsonl ← {text_hash, predicted: "high", correct: "low"}
-        │
-        ▼ (after 30 corrections)
-Tray notification: "30 corrections ready — run train.py"
-        │
-        ▼
-python train.py  ← fine-tunes on corrections, 3 epochs LR=1e-5
-        │
-        ▼
-Improved model deployed to models/tinybert_guardrail
-```
-
----
-
-## Supported LLM windows
-
-Detected automatically by window title and browser URL:
-
-- ChatGPT (`chat.openai.com`)
-- Claude (`claude.ai`)
-- Gemini (`gemini.google.com`)
-- Microsoft Copilot (`copilot.microsoft.com`)
-- Perplexity (`perplexity.ai`)
-- Comet browser
-- Poe (`poe.com`)
-- Any URL containing `/chat` or `assistant`
-
-Add custom LLMs without editing code:
-
-```powershell
-$env:GUARDRAIL_EXTRA_LLM_TITLES = "myapp,internal-gpt,llama"
-```
-
----
-
-## Masking modes
-
-| Mode | Example input | Example output |
-|------|--------------|----------------|
-| Partial (default) | `john@company.com` | `j***n@company.com` |
-| Partial | `212-555-0134` | `***-***-0134` |
-| Partial | `123-45-6789` | `***-**-6789` |
-| Partial | `4532-1234-5678-9012` | `****-****-****-9012` |
-| Partial | `sk-abc123secret` | `sk-a****cret` |
-| Stars | `John Smith` | `**** *****` |
-| Full | `John Smith` | `[NAME]` |
-| Rephrase | `John Smith` | `the person` |
-
----
-
-## Project structure
-
-```
-Core_Sentinal/
-├── run_guardrail.py              ← entry point (delegates to launchers/)
-├── launchers/                    ← launcher implementation (PyTorch DLL, main import)
-├── REPO_LAYOUT.md                ← folder map (read this first)
-├── scripts/                      ← dev helpers (e.g. manual_probe.py)
-├── docs/                         ← guides, Windows setup, Supabase SQL, static hub HTML
-├── legacy/rutgers_demo/          ← small older demo (not the full guardrail)
-├── .env                          ← API keys (not in git)
-├── .venv/                        ← Python environment (optional location; see REPO_LAYOUT.md)
-└── core-sentinel-guardrail/
-    ├── main.py                   ← PyQt6 app + keyboard hook
-    ├── infer.py                  ← TinyBERT inference + sliding window
-    ├── risk_mapping.py           ← regex PII patterns
-    ├── risk_policy_loader.py     ← threshold config loader
-    ├── kb_loader.py              ← company knowledge base
-    ├── access_control.py         ← role-based paste permission
-    ├── feedback_store.py         ← user correction logging
-    ├── pii_remediation.py        ← mask / rephrase / encrypt
-    ├── text_extractor.py         ← document text extraction
-    ├── gemini_scanner.py         ← Gemini AI PII detection
-    ├── document_scanner.py       ← full document scan pipeline
-    ├── active_window_llm.py      ← LLM window detection
-    ├── guardrail_runtime.py      ← dedup + snooze state
-    ├── ui_risk_bubble.py         ← floating pill widget
-    ├── ui_remediation_dialog.py  ← side panel
-    ├── toast.py                  ← in-app notifications
-    ├── data.py                   ← dataset builder
-    ├── train.py                  ← TinyBERT training
-    ├── evaluate_test.py          ← PR curve + metrics
-    ├── calibrate_thresholds.py   ← threshold derivation
-    ├── adversarial_tests.py      ← smoke tests
-    ├── config/
-    │   ├── risk_policy.json      ← per-class thresholds
-    │   ├── pii_policy.json       ← allow/warn/block rules
-    │   ├── pii_to_risk.json      ← 9-class → low/med/high mapping
-    │   └── company_policy_template.yaml
-    ├── models/
-    │   └── tinybert_guardrail/   ← trained model weights (gitignored)
-    ├── logs/
-    │   ├── events.csv            ← optional legacy decision log
-    │   ├── feedback_store.jsonl  ← user corrections
-    │   └── scan_reports/         ← HTML document scan reports
-    └── reports/
-        ├── train_eval_summary.json
-        ├── pr_curve_summary.json
-        └── train_log_history.json
-```
-
-Generated `reports/` and most `logs/` artifacts are listed in `.gitignore`; regenerate locally after training or evaluation.
-
----
-
-## Demo test cases
-
-Copy and paste each into ChatGPT or Claude to test:
-
-```
-# Safe — no alert expected
-The weather in New York today is partly cloudy with 
-temperatures around 72 degrees.
-
-# Medium — amber badge expected  
-Please contact John at john.smith@company.com or 
-call 212-555-0134 if you need to reschedule.
-
-# High — block expected
-My SSN is 123-45-6789 and date of birth 04/15/1990.
-
-# Critical — immediate block expected
-API_KEY=sk-abc123XYZsecretkey9999
-DB_PASSWORD=MyP@ssw0rd123!
-
-# Financial — block expected
-Please charge card 4532-1234-5678-9012 expiry 09/27.
-
-# Long text — sliding window test (SSN buried in text)
-This is a regular update. Sales are up 15%. 
-The engineering team shipped 3 features. 
-My Social Security Number is 987-65-4321 urgent.
-The finance team closed books on time.
-
-# Mixed language — robustness test
-Hola, mi nombre es Carlos. My credit card is 
-5425-2334-3010-9903. Por favor procesa.
-```
-
----
-
-## Further documentation
-
-| Guide | Topic |
-|-------|--------|
-| [Documentation index](docs/README.md) | Table of contents for Markdown guides |
-| [Guardrail README](core-sentinel-guardrail/README.md) | Label modes (3-class / 9-class), datasets, training |
-| [Clipboard guardrail](core-sentinel-guardrail/CLIPBOARD_GUARDRAIL.md) | Paste flow, window detection, calibration |
-| [GitHub feedback sync](core-sentinel-guardrail/GITHUB_FEEDBACK_SYNC.md) | Which log files to sync in a private repo |
-| [Feedback → training](core-sentinel-guardrail/FEEDBACK_TRAINING_LOOP.md) | Merge feedback into training data |
-| [Risk telemetry](core-sentinel-guardrail/RISK_TELEMETRY.md) | `risk_telemetry.jsonl`, dashboard server |
-
----
-
-## Screenshots
-
-Add `screenshot_*.png` files at the repository root (paths used above) so the Demo images render on GitHub.
-
----
+- [Docs index](docs/README.md)
+- [Clipboard guardrail guide](core-sentinel-guardrail/CLIPBOARD_GUARDRAIL.md)
+- [Risk telemetry](core-sentinel-guardrail/RISK_TELEMETRY.md)
+- [Windows setup](docs/WINDOWS_SETUP.md)
 
 ## License
 
-MIT License — free to use, modify, and distribute. Full text: [`LICENSE`](LICENSE).
+MIT License. See [LICENSE](LICENSE).
 
 ---
 
-*Built as a machine learning capstone project — Rutgers University, Spring 2026*
+Built as an ML systems capstone project with production-oriented guardrail engineering.

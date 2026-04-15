@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Core Sentinel Widget Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#07080d;
+      --left:#1a1a1f;
+      --right:#0a0a0f;
+      --line:#2a2a2f;
+      --accent:#02C39A;
+      --warn:#ffb300;
+      --danger:#e53935;
+      --text:#e8e8e8;
+      --muted:#97a0af;
+      --card:#1C1C1E;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{
+      font-family:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+      background:radial-gradient(1200px 420px at 80% -8%, rgba(2,195,154,0.12), transparent 55%),var(--bg);
+      color:var(--text);
+      padding:20px 14px 30px;
+    }
+    .page{
+      max-width:1200px;
+      margin:0 auto;
+    }
+    h1{
+      font-size:clamp(22px,3vw,34px);
+      letter-spacing:-0.02em;
+      margin-bottom:6px;
+    }
+    .sub{
+      color:var(--muted);
+      margin-bottom:16px;
+      font-size:14px;
+    }
+    .demo-wrap{
+      border:1px solid var(--line);
+      border-radius:16px;
+      overflow:hidden;
+      display:grid;
+      grid-template-columns:55% 45%;
+      min-height:740px;
+      background:#111;
+      box-shadow:0 16px 48px rgba(0,0,0,.45);
+      position:relative;
+    }
+    .chat-side{
+      background:var(--left);
+      border-right:1px solid var(--line);
+      display:flex;
+      flex-direction:column;
+      min-height:740px;
+    }
+    .chat-head{
+      padding:14px;
+      border-bottom:1px solid var(--line);
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+    }
+    .chat-head h2{
+      font-size:14px;
+      font-weight:700;
+    }
+    .model-select{
+      background:#202027;
+      border:1px solid #32323a;
+      color:#e8e8e8;
+      border-radius:8px;
+      font-size:12px;
+      padding:6px 8px;
+      outline:none;
+    }
+    .messages{
+      flex:1;
+      overflow:auto;
+      padding:14px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      scroll-behavior:smooth;
+    }
+    .msg{
+      max-width:85%;
+      padding:10px 12px;
+      border-radius:12px;
+      font-size:13px;
+      line-height:1.45;
+      white-space:pre-wrap;
+    }
+    .msg.ai{
+      background:#24242b;
+      color:#e4e9f1;
+      border:1px solid #2f2f39;
+      align-self:flex-start;
+    }
+    .msg.user{
+      background:#14312b;
+      color:#d8fff7;
+      border:1px solid rgba(2,195,154,.28);
+      align-self:flex-end;
+    }
+    .composer{
+      border-top:1px solid var(--line);
+      padding:12px;
+      display:grid;
+      gap:10px;
+      background:#17171d;
+    }
+    .demo-btns{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+    .demo-btn{
+      border:1px solid #34343d;
+      background:#23232a;
+      color:#d7deea;
+      border-radius:999px;
+      font-size:12px;
+      padding:6px 10px;
+      cursor:pointer;
+      transition:.2s ease;
+    }
+    .demo-btn:hover{transform:translateY(-1px);border-color:#4d4d57}
+    .demo-btn.safe{border-color:rgba(34,197,94,.35)}
+    .demo-btn.warn{border-color:rgba(255,179,0,.35)}
+    .demo-btn.crit{border-color:rgba(229,57,53,.4)}
+    .input-row{
+      display:grid;
+      grid-template-columns:1fr auto;
+      gap:8px;
+    }
+    textarea{
+      min-height:68px;
+      max-height:150px;
+      resize:vertical;
+      border-radius:10px;
+      border:1px solid #353541;
+      background:#1f1f26;
+      color:#e8e8e8;
+      outline:none;
+      padding:9px 10px;
+      font:500 13px/1.45 "Inter",sans-serif;
+    }
+    textarea:focus{border-color:rgba(2,195,154,.55)}
+    .send-btn{
+      align-self:end;
+      border:1px solid rgba(2,195,154,.45);
+      background:var(--accent);
+      color:#05241d;
+      border-radius:10px;
+      font-weight:700;
+      cursor:pointer;
+      padding:10px 14px;
+      height:max-content;
+    }
+    .send-btn:disabled{opacity:.55;cursor:not-allowed}
+
+    .overlay-side{
+      background:
+        linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px) 0 0 / 22px 22px,
+        linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px) 0 0 / 22px 22px,
+        var(--right);
+      position:relative;
+      overflow:hidden;
+    }
+    .traffic{
+      position:absolute;
+      right:14px;
+      top:14px;
+      background:#121218;
+      border:1px solid #2a2a31;
+      border-radius:999px;
+      padding:8px 10px;
+      display:flex;
+      flex-direction:column;
+      gap:7px;
+      width:34px;
+      align-items:center;
+      z-index:4;
+    }
+    .dot{
+      width:12px;height:12px;border-radius:50%;
+      background:#2f313a;
+      box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);
+      transition:.25s ease;
+    }
+    .dot.green.on{background:#22c55e;box-shadow:0 0 10px rgba(34,197,94,.65)}
+    .dot.amber.on{background:var(--warn);box-shadow:0 0 10px rgba(255,179,0,.65)}
+    .dot.red.on{background:var(--danger);box-shadow:0 0 10px rgba(229,57,53,.65)}
+
+    .overlay{
+      position:absolute;
+      right:14px;
+      bottom:14px;
+      display:flex;
+      align-items:flex-end;
+      gap:8px;
+      z-index:6;
+    }
+    .pill{
+      min-height:44px;
+      border-radius:26px;
+      padding:7px 12px;
+      background:var(--card);
+      border:1px solid #2a2a33;
+      display:flex;
+      align-items:center;
+      gap:8px;
+      width:178px;
+      color:#dfe6f2;
+      box-shadow:0 10px 20px rgba(0,0,0,.35);
+      transition:.25s ease;
+      overflow:hidden;
+    }
+    .overlay:hover .pill{width:290px}
+    .pill-ico{
+      width:24px;height:24px;border-radius:50%;
+      display:grid;place-items:center;
+      background:#12151a;
+      border:1px solid #2a3138;
+      font-size:12px;
+      flex:0 0 auto;
+    }
+    .pill-main{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;white-space:nowrap}
+    .pill-main .shield{color:#9cebe1}
+    .pill-score{
+      margin-left:auto;
+      background:#101318;
+      border:1px solid #29313a;
+      border-radius:999px;
+      font-size:11px;
+      padding:4px 8px;
+      min-width:54px;
+      text-align:center;
+    }
+    .pill-extra{
+      max-width:0;
+      opacity:0;
+      white-space:nowrap;
+      font-size:11px;
+      color:#93a0b3;
+      transition:.25s ease;
+    }
+    .overlay:hover .pill-extra{max-width:180px;opacity:1}
+    .spinner{
+      width:14px;height:14px;border-radius:50%;
+      border:2px solid rgba(255,255,255,.22);
+      border-top-color:var(--accent);
+      animation:spin .7s linear infinite;
+      display:none;
+    }
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    .toolbar{
+      width:40px;
+      border-radius:12px;
+      border:1px solid #303039;
+      background:#17171f;
+      padding:6px 0;
+      display:grid;
+      gap:4px;
+      justify-items:center;
+      transform:translateX(20px);
+      opacity:0;
+      pointer-events:none;
+      transition:.25s ease;
+    }
+    .overlay:hover .toolbar{
+      transform:translateX(0);
+      opacity:1;
+      pointer-events:auto;
+    }
+    .tb-btn{
+      width:30px;height:30px;
+      border-radius:8px;
+      border:1px solid #31313b;
+      background:#20212a;
+      color:#cfd6e3;
+      font-size:14px;
+      cursor:pointer;
+    }
+    .tb-btn:hover{border-color:rgba(2,195,154,.5);color:#aef8ea}
+
+    .remed{
+      position:absolute;
+      top:0;
+      right:-420px;
+      width:400px;
+      height:100%;
+      background:#101118;
+      border-left:1px solid #2d3038;
+      transition:right .28s ease-out;
+      z-index:5;
+      display:flex;
+      flex-direction:column;
+      box-shadow:-12px 0 24px rgba(0,0,0,.4);
+    }
+    .remed.open{right:0}
+    .remed-head{
+      padding:12px;
+      border-bottom:1px solid #2f323b;
+      background:#151720;
+      display:grid;
+      gap:8px;
+    }
+    .head-row{display:flex;justify-content:space-between;align-items:center}
+    .head-row h3{font-size:16px}
+    .risk-badge{
+      font-size:11px;
+      font-weight:700;
+      padding:4px 8px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.2);
+    }
+    .risk-medium{background:rgba(255,179,0,.15);color:#ffe0a3;border-color:rgba(255,179,0,.4)}
+    .risk-critical{background:rgba(229,57,53,.18);color:#ffb0ae;border-color:rgba(229,57,53,.45)}
+    .risk-safe{background:rgba(34,197,94,.16);color:#ace5bf;border-color:rgba(34,197,94,.4)}
+    .banner{
+      border-radius:8px;
+      font-size:12px;
+      font-weight:700;
+      padding:7px 9px;
+    }
+    .banner.block{background:rgba(229,57,53,.17);border:1px solid rgba(229,57,53,.4);color:#ffbab7}
+    .banner.ok{background:rgba(34,197,94,.17);border:1px solid rgba(34,197,94,.45);color:#b6ecc8}
+    .score-row{
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
+    .score-ring{
+      width:58px;
+      height:58px;
+      flex:0 0 auto;
+    }
+    .score-meta{
+      font-size:12px;
+      color:#a4adbc;
+    }
+    .issues{
+      flex:1;
+      overflow:auto;
+      padding:12px;
+      display:grid;
+      gap:8px;
+      align-content:start;
+    }
+    .issue{
+      background:#f6f8fb;
+      color:#14161c;
+      border-radius:10px;
+      border:1px solid #d9deea;
+      padding:8px;
+      display:grid;
+      gap:7px;
+      position:relative;
+      overflow:hidden;
+    }
+    .issue::before{
+      content:"";
+      position:absolute;
+      left:0;top:0;bottom:0;
+      width:4px;
+      background:var(--warn);
+    }
+    .issue.critical::before{background:var(--danger)}
+    .issue.fixed{
+      opacity:.76;
+      border-color:#cdebd8;
+      background:#eafaf0;
+    }
+    .issue.fixed::after{
+      content:"✓";
+      position:absolute;
+      right:8px;
+      top:7px;
+      color:#1f9d55;
+      font-weight:800;
+    }
+    .i-top{
+      display:flex;
+      justify-content:space-between;
+      gap:8px;
+      font-size:12px;
+      font-weight:700;
+    }
+    .i-prev{
+      font-family:ui-monospace,Consolas,monospace;
+      font-size:11px;
+      color:#4e5663;
+      background:#f0f3f8;
+      border-radius:6px;
+      padding:5px 6px;
+    }
+    .i-actions{
+      display:flex;
+      gap:6px;
+    }
+    .tiny{
+      border-radius:7px;
+      font-size:11px;
+      font-weight:700;
+      border:1px solid #ccd4e1;
+      background:#fff;
+      padding:4px 8px;
+      cursor:pointer;
+    }
+    .tiny.primary{background:#1f8f72;color:#fff;border-color:#1f8f72}
+    .tiny:disabled{opacity:.45;cursor:not-allowed}
+    .panel-foot{
+      border-top:1px solid #2f323a;
+      padding:10px 12px 12px;
+      display:grid;
+      gap:8px;
+      background:#13161d;
+    }
+    .foot-actions{
+      display:flex;
+      gap:7px;
+      flex-wrap:wrap;
+    }
+    .foot-btn{
+      border:1px solid #36404d;
+      background:#1f2530;
+      color:#d9e1ee;
+      border-radius:8px;
+      font-size:12px;
+      font-weight:700;
+      padding:7px 10px;
+      cursor:pointer;
+    }
+    .foot-btn.primary{
+      background:var(--accent);
+      border-color:rgba(2,195,154,.7);
+      color:#04241e;
+    }
+    .foot-btn.dim{opacity:.45;cursor:not-allowed}
+    .preview{
+      background:#0f1319;
+      border:1px solid #2c3440;
+      border-radius:8px;
+      padding:8px;
+      font-size:11px;
+      color:#d5deec;
+      line-height:1.4;
+      min-height:60px;
+      white-space:pre-wrap;
+    }
+    .mask-row{
+      display:none;
+      gap:8px;
+      align-items:center;
+      font-size:11px;
+      color:#a4adbc;
+    }
+    .mask-row.show{display:flex}
+    .mask-range{flex:1}
+    .char-pop{
+      position:absolute;
+      right:16px;
+      bottom:74px;
+      z-index:7;
+      font-size:12px;
+      background:#161b22;
+      border:1px solid #353c47;
+      color:#d7dfec;
+      border-radius:10px;
+      padding:7px 9px;
+      transform:translateY(10px);
+      opacity:0;
+      transition:.25s ease;
+      pointer-events:none;
+    }
+    .char-pop.show{transform:translateY(0);opacity:1}
+    .toast{
+      position:absolute;
+      left:50%;
+      bottom:18px;
+      transform:translate(-50%,8px);
+      background:#12151c;
+      border:1px solid #2f3843;
+      border-radius:10px;
+      padding:7px 10px;
+      color:#d8e0ed;
+      font-size:12px;
+      opacity:0;
+      transition:.25s ease;
+      z-index:9;
+      pointer-events:none;
+      white-space:nowrap;
+      max-width:90%;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .toast.show{opacity:1;transform:translate(-50%,0)}
+    .settings-mini{
+      position:absolute;
+      right:58px;
+      bottom:8px;
+      width:220px;
+      background:#151922;
+      border:1px solid #343c49;
+      border-radius:10px;
+      padding:10px;
+      z-index:8;
+      display:none;
+      font-size:12px;
+      color:#cfd8e8;
+    }
+    .settings-mini.open{display:grid;gap:8px}
+    .settings-mini h4{font-size:12px}
+    .set-row{display:flex;justify-content:space-between;align-items:center}
+    .footer-note{
+      margin-top:14px;
+      color:#9ba5b5;
+      font-size:13px;
+      line-height:1.5;
+    }
+    .footer-note a{
+      color:#9ef1e3;
+      font-weight:600;
+      text-decoration:none;
+    }
+    .footer-note a:hover{text-decoration:underline}
+    @media (max-width:980px){
+      .demo-wrap{
+        grid-template-columns:1fr;
+      }
+      .chat-side{
+        min-height:460px;
+      }
+      .overlay-side{
+        min-height:520px;
+        border-top:1px solid var(--line);
+      }
+      .remed{
+        width:100%;
+        right:-100%;
+      }
+      .overlay:hover .pill{
+        width:248px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>Try Core Sentinel - Live in Your Browser</h1>
+    <p class="sub">Click a paste button or type your own text to see real-time PII detection in action. No installation required.</p>
+
+    <section class="demo-wrap">
+      <div class="chat-side">
+        <div class="chat-head">
+          <h2>AI Assistant</h2>
+          <select class="model-select" aria-label="Model selector">
+            <option>gpt-4.1-mini</option>
+            <option>claude-3.7-sonnet</option>
+            <option>gemini-2.5-pro</option>
+          </select>
+        </div>
+
+        <div id="messages" class="messages">
+          <div class="msg ai">Hello! How can I help you today?</div>
+          <div class="msg user">Can you help me debug this config file?</div>
+          <div class="msg ai">Of course! Please paste your configuration.</div>
+        </div>
+
+        <div class="composer">
+          <div class="demo-btns">
+            <button class="demo-btn safe" id="safeBtn">🟢 Paste Safe Text</button>
+            <button class="demo-btn warn" id="piiBtn">🟡 Paste PII Text</button>
+            <button class="demo-btn crit" id="criticalBtn">🔴 Paste Critical Data</button>
+          </div>
+          <div class="input-row">
+            <textarea id="chatInput" placeholder="Type or paste your message here..."></textarea>
+            <button class="send-btn" id="sendBtn">Send</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="overlay-side">
+        <div class="traffic" aria-label="Risk traffic lights">
+          <span class="dot red" id="dotRed"></span>
+          <span class="dot amber" id="dotAmber"></span>
+          <span class="dot green on" id="dotGreen"></span>
+        </div>
+
+        <div class="char-pop" id="charPop"></div>
+        <div class="toast" id="toast"></div>
+
+        <aside class="remed" id="remPanel">
+          <div class="remed-head">
+            <div class="head-row">
+              <h3>Sentinel</h3>
+              <span class="risk-badge risk-medium" id="riskBadge">Medium</span>
+            </div>
+            <div class="banner block" id="topBanner" style="display:none">⊘ Paste blocked - fix required</div>
+            <div class="score-row">
+              <svg class="score-ring" viewBox="0 0 64 64">
+                <circle cx="32" cy="32" r="25" fill="none" stroke="#2c3340" stroke-width="8"></circle>
+                <circle id="scoreArc" cx="32" cy="32" r="25" fill="none" stroke="#ffb300" stroke-linecap="round" stroke-width="8" stroke-dasharray="157.1" stroke-dashoffset="157.1" transform="rotate(-90 32 32)"></circle>
+                <text id="scoreTxt" x="32" y="36" text-anchor="middle" fill="#e8e8e8" font-size="15" font-weight="800">0</text>
+              </svg>
+              <div class="score-meta">
+                <div><strong id="issueCount">0 issues found</strong></div>
+                <div id="panelHint">Review and remediate before sending.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="issues" id="issues"></div>
+
+          <div class="panel-foot">
+            <div class="mask-row" id="maskRow">
+              <span>Mask mode</span>
+              <input id="maskRange" class="mask-range" type="range" min="0" max="3" value="0">
+              <span id="maskLabel">Partial</span>
+            </div>
+            <div class="preview" id="safePreview">No changes yet.</div>
+            <div class="foot-actions">
+              <button class="foot-btn" id="redactBtn">Redact</button>
+              <button class="foot-btn" id="rephraseBtn">Rephrase</button>
+              <button class="foot-btn primary" id="fixAllBtn">Fix All</button>
+              <button class="foot-btn" id="skipAllBtn">Skip All</button>
+              <button class="foot-btn" id="copyBtn">Copy</button>
+              <button class="foot-btn dim" id="proceedBtn">Proceed anyway</button>
+            </div>
+          </div>
+        </aside>
+
+        <div class="overlay">
+          <div class="pill" id="pill">
+            <span class="pill-ico" id="pillStatus">⏻</span>
+            <div class="pill-main">
+              <span class="shield">🛡</span>
+              <span id="pillLabel">SILENT</span>
+            </div>
+            <div class="spinner" id="pillSpin"></div>
+            <div class="pill-score" id="pillScore">0</div>
+            <div class="pill-extra" id="pillExtra">Not monitoring | SILENT | ✓0 safe</div>
+          </div>
+
+          <div class="settings-mini" id="settingsMini">
+            <h4>Widget Settings</h4>
+            <div class="set-row"><span>Live scan</span><strong>On</strong></div>
+            <div class="set-row"><span>Mode</span><strong>Balanced</strong></div>
+            <div class="set-row"><span>Auto-copy safe text</span><strong>On</strong></div>
+          </div>
+
+          <div class="toolbar">
+            <button class="tb-btn" data-action="redact" title="Redact">✂</button>
+            <button class="tb-btn" data-action="encrypt" title="Encrypt">🔐</button>
+            <button class="tb-btn" data-action="copy" title="Copy">📋</button>
+            <button class="tb-btn" data-action="settings" title="Settings">⚙</button>
+            <button class="tb-btn" data-action="close" title="Close panel">⤴</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <p class="footer-note">
+      This is a browser simulation. The real Core Sentinel runs as a desktop app with deeper OS integration, DeBERTa ML model inference, and spaCy NER - detecting PII that simple regex cannot catch.
+      <br>
+      <a href="https://github.com/" target="_blank" rel="noopener">Download the real thing -></a>
+    </p>
+  </div>
+
+  <script>
+    const PRESETS = {
+      safe: "Can you explain the difference between TCP and UDP protocols?",
+      pii: "Please review John Smith's application. His email is john.smith@company.com and phone is 555-0142. He's based in 742 Evergreen Terrace, Springfield.",
+      critical: "Here's my config:\\nOPENAI_API_KEY=sk-proj-abc123def456ghi789\\nDATABASE_URL=postgresql://admin:P@ssw0rd123@db.internal.company.com:5432/prod"
+    };
+
+    const REGEX = {
+      email: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
+      phone: /(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\b\d{3}[-.\s]?\d{4}\b/g,
+      ssn: /\d{3}-\d{2}-\d{4}/g,
+      api: /sk-[a-zA-Z0-9-]{20,}|AKIA[A-Z0-9]{16}|ghp_[a-zA-Z0-9]{36}/g,
+      cc: /\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}/g,
+      fullName: /\b[A-Z][a-z]+ [A-Z][a-z]+\b/g,
+      address: /\b\d{2,5}\s+[A-Za-z0-9.\s]{3,40}(Street|St|Avenue|Ave|Road|Rd|Terrace|Lane|Ln)\b/gi,
+      dbUrl: /postgres(ql)?:\/\/[^\s]+/gi,
+      password: /password\s*[:=]\s*[^\s]+|:[^@\s]{6,}@/gi
+    };
+
+    const el = {
+      input: document.getElementById("chatInput"),
+      send: document.getElementById("sendBtn"),
+      msgs: document.getElementById("messages"),
+      safeBtn: document.getElementById("safeBtn"),
+      piiBtn: document.getElementById("piiBtn"),
+      criticalBtn: document.getElementById("criticalBtn"),
+      dotRed: document.getElementById("dotRed"),
+      dotAmber: document.getElementById("dotAmber"),
+      dotGreen: document.getElementById("dotGreen"),
+      pillScore: document.getElementById("pillScore"),
+      pillLabel: document.getElementById("pillLabel"),
+      pillStatus: document.getElementById("pillStatus"),
+      pillSpin: document.getElementById("pillSpin"),
+      pillExtra: document.getElementById("pillExtra"),
+      remPanel: document.getElementById("remPanel"),
+      riskBadge: document.getElementById("riskBadge"),
+      scoreArc: document.getElementById("scoreArc"),
+      scoreTxt: document.getElementById("scoreTxt"),
+      issueCount: document.getElementById("issueCount"),
+      panelHint: document.getElementById("panelHint"),
+      issues: document.getElementById("issues"),
+      topBanner: document.getElementById("topBanner"),
+      fixAll: document.getElementById("fixAllBtn"),
+      skipAll: document.getElementById("skipAllBtn"),
+      copy: document.getElementById("copyBtn"),
+      redact: document.getElementById("redactBtn"),
+      rephrase: document.getElementById("rephraseBtn"),
+      proceed: document.getElementById("proceedBtn"),
+      preview: document.getElementById("safePreview"),
+      maskRow: document.getElementById("maskRow"),
+      maskRange: document.getElementById("maskRange"),
+      maskLabel: document.getElementById("maskLabel"),
+      toast: document.getElementById("toast"),
+      charPop: document.getElementById("charPop"),
+      settingsMini: document.getElementById("settingsMini")
+    };
+
+    const state = {
+      busy: false,
+      safeStreak: 0,
+      lastRaw: "",
+      lastSafe: "",
+      lastIssues: [],
+      panelMode: "none"
+    };
+
+    const MASK_MODES = ["Partial", "Stars", "Full", "Type only"];
+
+    function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+    function toast(msg) {
+      el.toast.textContent = msg;
+      el.toast.classList.add("show");
+      clearTimeout(toast._t);
+      toast._t = setTimeout(() => el.toast.classList.remove("show"), 2000);
+    }
+
+    function charPop(msg) {
+      el.charPop.textContent = msg;
+      el.charPop.classList.add("show");
+      clearTimeout(charPop._t);
+      charPop._t = setTimeout(() => el.charPop.classList.remove("show"), 2500);
+    }
+
+    function setLights(mode) {
+      [el.dotRed, el.dotAmber, el.dotGreen].forEach((d) => d.classList.remove("on"));
+      if (mode === "green") el.dotGreen.classList.add("on");
+      if (mode === "amber") el.dotAmber.classList.add("on");
+      if (mode === "red") el.dotRed.classList.add("on");
+    }
+
+    function setPill(mode, score = 0) {
+      el.pillScore.textContent = String(score);
+      if (mode === "safe") {
+        el.pillLabel.textContent = "SILENT";
+        el.pillStatus.textContent = "✓";
+      } else if (mode === "warn") {
+        el.pillLabel.textContent = "WARN";
+        el.pillStatus.textContent = "⚠";
+      } else if (mode === "block") {
+        el.pillLabel.textContent = "BLOCK";
+        el.pillStatus.textContent = "🔒";
+      } else {
+        el.pillLabel.textContent = "SILENT";
+        el.pillStatus.textContent = "⏻";
+      }
+      el.pillExtra.textContent = `Not monitoring | ${el.pillLabel.textContent} | ✓${state.safeStreak} safe`;
+    }
+
+    function setSpinner(on) {
+      el.pillSpin.style.display = on ? "inline-block" : "none";
+    }
+
+    function appendMsg(type, text) {
+      const div = document.createElement("div");
+      div.className = `msg ${type}`;
+      div.textContent = text;
+      el.msgs.appendChild(div);
+      el.msgs.scrollTop = el.msgs.scrollHeight;
+    }
+
+    async function typeIntoInput(text) {
+      el.input.value = "";
+      for (let i = 0; i < text.length; i++) {
+        el.input.value += text[i];
+        await sleep(50);
+      }
+    }
+
+    async function animateScore(target, color) {
+      const c = 157.1;
+      el.scoreArc.style.stroke = color;
+      for (let n = 0; n <= target; n += 2) {
+        el.scoreTxt.textContent = String(n);
+        const p = Math.max(0, Math.min(100, n));
+        el.scoreArc.style.strokeDashoffset = String(c * (1 - p / 100));
+        await sleep(8);
+      }
+      el.scoreTxt.textContent = String(target);
+      el.scoreArc.style.strokeDashoffset = String(c * (1 - target / 100));
+    }
+
+    function openPanel() { el.remPanel.classList.add("open"); }
+    function closePanel() { el.remPanel.classList.remove("open"); }
+
+    function detectIssues(text) {
+      const issues = [];
+      const push = (type, sev, re) => {
+        const m = text.match(re);
+        if (m) {
+          issues.push({ type, severity: sev, match: m[0], fixed: false });
+        }
+      };
+      push("API Key", "critical", REGEX.api);
+      push("Database URL", "critical", REGEX.dbUrl);
+      push("Password", "critical", REGEX.password);
+      push("SSN", "critical", REGEX.ssn);
+      push("Credit Card", "critical", REGEX.cc);
+      push("Email", "medium", REGEX.email);
+      push("Phone", "medium", REGEX.phone);
+      push("Full Name", "medium", REGEX.fullName);
+      push("Address", "medium", REGEX.address);
+
+      const unique = [];
+      const seen = new Set();
+      for (const i of issues) {
+        const key = `${i.type}|${i.match}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        unique.push(i);
+      }
+      return unique;
+    }
+
+    function maskByMode(raw, modeIdx = 0) {
+      const mode = MASK_MODES[modeIdx];
+      let txt = raw;
+      const masks = {
+        email: () => txt = txt.replace(REGEX.email, (m) => {
+          if (mode === "Full") return "[EMAIL]";
+          if (mode === "Type only") return "[EMAIL]";
+          if (mode === "Stars") return m.replace(/[^@.]/g, "*");
+          const [name, dom] = m.split("@");
+          return `${name[0]}***.${name.slice(-1)}@${dom[0]}******.com`;
+        }),
+        phone: () => txt = txt.replace(REGEX.phone, (m) => mode === "Type only" ? "[PHONE]" : mode === "Full" ? "[PHONE]" : mode === "Stars" ? m.replace(/\d/g, "*") : m.replace(/\d(?=\d{2})/g, "*")),
+        ssn: () => txt = txt.replace(REGEX.ssn, (m) => mode === "Type only" || mode === "Full" ? "[SSN]" : mode === "Stars" ? "***-**-****" : "***-**-" + m.slice(-4)),
+        cc: () => txt = txt.replace(REGEX.cc, (m) => mode === "Type only" || mode === "Full" ? "[CARD]" : mode === "Stars" ? "**** **** **** ****" : "**** **** **** " + m.replace(/\D/g, "").slice(-4)),
+        api: () => txt = txt.replace(REGEX.api, () => mode === "Type only" || mode === "Full" ? "[API_KEY]" : mode === "Stars" ? "sk-************************" : "sk-****" + Math.random().toString(36).slice(2, 7)),
+        dbUrl: () => txt = txt.replace(REGEX.dbUrl, () => mode === "Type only" || mode === "Full" ? "[DATABASE_URL]" : "postgresql://***:***@db.***:5432/***"),
+        pwd: () => txt = txt.replace(REGEX.password, () => mode === "Type only" || mode === "Full" ? "password=[REDACTED]" : "password=********"),
+        name: () => txt = txt.replace(REGEX.fullName, (m) => mode === "Type only" || mode === "Full" ? "[NAME]" : m.replace(/[A-Za-z]/g, "*").replace(/\*+ /, "J*** ")),
+        addr: () => txt = txt.replace(REGEX.address, () => mode === "Type only" || mode === "Full" ? "[ADDRESS]" : "7** E******** T******")
+      };
+      Object.values(masks).forEach((fn) => fn());
+      return txt;
+    }
+
+    function renderIssues(issues, critical = false) {
+      el.issues.innerHTML = "";
+      issues.forEach((issue, idx) => {
+        const box = document.createElement("div");
+        box.className = `issue ${issue.severity === "critical" ? "critical" : ""} ${issue.fixed ? "fixed" : ""}`;
+        box.innerHTML = `
+          <div class="i-top">
+            <span>${issue.severity === "critical" ? "🔴" : "🟡"} ${issue.type}</span>
+            <span>${issue.fixed ? "Fixed" : "Needs action"}</span>
+          </div>
+          <div class="i-prev">${issue.match.slice(0, 48)}${issue.match.length > 48 ? "..." : ""}</div>
+          <div class="i-actions">
+            <button class="tiny primary" data-fix="${idx}">Fix</button>
+            <button class="tiny" data-skip="${idx}" ${critical ? "disabled" : ""}>Skip</button>
+          </div>
+        `;
+        el.issues.appendChild(box);
+      });
+      el.issueCount.textContent = `${issues.length} issues found`;
+      bindIssueActions();
+    }
+
+    function bindIssueActions() {
+      el.issues.querySelectorAll("[data-fix]").forEach((b) => {
+        b.onclick = () => {
+          const i = Number(b.dataset.fix);
+          state.lastIssues[i].fixed = true;
+          renderIssues(state.lastIssues, state.panelMode === "critical");
+          updatePreview();
+          if (state.lastIssues.every((x) => x.fixed || x.severity !== "critical")) {
+            onAllFixed(state.panelMode === "critical");
+          }
+        };
+      });
+      el.issues.querySelectorAll("[data-skip]").forEach((b) => {
+        b.onclick = () => {
+          const i = Number(b.dataset.skip);
+          state.lastIssues[i].fixed = true;
+          renderIssues(state.lastIssues, state.panelMode === "critical");
+          updatePreview();
+        };
+      });
+    }
+
+    function updatePreview() {
+      const modeIdx = Number(el.maskRange.value || 0);
+      state.lastSafe = maskByMode(state.lastRaw, modeIdx);
+      el.preview.textContent = state.lastSafe || "No changes yet.";
+    }
+
+    async function applyFixAll() {
+      const cards = [...state.lastIssues];
+      for (let i = 0; i < cards.length; i++) {
+        state.lastIssues[i].fixed = true;
+        renderIssues(state.lastIssues, state.panelMode === "critical");
+        updatePreview();
+        await sleep(200);
+      }
+      onAllFixed(state.panelMode === "critical");
+      toast("All fixed ✓");
+    }
+
+    function onAllFixed(wasCritical) {
+      if (wasCritical) {
+        el.topBanner.style.display = "block";
+        el.topBanner.className = "banner ok";
+        el.topBanner.textContent = "✅ Safe to paste now";
+        el.proceed.classList.remove("dim");
+      }
+    }
+
+    async function handleSafeFlow(source) {
+      setLights("green");
+      setPill("safe", 4 + state.safeStreak);
+      await animateScore(8, "#22c55e");
+      state.safeStreak += 1;
+      setPill("safe", 8);
+      toast("✓ Safe - no PII detected");
+      appendMsg("user", source);
+      await sleep(320);
+      appendMsg("ai", "TCP is connection-oriented and reliable. UDP is connectionless, faster, and best for low-latency streaming.");
+    }
+
+    async function handleWarnFlow(source, issues) {
+      state.panelMode = "warn";
+      setLights("amber");
+      setPill("warn", 62);
+      charPop("😬 Heads up - check this before pasting");
+      el.riskBadge.className = "risk-badge risk-medium";
+      el.riskBadge.textContent = "Medium";
+      el.topBanner.style.display = "none";
+      el.panelHint.textContent = "Review and remediate before sending.";
+      state.lastRaw = source;
+      state.lastIssues = issues;
+      renderIssues(issues, false);
+      openPanel();
+      await animateScore(62, "#ffb300");
+      updatePreview();
+    }
+
+    async function handleCriticalFlow(source, issues) {
+      state.panelMode = "critical";
+      setLights("red");
+      setPill("block", 94);
+      charPop("🤦 This would expose your credentials!");
+      el.riskBadge.className = "risk-badge risk-critical";
+      el.riskBadge.textContent = "Critical";
+      el.topBanner.style.display = "block";
+      el.topBanner.className = "banner block";
+      el.topBanner.textContent = "⊘ Paste blocked - fix required";
+      el.panelHint.textContent = "Critical data must be remediated.";
+      state.lastRaw = source;
+      state.lastIssues = issues.map((i) => ({ ...i, severity: "critical" }));
+      renderIssues(state.lastIssues, true);
+      openPanel();
+      await animateScore(94, "#e53935");
+      updatePreview();
+    }
+
+    async function runScan(text, forced = "auto") {
+      if (state.busy) return;
+      state.busy = true;
+      el.send.disabled = true;
+      el.settingsMini.classList.remove("open");
+      setSpinner(true);
+      await sleep(500);
+      setSpinner(false);
+
+      const issues = detectIssues(text);
+      const criticalHits = issues.filter((i) => i.severity === "critical");
+      const warnHits = issues.filter((i) => i.severity === "medium");
+
+      if (forced === "safe") {
+        closePanel();
+        await handleSafeFlow(text);
+      } else if (forced === "warn") {
+        await handleWarnFlow(text, issues.length ? issues : [
+          { type: "Full Name", severity: "medium", match: "John Smith", fixed: false },
+          { type: "Email", severity: "medium", match: "john.smith@company.com", fixed: false },
+          { type: "Phone", severity: "medium", match: "555-0142", fixed: false },
+          { type: "Address", severity: "medium", match: "742 Evergreen Terrace", fixed: false }
+        ]);
+      } else if (forced === "critical") {
+        await handleCriticalFlow(text, issues.length ? issues : [
+          { type: "API Key", severity: "critical", match: "sk-proj-abc123def456ghi789", fixed: false },
+          { type: "Database URL", severity: "critical", match: "postgresql://admin:...", fixed: false },
+          { type: "Password", severity: "critical", match: "P@ssw0rd123", fixed: false }
+        ]);
+      } else if (criticalHits.length) {
+        await handleCriticalFlow(text, criticalHits);
+      } else if (warnHits.length) {
+        await handleWarnFlow(text, warnHits);
+      } else {
+        closePanel();
+        await handleSafeFlow(text);
+      }
+      state.busy = false;
+      el.send.disabled = false;
+    }
+
+    async function presetFlow(kind) {
+      const text = PRESETS[kind];
+      await typeIntoInput(text);
+      await runScan(text, kind === "safe" ? "safe" : kind === "pii" ? "warn" : "critical");
+    }
+
+    function sanitizeAIReply(input) {
+      if (/tcp|udp/i.test(input)) {
+        return "Great topic. TCP guarantees ordered delivery with acknowledgements. UDP skips the handshake for lower latency.";
+      }
+      if (/config|api|database|password/i.test(input)) {
+        return "I can help. Share the sanitized snippet and I will suggest secure, production-ready changes.";
+      }
+      return "Got it. I can break this down step-by-step and suggest a safe remediation path.";
+    }
+
+    async function sendCurrentInput() {
+      const txt = el.input.value.trim();
+      if (!txt || state.busy) return;
+      await runScan(txt, "auto");
+      if (!el.remPanel.classList.contains("open")) {
+        appendMsg("ai", sanitizeAIReply(txt));
+      }
+      el.input.value = "";
+    }
+
+    function resetPanel() {
+      state.lastIssues = [];
+      state.lastRaw = "";
+      state.lastSafe = "";
+      el.issues.innerHTML = "";
+      el.preview.textContent = "No changes yet.";
+      el.topBanner.style.display = "none";
+      el.maskRow.classList.remove("show");
+      el.maskRange.value = "0";
+      el.maskLabel.textContent = "Partial";
+      el.proceed.classList.add("dim");
+    }
+
+    el.safeBtn.onclick = () => { resetPanel(); presetFlow("safe"); };
+    el.piiBtn.onclick = () => { resetPanel(); presetFlow("pii"); };
+    el.criticalBtn.onclick = () => { resetPanel(); presetFlow("critical"); };
+    el.send.onclick = sendCurrentInput;
+    el.input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendCurrentInput();
+      }
+    });
+
+    el.fixAll.onclick = async () => {
+      if (!state.lastIssues.length) return;
+      await applyFixAll();
+    };
+    el.skipAll.onclick = () => {
+      closePanel();
+      toast("Skipped review");
+    };
+    el.copy.onclick = async () => {
+      if (!state.lastSafe) updatePreview();
+      try {
+        await navigator.clipboard.writeText(state.lastSafe || "");
+        toast("✓ Fixed - safe version copied");
+      } catch {
+        toast("Safe version ready");
+      }
+      if (state.lastSafe) {
+        appendMsg("user", state.lastSafe);
+        appendMsg("ai", "Looks clean. I can now safely help you with this.");
+      }
+      closePanel();
+    };
+    el.redact.onclick = () => {
+      el.maskRow.classList.add("show");
+      updatePreview();
+    };
+    el.rephrase.onclick = () => {
+      if (!state.lastRaw) return;
+      state.lastSafe = `Sanitized summary: ${maskByMode(state.lastRaw, 3)}`;
+      el.preview.textContent = state.lastSafe;
+      toast("Rephrased to safe summary");
+    };
+    el.proceed.onclick = () => {
+      if (el.proceed.classList.contains("dim")) return;
+      appendMsg("user", state.lastSafe || maskByMode(state.lastRaw, 0));
+      appendMsg("ai", "Safe paste accepted. Continuing with remediation-compliant content.");
+      closePanel();
+      toast("Auto-pasted safe version");
+    };
+    el.maskRange.oninput = () => {
+      const idx = Number(el.maskRange.value || 0);
+      el.maskLabel.textContent = MASK_MODES[idx];
+      updatePreview();
+    };
+
+    document.querySelectorAll(".tb-btn").forEach((btn) => {
+      btn.onclick = () => {
+        const a = btn.dataset.action;
+        if (a === "redact") toast("Masked and copied");
+        if (a === "encrypt") toast("Encrypted and copied");
+        if (a === "copy") toast("Copied to clipboard");
+        if (a === "settings") el.settingsMini.classList.toggle("open");
+        if (a === "close") closePanel();
+      };
+    });
+
+    setLights("green");
+    setPill("safe", 0);
+    animateScore(0, "#22c55e");
+
+    (function autoScenarioFromQuery() {
+      const params = new URLSearchParams(window.location.search);
+      const s = (params.get("scenario") || "").toLowerCase();
+      if (!s) return;
+      const run = async () => {
+        resetPanel();
+        if (s === "safe") await presetFlow("safe");
+        if (s === "warn" || s === "pii") await presetFlow("pii");
+        if (s === "critical" || s === "block") await presetFlow("critical");
+      };
+      window.setTimeout(run, 350);
+    })();
+  </script>
+</body>
+</html>

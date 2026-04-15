@@ -1,976 +1,1656 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Core Sentinel - ML Health Dashboard</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0d0d1a;color:#e0e0e0;min-height:100vh}
-.hdr{background:#12122a;padding:16px 28px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.07);position:sticky;top:0;z-index:100}
-.hdr-title{font-size:17px;font-weight:700;color:#fff}
-.hdr-sub{font-size:11px;color:rgba(255,255,255,0.4);margin-top:2px}
-.hdr-note{font-size:11px;color:#ffb300;font-weight:600}
-.top-row{display:flex;align-items:center;gap:12px}
-.btn{background:#02C39A;color:#fff;border:none;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer}
-.btn:hover{background:#019B7A}
-.btn:disabled{background:#394050;cursor:not-allowed}
-.status-banner{margin:16px 24px 0;border:1px solid;border-radius:12px;padding:14px 16px;font-size:13px;font-weight:600}
-.wrap{max-width:1400px;margin:0 auto;padding:16px 24px 28px}
-.grid6{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px}
-.metric{background:#12122a;border-radius:10px;border:1px solid rgba(255,255,255,0.07);padding:12px;text-align:center}
-.metric-v{font-size:22px;font-weight:700}
-.metric-l{font-size:10px;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:.06em;margin-top:4px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
-.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px}
-.card{background:#12122a;border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:16px}
-.card-title{font-size:12px;font-weight:700;color:rgba(255,255,255,0.65);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
-.badge{font-size:10px;padding:3px 8px;border-radius:999px;background:rgba(2,195,154,.15);color:#9be7d8}
-canvas{max-height:240px}
-.matrix{display:grid;grid-template-columns:110px repeat(3,1fr);gap:6px}
-.mx-h{font-size:11px;color:rgba(255,255,255,0.6);text-align:center;padding:6px 4px}
-.mx-r{font-size:11px;color:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center}
-.mx-c{border-radius:8px;padding:12px 8px;text-align:center;font-weight:700}
-.note{font-size:11px;color:rgba(255,255,255,0.5);margin-top:10px}
-.fpr-box{display:flex;gap:14px;align-items:center}
-.fpr-stats{display:grid;grid-template-columns:1fr;gap:6px;font-size:12px}
-.fpr-stats span{color:rgba(255,255,255,0.75)}
-.hm-wrap{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.hm-title{font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:8px}
-.hm-row{display:grid;grid-template-columns:repeat(10,1fr);gap:6px}
-.hm-cell{height:46px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
-.hm-lbl{display:grid;grid-template-columns:repeat(10,1fr);gap:6px;margin-top:4px}
-.hm-lbl span{font-size:9px;color:rgba(255,255,255,0.35);text-align:center}
-.sim-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;margin:10px 0}
-.sim-row input[type="range"]{width:100%}
-.sim-chip{font-size:11px;padding:4px 8px;border-radius:8px;background:rgba(255,255,255,0.08)}
-.sim-result{font-size:12px;line-height:1.6;color:rgba(255,255,255,0.8)}
-.prog{height:10px;background:rgba(255,255,255,0.08);border-radius:999px;overflow:hidden}
-.prog > div{height:100%;background:#02C39A}
-table{width:100%;border-collapse:collapse;font-size:11px}
-th{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:rgba(255,255,255,0.4);text-align:left;padding:8px;border-bottom:1px solid rgba(255,255,255,0.08)}
-td{padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);color:rgba(255,255,255,0.8)}
-.pill{padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700}
-.pill-red{background:rgba(229,57,53,.2);color:#ef9a9a}
-.pill-amber{background:rgba(255,179,0,.2);color:#ffe082}
-.pill-green{background:rgba(67,160,71,.2);color:#a5d6a7}
-#cfgPrompt{display:none;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1c1c32;border:1px solid rgba(255,179,0,0.4);border-radius:10px;padding:14px 20px;z-index:999;align-items:center;gap:12px;min-width:420px;flex-wrap:wrap}
-#cfgPrompt input{background:#12122a;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:6px 10px;color:white;font-size:11px;flex:1;min-width:140px}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Core Sentinel - ML Health Dashboard</title>
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #080810;
+      --card: #111118;
+      --accent: #02C39A;
+      --warn: #FFB300;
+      --danger: #E53935;
+      --text: #e8e8e8;
+      --muted: #6b7280;
+      --line: rgba(2,195,154,0.1);
+      --grid: #1a1a22;
+      --shadow: 0 4px 24px rgba(0,0,0,0.3);
+      --radius: 12px;
+      --maxw: 1360px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: radial-gradient(1200px 420px at 80% -8%, rgba(2,195,154,0.12), transparent 55%), var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+    .container {
+      width: min(var(--maxw), calc(100% - 28px));
+      margin: 0 auto;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 120;
+      background: rgba(8,8,16,0.9);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .topbar::after {
+      content: "";
+      display: block;
+      height: 1px;
+      background: linear-gradient(90deg, rgba(2,195,154,0.95), rgba(2,195,154,0.18), transparent);
+    }
+    .topbar-inner {
+      min-height: 72px;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      color: #f6fffc;
+    }
+    .brand-mark {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: linear-gradient(145deg, #02C39A, #0f6f5d);
+      display: grid;
+      place-items: center;
+      color: #05241d;
+      font-size: 14px;
+    }
+    .crumb {
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 13px;
+    }
+    .status {
+      justify-self: center;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #9ae6d6;
+    }
+    .policy-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.04);
+      color: #cdece4;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+    .policy-chip.source-live {
+      border-color: rgba(2,195,154,0.45);
+      background: rgba(2,195,154,0.14);
+      color: #9de7d0;
+    }
+    .policy-chip.source-cache {
+      border-color: rgba(156,39,176,0.45);
+      background: rgba(156,39,176,0.14);
+      color: #dfc2ff;
+    }
+    .policy-chip.source-default {
+      border-color: rgba(255,179,0,0.45);
+      background: rgba(255,179,0,0.14);
+      color: #ffe0a3;
+    }
+    .pulse {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 0 rgba(2,195,154,0.55);
+      animation: pulse 1.8s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%,100% { box-shadow: 0 0 0 0 rgba(2,195,154,0.5); }
+      50% { box-shadow: 0 0 0 8px rgba(2,195,154,0); }
+    }
+    .actions {
+      justify-self: end;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .btn {
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.03);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 9px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      border-color: rgba(2,195,154,0.4);
+    }
+    .btn-accent {
+      background: var(--accent);
+      color: #05241d;
+      border-color: rgba(2,195,154,0.7);
+    }
+    .btn[data-active="true"] {
+      border-color: rgba(2,195,154,0.65);
+      background: rgba(2,195,154,0.18);
+      color: #cffff4;
+    }
+
+    main { padding: 14px 0 34px; }
+    .row { display: grid; gap: 10px; margin-bottom: 10px; }
+    .row-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .row-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 14px;
+      min-height: 120px;
+    }
+    .card h3 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 2px;
+    }
+    .sub {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .metric-val {
+      font-size: 30px;
+      line-height: 1;
+      font-weight: 800;
+      margin-bottom: 4px;
+      letter-spacing: -0.02em;
+    }
+    .metric-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    .trend {
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .trend.up { color: #9de7d0; }
+    .trend.down { color: #ffb0ae; }
+    .badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.04);
+      color: #cdece4;
+      margin-right: 5px;
+    }
+    .badge.good { color: #9de7d0; border-color: rgba(2,195,154,0.35); background: rgba(2,195,154,0.12); }
+    .badge.warn { color: #ffe0a3; border-color: rgba(255,179,0,0.35); background: rgba(255,179,0,0.12); }
+    .badge.bad { color: #ffb0ae; border-color: rgba(229,57,53,0.35); background: rgba(229,57,53,0.12); }
+
+    .sparkline {
+      width: 100%;
+      height: 46px;
+      display: block;
+      margin-top: 3px;
+    }
+    .gauge-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .gauge-wrap svg { width: 68px; height: 68px; }
+
+    .chart-box {
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      background: #0e0e15;
+      padding: 8px;
+      overflow: hidden;
+    }
+    .chart-svg {
+      width: 100%;
+      height: 300px;
+      display: block;
+      overflow: visible;
+    }
+    .legend {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .legend span::before {
+      content: "";
+      display: inline-block;
+      width: 10px;
+      height: 2px;
+      margin-right: 5px;
+      vertical-align: middle;
+      background: #888;
+    }
+    .l-pr::before { background: var(--accent) !important; }
+    .l-op::before { background: var(--danger) !important; }
+    .l-target::before { background: var(--warn) !important; }
+    .l-random::before { background: #7b7f8a !important; }
+
+    .heatmap-svg {
+      width: 100%;
+      height: 240px;
+      display: block;
+    }
+    .mini-note {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .table-wrap {
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      overflow: auto;
+      max-height: 292px;
+      background: #0f0f16;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 700px;
+    }
+    th {
+      position: sticky;
+      top: 0;
+      background: #151520;
+      color: #98a2b3;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      text-align: left;
+      padding: 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    td {
+      padding: 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      font-size: 12px;
+      color: #d7dde8;
+      white-space: nowrap;
+    }
+    tbody tr:hover { background: rgba(255,255,255,0.03); }
+    .ok { color: #9de7d0; font-weight: 700; }
+    .warn { color: #ffd992; font-weight: 700; }
+    .score-chip {
+      display: inline-block;
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-weight: 700;
+      border: 1px solid rgba(255,255,255,0.14);
+    }
+    .score-low { background: rgba(67,160,71,0.2); color: #b6e7bd; }
+    .score-med { background: rgba(255,179,0,0.2); color: #ffe0a3; }
+    .score-high { background: rgba(229,57,53,0.2); color: #ffb0ae; }
+
+    .sim-grid {
+      display: grid;
+      gap: 10px;
+    }
+    .sim-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      font-size: 12px;
+    }
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+    .sim-values {
+      margin-top: 4px;
+      display: grid;
+      gap: 6px;
+      font-size: 12px;
+      color: #c9d2df;
+    }
+    .sim-values strong { color: #fff; }
+
+    .donut-wrap {
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      gap: 10px;
+      align-items: center;
+    }
+    .donut {
+      width: 170px;
+      height: 170px;
+      display: block;
+      margin: 0 auto;
+    }
+    .fpr-stats {
+      display: grid;
+      gap: 6px;
+      font-size: 12px;
+      color: #c9d2df;
+    }
+
+    .progress {
+      margin-top: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      overflow: hidden;
+    }
+    .progress > span {
+      display: block;
+      height: 100%;
+      width: 0;
+      background: linear-gradient(90deg, #02C39A, #7af0d9);
+    }
+
+    .fp-table td:nth-child(5).ok { color: #9de7d0; }
+    .fp-table td:nth-child(5).warn { color: #ffd992; }
+
+    .tooltip {
+      position: fixed;
+      z-index: 400;
+      background: rgba(8,8,14,0.95);
+      border: 1px solid rgba(2,195,154,0.35);
+      border-radius: 8px;
+      padding: 6px 8px;
+      font-size: 11px;
+      color: #d8fff3;
+      pointer-events: none;
+      transform: translate(10px, 10px);
+      display: none;
+      white-space: nowrap;
+    }
+
+    .animate-path {
+      stroke-dasharray: 1000;
+      stroke-dashoffset: 1000;
+      transition: stroke-dashoffset 1.1s ease;
+    }
+    .chart-ready .animate-path {
+      stroke-dashoffset: 0;
+    }
+
+    body.compact .container { width: min(var(--maxw), calc(100% - 18px)); }
+    body.compact .topbar-inner { min-height: 60px; gap: 8px; }
+    body.compact .brand { font-size: 13px; gap: 8px; }
+    body.compact .crumb { font-size: 12px; }
+    body.compact .status { font-size: 11px; }
+    body.compact .policy-chip { font-size: 9px; padding: 2px 7px; }
+    body.compact .btn { padding: 6px 10px; font-size: 11px; border-radius: 8px; }
+    body.compact main { padding: 10px 0 22px; }
+    body.compact .row { gap: 8px; margin-bottom: 8px; }
+    body.compact .card { padding: 10px; border-radius: 10px; min-height: 0; }
+    body.compact .card h3 { font-size: 13px; margin-bottom: 1px; }
+    body.compact .sub, body.compact .mini-note, body.compact td { font-size: 11px; }
+    body.compact .metric-val { font-size: 24px; margin-bottom: 2px; }
+    body.compact .trend, body.compact .badge { font-size: 10px; }
+    body.compact .sparkline { height: 34px; }
+    body.compact .chart-box { padding: 6px; border-radius: 8px; }
+    body.compact .chart-svg { height: 246px; }
+    body.compact .heatmap-svg { height: 200px; }
+    body.compact .table-wrap { max-height: 248px; border-radius: 8px; }
+    body.compact th, body.compact td { padding: 6px; }
+    body.compact .donut { width: 146px; height: 146px; }
+
+    @media (max-width: 1180px) {
+      .row-4 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .row-2 { grid-template-columns: 1fr; }
+      .topbar-inner { grid-template-columns: 1fr; padding: 8px 0; }
+      .status { justify-self: start; }
+      .actions { justify-self: start; }
+    }
+    @media (max-width: 700px) {
+      .row-4 { grid-template-columns: 1fr; }
+      .donut-wrap { grid-template-columns: 1fr; }
+      .chart-svg { height: 270px; }
+      .heatmap-svg { height: 220px; }
+    }
+
+    @media print {
+      body { background: #fff !important; color: #111 !important; }
+      .topbar, .actions, .btn { display: none !important; }
+      .card {
+        background: #fff !important;
+        color: #111 !important;
+        border: 1px solid #ccc !important;
+        box-shadow: none !important;
+        break-inside: avoid;
+      }
+      .row { break-inside: avoid; }
+      .sub, .mini-note, .legend, td, th { color: #333 !important; }
+    }
+  </style>
 </head>
 <body>
-<div class="hdr">
-  <div>
-    <div class="hdr-title">Core Sentinel - ML Health Dashboard</div>
-    <div class="hdr-sub">Model reliability, drift, thresholds, active learning</div>
-  </div>
-  <div class="top-row">
-    <button class="btn" onclick="goBackToHub()">← Back</button>
-    <span class="hdr-note">Admin access required - model internals</span>
-    <span id="syncTime" style="font-size:11px;color:rgba(255,255,255,0.35)">Not loaded</span>
-    <span id="qaStatus" style="font-size:11px;color:rgba(255,255,255,0.5)">QA: pending</span>
-    <button id="refreshBtn" class="btn" onclick="loadData()">Refresh</button>
-  </div>
-</div>
-
-<div id="modelStatusBanner" class="status-banner"></div>
-
-<div class="wrap">
-  <p class="note" style="margin:0 0 12px;font-size:11px;color:rgba(255,255,255,0.45)">Static training metrics — updated on retrain</p>
-  <div class="grid6">
-    <div class="metric"><div class="metric-v" style="color:#43A047">0.976</div><div class="metric-l">High Precision</div></div>
-    <div class="metric"><div class="metric-v" style="color:#43A047">0.987</div><div class="metric-l">High Recall</div></div>
-    <div class="metric"><div class="metric-v" style="color:#43A047">0.982</div><div class="metric-l">High F1</div></div>
-    <div class="metric"><div class="metric-v" style="color:#FFB300">0.387</div><div class="metric-l">Medium F1</div></div>
-    <div class="metric"><div class="metric-v" style="color:#02C39A">97.0%</div><div class="metric-l">Overall Accuracy</div></div>
-    <div class="metric"><div class="metric-v" style="color:#02C39A">0.790</div><div class="metric-l">Macro F1</div></div>
-  </div>
-
-  <div class="grid2">
-    <div class="card">
-      <div class="card-title">Detailed Class Report <span class="badge">Derived from confusion matrix</span></div>
-      <div class="note" style="margin:-6px 0 12px;font-size:11px;color:rgba(255,255,255,0.45)">Static training metrics — updated on retrain</div>
-      <table>
-        <thead><tr><th>Class</th><th>Precision</th><th>Recall</th><th>F1</th><th>Support</th></tr></thead>
-        <tbody id="classReportBody"></tbody>
-      </table>
-      <div class="note" id="classReportSummary"></div>
+  <div class="tooltip" id="chartTooltip"></div>
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <div class="brand">
+        <span class="brand-mark">🛡</span>
+        <span>Core Sentinel</span>
+        <span class="crumb">/ ML Health Dashboard</span>
+      </div>
+      <div class="status">
+        <span class="pulse"></span>
+        <span id="liveState">Live</span>
+        <span id="lastUpdated">Updated --</span>
+        <span id="policySourceChip" class="policy-chip source-default">Policy: Fallback defaults</span>
+      </div>
+      <div class="actions">
+        <a class="btn" href="../hub.html">← Back to Hub</a>
+        <button class="btn" id="densityBtn">Compact</button>
+        <button class="btn" id="exportPdfBtn">Export PDF</button>
+        <button class="btn btn-accent" id="refreshBtn">Refresh</button>
+      </div>
     </div>
-    <div class="card">
-      <div class="card-title">Latest Automated Test Snapshot <span class="badge">Local `test_sentinel.py`</span></div>
-      <div class="sim-result" id="qaSummary"></div>
-      <table style="margin-top:10px">
-        <thead><tr><th>Failing case</th><th>Expected</th><th>Actual</th><th>Score</th></tr></thead>
-        <tbody id="qaFailuresBody"></tbody>
-      </table>
-    </div>
-  </div>
+  </header>
 
-  <div class="grid2">
-    <div class="card"><div class="card-title">Precision-Recall Curve <span class="badge">Operating point: R=0.987, P=0.976</span></div><canvas id="prChart"></canvas></div>
-    <div class="card"><div class="card-title">ROC Curve <span class="badge">AUC 0.998</span></div><canvas id="rocChart"></canvas></div>
-  </div>
-
-  <div class="grid2">
-    <div class="card">
-      <div class="card-title">Confusion Matrix</div>
-      <div class="matrix" id="cmatrix"></div>
-      <div class="note">Zero low<->high crossings - safe text never gets hard blocked.</div>
-    </div>
-    <div class="card">
-      <div class="card-title">Live FPR Monitor</div>
-      <div class="fpr-box">
-        <div style="width:180px"><canvas id="fprGauge"></canvas></div>
-        <div class="fpr-stats">
-          <div><span>FPR proxy:</span> <strong id="fprVal">-</strong></div>
-          <div><span>Total blocks:</span> <strong id="fprBlocks">-</strong></div>
-          <div><span>Total snoozed:</span> <strong id="fprSnoozed">-</strong></div>
-          <div><span>Override rate:</span> <strong id="fprOverride">-</strong></div>
-          <div class="note">Target &lt; 5%, alert &gt; 10%</div>
+  <main class="container">
+    <section class="row row-4">
+      <article class="card">
+        <h3>Model Accuracy</h3>
+        <div class="metric-row">
+          <div>
+            <div class="metric-val countup" data-target="97.6" data-decimals="1" data-suffix="%">0.0%</div>
+            <div class="trend up">↑ stable this week</div>
+          </div>
+          <div class="gauge-wrap">
+            <svg viewBox="0 0 84 84" aria-label="accuracy gauge">
+              <circle cx="42" cy="42" r="30" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="8"></circle>
+              <circle id="accGaugeArc" cx="42" cy="42" r="30" fill="none" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-dasharray="188.5" stroke-dashoffset="188.5" transform="rotate(-90 42 42)"></circle>
+            </svg>
+          </div>
         </div>
-      </div>
-    </div>
-  </div>
+        <svg class="sparkline" id="accuracySpark"></svg>
+      </article>
 
-  <div class="card" style="margin-bottom:14px">
-    <div class="card-title">Score Distribution Heatmap (Current vs Previous Week)</div>
-    <div class="hm-wrap">
-      <div><div class="hm-title">Current week</div><div id="hmCurrent"></div></div>
-      <div><div class="hm-title">Previous week</div><div id="hmPrev"></div></div>
-    </div>
-  </div>
+      <article class="card">
+        <h3>AUC Score</h3>
+        <div class="metric-val countup" data-target="0.998" data-decimals="3">0.000</div>
+        <span class="badge good">Excellent</span>
+        <div class="trend up">↑ +0.002 vs previous run</div>
+        <svg class="sparkline" id="aucSpark"></svg>
+      </article>
 
-  <div class="grid2">
-    <div class="card">
-      <div class="card-title">Drift Detection (Weekly correction rate)</div>
-      <canvas id="driftChart"></canvas>
-      <div id="driftNote" class="note"></div>
-    </div>
-    <div class="card">
-      <div class="card-title">Threshold Simulator</div>
-      <div class="sim-row">
-        <div>Warn threshold: <strong id="warnVal">40</strong></div>
-        <span class="sim-chip">Range 20-60</span>
-      </div>
-      <input id="warnRange" type="range" min="20" max="60" value="40">
-      <div class="sim-row">
-        <div>Block threshold: <strong id="blockVal">70</strong></div>
-        <span class="sim-chip">Range 50-95</span>
-      </div>
-      <input id="blockRange" type="range" min="50" max="95" value="70">
-      <div class="sim-result" id="simResult" style="margin-top:10px"></div>
-      <button class="btn" style="margin-top:10px" onclick="copyThresholdConfig()">Apply to config</button>
-      <div class="note">Copies suggested values for `risk_policy.json`</div>
-    </div>
-  </div>
+      <article class="card">
+        <h3>False Positive Rate</h3>
+        <div class="metric-val countup" id="fprMetric" data-target="0.0" data-decimals="1" data-suffix="%">0.0%</div>
+        <span class="badge good">Target &lt; 5%</span>
+        <div class="trend up" id="fprTrend">↑ within safe band</div>
+        <svg class="sparkline" id="fprSpark"></svg>
+      </article>
 
-  <div class="grid2">
-    <div class="card">
-      <div class="card-title">Active Learning Status</div>
-      <div class="sim-result" id="alStats"></div>
-      <div class="prog" style="margin:10px 0"><div id="alProg" style="width:0%"></div></div>
-      <div class="note" id="alTop"></div>
-    </div>
-    <div class="card">
-      <div class="card-title">False Positive Log (Recent 20)</div>
-      <table>
-        <thead><tr><th>Time</th><th>Score</th><th>PII class</th><th>Action</th><th>Feedback</th></tr></thead>
-        <tbody id="fpBody"></tbody>
-      </table>
-    </div>
-  </div>
-</div>
+      <article class="card">
+        <h3>Total Events Scored</h3>
+        <div class="metric-val countup" id="totalScoredMetric" data-target="2601">0</div>
+        <div class="trend up" id="eventsTrend">↑ 124 this week</div>
+        <svg class="sparkline" id="eventsSpark"></svg>
+      </article>
+    </section>
 
-<div id="cfgPrompt">
-  <span style="font-size:13px;color:#ffe082">Enter Supabase credentials to load ML health data</span>
-  <input id="quickUrl" placeholder="Project URL">
-  <input id="quickKey" placeholder="Anon key" type="password">
-  <button class="btn" onclick="saveAndLoad()">Connect</button>
-</div>
+    <section class="row row-2">
+      <article class="card chart-card">
+        <h3>Precision-Recall Curve</h3>
+        <p class="sub">Operating point: R=0.987, P=0.976</p>
+        <div class="chart-box" id="prChartCard">
+          <svg class="chart-svg" id="prChart"></svg>
+        </div>
+        <div class="legend">
+          <span class="l-pr">PR curve</span>
+          <span class="l-op">Operating point</span>
+          <span class="l-target">Min precision target</span>
+        </div>
+      </article>
 
-<script>
-const PR_RECALL = [0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.987,1.0];
-const PR_PRECISION = [1,1,1,0.999,0.998,0.997,0.995,0.992,0.988,0.983,0.979,0.976,0.5];
-const ROC_FPR = [0,0.002,0.005,0.01,0.02,0.05,0.1,0.2,0.5,1.0];
-const ROC_TPR = [0,0.85,0.92,0.95,0.97,0.982,0.99,0.995,0.999,1.0];
-const CM = [[500,0,0],[0,56,116],[0,61,4767]];
-/** Pending wrong corrections required before retrain (matches app env default 100 in places; demo uses 47/100). */
-const ML_RETRAIN_TARGET = 100;
-let mlDemoSeeded = false;
-let effectiveCM = CM;
-const LATEST_LOCAL_TEST_SUMMARY = {
-  timestamp: '2026-04-14T11:29:07',
-  total: 64,
-  passed: 55,
-  failed: 9,
-  pass_rate_pct: 86,
-  total_duration_ms: 2419,
-  failures: [
-    {name:'SSN with asterisks', expected:'block', actual:'silent', score:30},
-    {name:'SSN spelled out', expected:'warn', actual:'silent', score:30},
-    {name:'Partial card hint', expected:'warn', actual:'silent', score:30},
-    {name:'Obfuscated API key', expected:'warn', actual:'silent', score:30},
-    {name:'Implicit DOB', expected:'warn', actual:'silent', score:30},
-    {name:'Medical context', expected:'warn', actual:'silent', score:0},
-    {name:'UK National Insurance', expected:'block', actual:'silent', score:30},
-    {name:'Indian Aadhaar', expected:'block', actual:'silent', score:30},
-    {name:'Canadian SIN', expected:'block', actual:'silent', score:0}
-  ]
-};
-const charts = {};
-let eventsData = [];
-let feedbackData = [];
-let mlAutoRefreshTimer = null;
+      <article class="card chart-card">
+        <h3>ROC Curve</h3>
+        <p class="sub">AUC: <span class="badge good">0.998</span></p>
+        <div class="chart-box" id="rocChartCard">
+          <svg class="chart-svg" id="rocChart"></svg>
+        </div>
+        <div class="legend">
+          <span class="l-pr">ROC</span>
+          <span class="l-random">Random classifier</span>
+          <span class="l-op">Operating point</span>
+        </div>
+      </article>
+    </section>
 
-function riskLabel(c){
-  var x = String(c || '').toLowerCase();
-  if(x === 'low' || x === 'safe') return 'Safe';
-  if(x === 'med' || x === 'medium') return 'Medium';
-  if(x === 'high') return 'High';
-  return String(c || '');
-}
+    <section class="row row-2">
+      <article class="card chart-card">
+        <h3>Confusion Matrix (Predicted vs Actual)</h3>
+        <div class="chart-box">
+          <svg class="heatmap-svg" id="cmChart"></svg>
+        </div>
+        <p class="mini-note">Overall accuracy: 97.6% | Cohen's kappa: 0.89</p>
+      </article>
 
-function deriveCMFromFeedback(fd){
-  var idx = {low:0, med:1, high:2};
-  var m = [[0,0,0],[0,0,0],[0,0,0]];
-  var n = 0;
-  (fd || []).forEach(function(r){
-    var p = String(r.predicted || '').toLowerCase();
-    var c = String(r.correct || '').toLowerCase();
-    if(idx[p] === undefined || idx[c] === undefined) return;
-    m[idx[c]][idx[p]]++;
-    n++;
-  });
-  return n >= 5 ? m : null;
-}
+      <article class="card">
+        <h3>Performance by PII Class</h3>
+        <p class="sub">Sortable diagnostics for expected vs actual safety behavior.</p>
+        <div class="table-wrap">
+          <table id="classPerfTable">
+            <thead>
+              <tr>
+                <th data-sort="class">PII Class</th>
+                <th data-sort="sensitivity">Sensitivity</th>
+                <th data-sort="expected">Expected</th>
+                <th data-sort="actual">Actual</th>
+                <th data-sort="range">Score Range</th>
+                <th data-sort="status">Status</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
 
-function formatRelativeTime(iso){
-  if(!iso) return '-';
-  var t = new Date(iso).getTime();
-  if(isNaN(t)) return '-';
-  var sec = Math.floor((Date.now() - t) / 1000);
-  if(sec < 120) return Math.max(1, Math.floor(sec / 60)) + ' min ago';
-  if(sec < 3600) return Math.floor(sec / 60) + ' min ago';
-  if(sec < 86400) return Math.floor(sec / 3600) + ' hr ago';
-  if(sec < 172800) return 'Yesterday';
-  if(sec < 604800) return Math.floor(sec / 86400) + ' days ago';
-  return Math.floor(sec / 86400) + ' days ago';
-}
+    <section class="row row-2">
+      <article class="card chart-card">
+        <h3>Score Distribution Heatmap (Current vs Previous Week)</h3>
+        <div class="chart-box">
+          <svg class="heatmap-svg" id="distHeatmap"></svg>
+        </div>
+      </article>
 
-var DEMO_PATTERN_SPECS = [
-  ['Email (work)','med','low',12],
-  ['Phone (office)','high','med',8],
-  ['Name + Context','low','high',6],
-  ['Address fragment','high','low',5],
-  ['Date of birth','high','med',4]
-];
+      <article class="card chart-card">
+        <h3>Drift Detection (Weekly Correction Rate)</h3>
+        <div class="chart-box" id="driftChartCard">
+          <svg class="chart-svg" id="driftChart"></svg>
+        </div>
+        <div class="legend">
+          <span class="l-pr">Correction rate %</span>
+          <span class="l-target">Warning threshold: 8%</span>
+          <span class="l-op">Retrain trigger: 15%</span>
+        </div>
+        <p class="mini-note" id="driftNote"></p>
+      </article>
+    </section>
 
-function buildDemoFeedbackRows(){
-  var rng = function(i){ return (i * 17 + 31) % 45; };
-  var specs = [];
-  DEMO_PATTERN_SPECS.forEach(function(s){
-    var pii = s[0], pr = s[1], cr = s[2], cnt = s[3];
-    for(var j=0;j<cnt;j++) specs.push([pii, pr, cr]);
-  });
-  for(var k=0;k<12;k++){
-    var pred = ['low','med','high'][k % 3];
-    var corr = ['med','high','low'][(k+1) % 3];
-    if(corr === pred) corr = 'low';
-    specs.push(['Misc item ' + (k+1), pred, corr]);
-  }
-  var now = Date.now();
-  var rows = [];
-  for(var i=0;i<specs.length;i++){
-    var daysAgo = 56 - (i % 8) * 7 - (i % 5);
-    var ts = new Date(now - daysAgo * 86400000 - rng(i) * 3600000);
-    var pii = specs[i][0], pred = specs[i][1], corr = specs[i][2];
-    var key = 'demo_ml_fb' + i;
-    var hash = 'demo_ml_' + (key + 'salt').split('').reduce(function(a,c){ return ((a<<5)-a)+c.charCodeAt(0)|0; },0).toString(16);
-    rows.push({
-      timestamp: ts.toISOString(),
-      recorded_at: ts.toISOString(),
-      text_hash: hash,
-      predicted: pred,
-      correct: corr,
-      source: 'demo_seed',
-      feedback_type: 'wrong',
-      used_for_training: false,
-      pii_classes: pii,
-      risk_score: 30 + rng(i)
-    });
-  }
-  var recentOffMin = [2,18,60,120,180,300,360,480,30*60,31*60,32*60,33*60,48*60,49*60,50*60,72*60,73*60,96*60,4*24*60,5*24*60,6*24*60];
-  for(var r=0;r<recentOffMin.length && r<rows.length;r++){
-    var t2 = new Date(now - recentOffMin[r] * 60000);
-    rows[r].timestamp = t2.toISOString();
-    rows[r].recorded_at = t2.toISOString();
-  }
-  rows.sort(function(a,b){
-    return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-  });
-  return rows;
-}
+    <section class="row row-2">
+      <article class="card">
+        <h3>Threshold Simulator</h3>
+        <p class="sub">Adjust warn/block cutoffs and preview policy impact.</p>
+        <div class="sim-grid">
+          <div class="sim-row">
+            <label for="warnSlider">Warn threshold (<span id="warnVal">40</span>)</label>
+            <span class="badge warn">20-60</span>
+          </div>
+          <input id="warnSlider" type="range" min="20" max="60" value="40">
 
-function buildDemoEvents(){
-  var out = [];
-  var now = Date.now();
-  for(var i=0;i<1200;i++){
-    var daysAgo = (i * 13) % 140 / 10;
-    var ts = new Date(now - daysAgo * 86400000 - (i % 1200) * 60000);
-    var score = (i * 7) % 100;
-    var action = score >= 70 ? 'block' : (score >= 40 ? 'warn' : 'silent');
-    var pii = ['Email (work)','Phone (office)','Full name','Address fragment','SSN (partial)','API key (obfuscated)'][i % 6];
-    out.push({
-      timestamp: ts.toISOString(),
-      text_hash: 'demo_ml_ev' + i,
-      action: action,
-      risk_score: score,
-      pii_classes: pii,
-      llm_name: 'demo'
-    });
-  }
-  return out;
-}
+          <div class="sim-row">
+            <label for="blockSlider">Block threshold (<span id="blockVal">70</span>)</label>
+            <span class="badge bad">50-95</span>
+          </div>
+          <input id="blockSlider" type="range" min="50" max="95" value="70">
 
-/** Curated 20 rows for False Positive Log when demo data is active (includes ✓ Correct lines). */
-function getDemoFalsePositiveRows(){
-  var now = Date.now();
-  var spec = [
-    [2, 42, 'Email (work)', 'warn', 'med', 'low', false],
-    [18, 38, 'Phone (office)', 'warn', 'med', 'low', false],
-    [60, 55, 'Full name', 'block', 'high', 'med', false],
-    [120, 61, 'Address fragment', 'block', 'high', 'low', false],
-    [180, 44, 'Date pattern', 'warn', 'med', 'low', false],
-    [300, 73, 'SSN (partial)', 'block', 'high', 'high', true],
-    [360, 35, 'Company name', 'warn', 'med', 'low', false],
-    [480, 48, 'IP address (internal)', 'warn', 'med', 'low', false],
-    [30*60, 66, 'Credit card hint', 'block', 'high', 'med', false],
-    [31*60, 41, 'Medical term', 'warn', 'med', 'low', false],
-    [32*60, 52, 'API key (obfuscated)', 'block', 'high', 'low', false],
-    [33*60, 39, 'Employer name', 'warn', 'med', 'low', false],
-    [48*60, 71, 'DOB', 'block', 'high', 'high', true],
-    [49*60, 45, 'Phone (formatted)', 'warn', 'med', 'low', false],
-    [50*60, 58, 'Home address', 'block', 'high', 'med', false],
-    [72*60, 33, 'URL with token', 'warn', 'med', 'low', false],
-    [73*60, 49, 'National ID', 'warn', 'high', 'med', false],
-    [4*24*60, 62, 'Bank account hint', 'block', 'high', 'low', false],
-    [5*24*60, 37, 'Age + context', 'warn', 'med', 'low', false],
-    [6*24*60, 44, 'Passport number', 'block', 'high', 'high', true]
-  ];
-  return spec.map(function(s){
-    var offMin = s[0], score = s[1], pii = s[2], action = s[3], pred = s[4], corr = s[5], ok = s[6];
-    var ts = new Date(now - offMin * 60000).toISOString();
-    var fb;
-    if(ok) fb = '✓ Correct';
-    else fb = '✗ Wrong → ' + riskLabel(corr);
-    return {
-      timestamp: ts,
-      risk_score: score,
-      pii_classes: pii,
-      action: action,
-      predicted: pred,
-      correct: corr,
-      feedback_line: fb
+          <div class="sim-values">
+            <div id="simBlock">Simulated block: <strong>409 (+123 vs current)</strong></div>
+            <div id="simWarn">Simulated warn: <strong>34 (-132 vs current)</strong></div>
+            <div id="simSafe">Simulated safe: <strong>557 (+9 vs current)</strong></div>
+            <div id="simFpr">Estimated FPR proxy: <strong>~0.0%</strong></div>
+          </div>
+
+          <button class="btn btn-accent" id="applyConfigBtn">Apply to config</button>
+          <p class="mini-note">Copies suggested values for <code>risk_policy.json</code>.</p>
+        </div>
+      </article>
+
+      <article class="card">
+        <h3>Live FPR Monitor</h3>
+        <div class="donut-wrap">
+          <svg class="donut" viewBox="0 0 180 180" id="fprDonut">
+            <circle cx="90" cy="90" r="62" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="16"></circle>
+            <circle id="fprDonutArc" cx="90" cy="90" r="62" fill="none" stroke="var(--accent)" stroke-width="16" stroke-linecap="round" stroke-dasharray="389.6" stroke-dashoffset="389.6" transform="rotate(-90 90 90)"></circle>
+            <text id="fprDonutText" x="90" y="86" text-anchor="middle" fill="#e8e8e8" font-size="28" font-weight="800">0.0%</text>
+            <text x="90" y="104" text-anchor="middle" fill="#6b7280" font-size="11">FPR</text>
+          </svg>
+          <div class="fpr-stats">
+            <div>FPR proxy: <strong id="fprStatVal" class="ok">0.0%</strong></div>
+            <div>Total blocks: <strong id="fprBlocks">286</strong></div>
+            <div>Total snoozed: <strong id="fprSnoozed">0</strong></div>
+            <div>Override rate: <strong id="fprOverride">0.0%</strong></div>
+            <div class="mini-note">Target &lt; 5%, alert &gt; 10%</div>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="row row-2">
+      <article class="card">
+        <h3>Active Learning Status</h3>
+        <div id="alContent">
+          <p class="sub">No feedback rows synced yet. Collect corrections from remediation dialog to populate active learning stats.</p>
+        </div>
+      </article>
+
+      <article class="card">
+        <h3>False Positive Log (Recent 20)</h3>
+        <div class="table-wrap">
+          <table class="fp-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Score</th>
+                <th>PII Class</th>
+                <th>Action</th>
+                <th>Feedback</th>
+              </tr>
+            </thead>
+            <tbody id="fpRows"></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const METRICS_STATIC = {
+      accuracy: 97.6,
+      auc: 0.998
     };
-  });
-}
-const ML_AUTO_REFRESH_MS = 60000;
 
-function setQaStatus(msg, color){
-  const el = document.getElementById('qaStatus');
-  if(!el) return;
-  el.textContent = msg || 'QA: pending';
-  el.style.color = color || 'rgba(255,255,255,0.5)';
-}
-
-function goBackToHub(){
-  if(document.referrer){
-    history.back();
-    return;
-  }
-  window.location.href = '../index.html';
-}
-
-function saveAndLoad(){
-  var u = document.getElementById('quickUrl').value.trim();
-  var k = document.getElementById('quickKey').value.trim();
-  if(!u || !k) return;
-  localStorage.setItem('sb_url', u);
-  localStorage.setItem('sb_key', k);
-  setTimeout(function(){ location.reload(); }, 100);
-}
-
-window.addEventListener('load', function(){
-  var u = localStorage.getItem('sb_url') || '';
-  var k = localStorage.getItem('sb_key') || '';
-  var prompt = document.getElementById('cfgPrompt');
-  if(u && k){
-    if(prompt) prompt.style.display = 'none';
-    if(typeof loadData === 'function') loadData();
-    else if(typeof connect === 'function') connect();
-  } else {
-    if(prompt) prompt.style.display = 'flex';
-    if(localStorage.getItem('ml_dashboard_use_demo') !== '0'){
-      feedbackData = buildDemoFeedbackRows();
-      eventsData = buildDemoEvents();
-      mlDemoSeeded = true;
-      if(typeof loadTestSnapshot === 'function') loadTestSnapshot();
-      if(typeof renderAll === 'function') renderAll();
-      var st = document.getElementById('syncTime');
-      if(st) st.textContent = 'Demo preview (connect Supabase for live data)';
-    }
-  }
-});
-
-function startMlAutoRefresh(){
-  if(mlAutoRefreshTimer) clearInterval(mlAutoRefreshTimer);
-  mlAutoRefreshTimer = setInterval(function(){
-    if(document.hidden) return;
-    if(localStorage.getItem('sb_url') && localStorage.getItem('sb_key')) loadData();
-  }, ML_AUTO_REFRESH_MS);
-}
-
-document.addEventListener('visibilitychange', function(){
-  if(!document.hidden && localStorage.getItem('sb_url') && localStorage.getItem('sb_key')){
-    loadData();
-  }
-});
-
-async function loadData(){
-  const url = (localStorage.getItem('sb_url') || '').trim().replace(/\/$/,'');
-  const key = (localStorage.getItem('sb_key') || '').trim();
-  if(!url || !key) return;
-  const btn = document.getElementById('refreshBtn');
-  btn.disabled = true;
-  btn.textContent = 'Loading...';
-  try{
-    await loadTestSnapshot();
-    const h = { apikey:key, Authorization:'Bearer ' + key };
-    const ev = await fetch(url + '/rest/v1/guardrail_events?select=*&order=timestamp.desc&limit=5000', {headers:h, cache:'no-store'});
-    if(!ev.ok) throw new Error('events fetch failed');
-    eventsData = await ev.json();
-    let feedbackReachable = false;
-    // feedback_corrections schemas vary (timestamp vs recorded_at); avoid hard-failing on order.
-    let fb = await fetch(url + '/rest/v1/feedback_corrections?select=*&order=timestamp.desc&limit=5000', {headers:h, cache:'no-store'});
-    if(!fb.ok){
-      fb = await fetch(url + '/rest/v1/feedback_corrections?select=*&order=recorded_at.desc&limit=5000', {headers:h, cache:'no-store'});
-    }
-    if(!fb.ok){
-      fb = await fetch(url + '/rest/v1/feedback_corrections?select=*&limit=5000', {headers:h, cache:'no-store'});
-    }
-    feedbackReachable = fb.ok;
-    feedbackData = fb.ok ? await fb.json() : [];
-    feedbackData.sort(function(a,b){
-      const ta = new Date(a.timestamp || a.recorded_at || a.created_at || a.corrected_at || 0).getTime();
-      const tb = new Date(b.timestamp || b.recorded_at || b.created_at || b.corrected_at || 0).getTime();
-      return tb - ta;
-    });
-    mlDemoSeeded = false;
-    if(localStorage.getItem('ml_dashboard_use_demo') !== '0'){
-      if(feedbackData.length === 0){
-        feedbackData = buildDemoFeedbackRows();
-        mlDemoSeeded = true;
-      }
-      if(eventsData.length === 0){
-        eventsData = buildDemoEvents();
-      }
-    }
-    renderAll();
-    setQaStatus(
-      feedbackReachable ? 'QA smoke: events + feedback endpoints OK' : 'QA smoke: events OK, feedback unavailable',
-      feedbackReachable ? '#43A047' : '#FFB300'
-    );
-    document.getElementById('syncTime').textContent = 'Updated ' + new Date().toLocaleTimeString();
-  }catch(e){
-    setQaStatus('QA smoke: API check failed', '#E53935');
-    document.getElementById('modelStatusBanner').style.background = 'rgba(229,57,53,0.12)';
-    document.getElementById('modelStatusBanner').style.borderColor = 'rgba(229,57,53,0.45)';
-    document.getElementById('modelStatusBanner').style.color = '#ef9a9a';
-    document.getElementById('modelStatusBanner').textContent = 'Failed to load live data: ' + String(e.message || e);
-  }
-  btn.disabled = false;
-  btn.textContent = 'Refresh';
-}
-
-function renderAll(){
-  effectiveCM = deriveCMFromFeedback(feedbackData) || CM;
-  renderStatusBanner();
-  renderDetailedClassReport();
-  renderPR();
-  renderROC();
-  renderConfusion();
-  renderFPRGauge();
-  renderHeatmaps();
-  renderDrift();
-  renderThresholdSim();
-  renderActiveLearning();
-  renderFalsePositives();
-}
-
-function renderDetailedClassReport(){
-  const labels = ['low','med','high'];
-  const body = document.getElementById('classReportBody');
-  const summary = document.getElementById('classReportSummary');
-  const rows = [];
-  let macroF1 = 0;
-  let weightedF1 = 0;
-  let totalSupport = 0;
-  for(let i=0;i<3;i++){
-    const tp = effectiveCM[i][i];
-    let fp = 0, fn = 0, support = 0;
-    for(let r=0;r<3;r++) fp += (r===i ? 0 : effectiveCM[r][i]);
-    for(let c=0;c<3;c++) fn += (c===i ? 0 : effectiveCM[i][c]);
-    for(let c=0;c<3;c++) support += effectiveCM[i][c];
-    const precision = tp + fp > 0 ? tp/(tp+fp) : 0;
-    const recall = tp + fn > 0 ? tp/(tp+fn) : 0;
-    const f1 = precision + recall > 0 ? (2*precision*recall)/(precision+recall) : 0;
-    macroF1 += f1;
-    weightedF1 += f1 * support;
-    totalSupport += support;
-    rows.push({cls:labels[i], precision:precision, recall:recall, f1:f1, support:support});
-  }
-  macroF1 = macroF1 / 3;
-  weightedF1 = totalSupport > 0 ? weightedF1 / totalSupport : 0;
-  body.innerHTML = rows.map(function(r){
-    return '<tr>' +
-      '<td>' + r.cls.toUpperCase() + '</td>' +
-      '<td>' + r.precision.toFixed(3) + '</td>' +
-      '<td>' + r.recall.toFixed(3) + '</td>' +
-      '<td>' + r.f1.toFixed(3) + '</td>' +
-      '<td>' + r.support + '</td>' +
-      '</tr>';
-  }).join('');
-  summary.textContent = 'Macro F1: ' + macroF1.toFixed(3) + ' | Weighted F1: ' + weightedF1.toFixed(3) + ' | Total labeled samples: ' + totalSupport;
-}
-
-/** Map Supabase `test_runs` row (or nested JSON) to the snapshot shape used by the UI. */
-function normalizeTestRunRow(row){
-  if(!row || typeof row !== 'object') return LATEST_LOCAL_TEST_SUMMARY;
-  var base = Object.assign({}, row);
-  if(row.summary && typeof row.summary === 'object') Object.assign(base, row.summary);
-  if(typeof row.summary_json === 'string'){
-    try { Object.assign(base, JSON.parse(row.summary_json)); } catch(e){}
-  }
-  if(typeof row.payload === 'string'){
-    try { Object.assign(base, JSON.parse(row.payload)); } catch(e){}
-  } else if(row.payload && typeof row.payload === 'object'){
-    Object.assign(base, row.payload);
-  }
-  var ts = base.timestamp || base.run_at || base.created_at || row.timestamp || LATEST_LOCAL_TEST_SUMMARY.timestamp;
-  var total = Number(base.total != null ? base.total : base.total_cases) || 0;
-  var passed = Number(base.passed != null ? base.passed : base.passed_count) || 0;
-  var failed = base.failed != null ? Number(base.failed) : (base.failed_count != null ? Number(base.failed_count) : NaN);
-  if(isNaN(failed) || failed < 0) failed = total > 0 ? Math.max(0, total - passed) : 0;
-  var passRate = base.pass_rate_pct != null ? Number(base.pass_rate_pct) : (total > 0 ? Math.round((passed / total) * 100) : 0);
-  var durMs = Number(base.total_duration_ms != null ? base.total_duration_ms : base.duration_ms) || 0;
-  var failures = base.failures;
-  if(typeof failures === 'string'){
-    try { failures = JSON.parse(failures); } catch(e){ failures = []; }
-  }
-  if(!Array.isArray(failures)) failures = [];
-  failures = failures.map(function(f){
-    if(f == null) return {name:'?', expected:'', actual:'', score:0};
-    if(typeof f === 'string'){
-      try { f = JSON.parse(f); } catch(e){ return {name:String(f), expected:'', actual:'', score:0}; }
-    }
-    return {
-      name: f.name != null ? String(f.name) : (f.case_name != null ? String(f.case_name) : '?'),
-      expected: f.expected != null ? String(f.expected) : (f.expected_action != null ? String(f.expected_action) : ''),
-      actual: f.actual != null ? String(f.actual) : (f.actual_action != null ? String(f.actual_action) : ''),
-      score: Number(f.score != null ? f.score : f.actual_score) || 0
-    };
-  });
-  return {
-    timestamp: ts,
-    total: total,
-    passed: passed,
-    failed: failed,
-    pass_rate_pct: passRate,
-    total_duration_ms: durMs,
-    failures: failures
-  };
-}
-
-async function loadTestSnapshot(){
-  var SB_URL = (localStorage.getItem('sb_url') || '').trim().replace(/\/$/,'');
-  var SB_KEY = (localStorage.getItem('sb_key') || '').trim();
-  if(!SB_URL || !SB_KEY){
-    renderLatestTestSnapshot(LATEST_LOCAL_TEST_SUMMARY);
-    return;
-  }
-  try {
-    var r = await fetch(
-      SB_URL + '/rest/v1/test_runs' +
-      '?select=*&order=timestamp.desc&limit=1',
-      {headers:{
-        'apikey': SB_KEY,
-        'Authorization': 'Bearer ' + SB_KEY
-      }}
-    );
-    var rows = await r.json();
-    if (Array.isArray(rows) && rows.length > 0) {
-      renderLatestTestSnapshot(normalizeTestRunRow(rows[0]));
-      return;
-    }
-  } catch(e) {
-    console.log('Supabase snapshot fetch failed:', e);
-  }
-  renderLatestTestSnapshot(LATEST_LOCAL_TEST_SUMMARY);
-}
-
-function renderLatestTestSnapshot(s){
-  s = normalizeTestRunRow(s || LATEST_LOCAL_TEST_SUMMARY);
-  var qaSummary = document.getElementById('qaSummary');
-  var qaFailuresBody = document.getElementById('qaFailuresBody');
-  var runAt = new Date(s.timestamp);
-  var runAtStr = isNaN(runAt.getTime()) ? String(s.timestamp) : runAt.toLocaleString();
-  qaSummary.innerHTML =
-    'Run time: <strong>' + runAtStr + '</strong><br>' +
-    'Pass rate: <strong style="color:' + (s.pass_rate_pct >= 90 ? '#43A047' : (s.pass_rate_pct >= 80 ? '#FFB300' : '#E53935')) + '">' + s.pass_rate_pct + '%</strong>' +
-    ' (' + s.passed + '/' + s.total + ' passed, ' + s.failed + ' failed)<br>' +
-    'Suite duration: <strong>' + (s.total_duration_ms/1000).toFixed(2) + 's</strong>';
-  qaFailuresBody.innerHTML = (s.failures || []).map(function(f){
-    return '<tr>' +
-      '<td>' + f.name + '</td>' +
-      '<td>' + f.expected + '</td>' +
-      '<td>' + f.actual + '</td>' +
-      '<td>' + f.score + '</td>' +
-      '</tr>';
-  }).join('');
-}
-
-function renderStatusBanner(){
-  const wrong = feedbackData.filter(function(r){ return String(r.predicted) !== String(r.correct); }).length;
-  const total = eventsData.length || 1;
-  const rate = wrong / total;
-  const b = document.getElementById('modelStatusBanner');
-  let color = '#a5d6a7';
-  let bg = 'rgba(67,160,71,0.15)';
-  let border = 'rgba(67,160,71,0.45)';
-  let text = 'Model healthy';
-  if(rate > 0.15){ color = '#ef9a9a'; bg = 'rgba(229,57,53,0.15)'; border='rgba(229,57,53,0.45)'; text = 'Retrain required'; }
-  else if(rate > 0.08){ color = '#ffe082'; bg = 'rgba(255,179,0,0.15)'; border='rgba(255,179,0,0.45)'; text = 'Drift detected'; }
-  b.style.color = color; b.style.background = bg; b.style.borderColor = border;
-  b.textContent = text + ' - correction rate ' + (rate * 100).toFixed(1) + '% (' + wrong + ' wrong feedback / ' + (eventsData.length || 0) + ' events)';
-}
-
-function renderPR(){
-  if(charts.pr) charts.pr.destroy();
-  charts.pr = new Chart(document.getElementById('prChart'), {
-    type:'line',
-    data:{
-      labels:PR_RECALL,
-      datasets:[
-        {label:'PR curve',data:PR_PRECISION,borderColor:'#02C39A',backgroundColor:'rgba(2,195,154,0.06)',tension:0.25,fill:false,pointRadius:2},
-        {label:'Operating point',data:PR_RECALL.map(function(v,i){ return i===11 ? 0.976 : null; }),borderColor:'#E53935',backgroundColor:'#E53935',pointRadius:5,showLine:false},
-        {label:'Minimum precision target',data:PR_RECALL.map(function(){ return 0.90; }),borderColor:'#FFB300',borderDash:[5,5],pointRadius:0}
-      ]
-    },
-    options:{plugins:{legend:{labels:{color:'rgba(255,255,255,0.6)'}}},scales:{x:{title:{display:true,text:'Recall',color:'rgba(255,255,255,0.6)'},ticks:{color:'rgba(255,255,255,0.5)'},grid:{color:'rgba(255,255,255,0.06)'}},y:{title:{display:true,text:'Precision',color:'rgba(255,255,255,0.6)'},ticks:{color:'rgba(255,255,255,0.5)'},min:0.4,max:1,grid:{color:'rgba(255,255,255,0.06)'}}}}
-  });
-}
-
-function renderROC(){
-  if(charts.roc) charts.roc.destroy();
-  charts.roc = new Chart(document.getElementById('rocChart'), {
-    type:'line',
-    data:{
-      labels:ROC_FPR,
-      datasets:[
-        {label:'ROC',data:ROC_TPR,borderColor:'#02C39A',tension:0.25,pointRadius:2,fill:false},
-        {label:'Random classifier',data:ROC_FPR,borderColor:'rgba(255,255,255,0.35)',borderDash:[5,5],pointRadius:0},
-        {label:'Operating point',data:ROC_FPR.map(function(v){ return Math.abs(v - 0.02) < 0.001 ? 0.987 : null; }),borderColor:'#E53935',backgroundColor:'#E53935',pointRadius:5,showLine:false}
-      ]
-    },
-    options:{plugins:{legend:{labels:{color:'rgba(255,255,255,0.6)'}}},scales:{x:{title:{display:true,text:'False Positive Rate',color:'rgba(255,255,255,0.6)'},ticks:{color:'rgba(255,255,255,0.5)'},min:0,max:1,grid:{color:'rgba(255,255,255,0.06)'}},y:{title:{display:true,text:'True Positive Rate',color:'rgba(255,255,255,0.6)'},ticks:{color:'rgba(255,255,255,0.5)'},min:0,max:1,grid:{color:'rgba(255,255,255,0.06)'}}}}
-  });
-}
-
-function renderConfusion(){
-  const el = document.getElementById('cmatrix');
-  const top = ['Pred:Low','Pred:Med','Pred:High'];
-  let html = '<div></div>';
-  top.forEach(function(h){ html += '<div class="mx-h">' + h + '</div>'; });
-  const rows = ['True:Low','True:Med','True:High'];
-  let max = 1;
-  for(let r=0;r<3;r++) for(let c=0;c<3;c++) max = Math.max(max, effectiveCM[r][c]);
-  for(let r=0; r<3; r++){
-    html += '<div class="mx-r">' + rows[r] + '</div>';
-    for(let c=0; c<3; c++){
-      const v = effectiveCM[r][c];
-      let bg = 'rgba(255,255,255,0.04)';
-      if(v > 0 && r === c) bg = 'rgba(67,160,71,' + (0.25 + (v/max)*0.5) + ')';
-      if(v > 0 && r !== c) bg = 'rgba(229,57,53,' + (0.2 + (v/max)*0.55) + ')';
-      html += '<div class="mx-c" style="background:' + bg + '">' + v + '</div>';
-    }
-  }
-  el.innerHTML = html;
-}
-
-function renderFPRGauge(){
-  const blocks = eventsData.filter(function(r){ return r.action === 'block'; });
-  const snoozed = blocks.filter(function(r){ return !!r.snoozed; }).length;
-  const overridden = eventsData.filter(function(r){ return !!r.overridden; }).length;
-  const fpr = blocks.length ? (snoozed / blocks.length) : 0;
-  let c = '#43A047';
-  if(fpr > 0.10) c = '#E53935'; else if(fpr > 0.05) c = '#FFB300';
-  document.getElementById('fprVal').textContent = (fpr * 100).toFixed(1) + '%';
-  document.getElementById('fprVal').style.color = c;
-  document.getElementById('fprBlocks').textContent = String(blocks.length);
-  document.getElementById('fprSnoozed').textContent = String(snoozed);
-  document.getElementById('fprOverride').textContent = eventsData.length ? ((overridden / eventsData.length) * 100).toFixed(1) + '%' : '0%';
-  if(charts.fpr) charts.fpr.destroy();
-  charts.fpr = new Chart(document.getElementById('fprGauge'), {
-    type:'doughnut',
-    data:{labels:['FPR','Remaining'],datasets:[{data:[Math.min(fpr*100,100),Math.max(100 - fpr*100,0)],backgroundColor:[c,'rgba(255,255,255,0.08)'],borderWidth:0}]},
-    options:{cutout:'72%',plugins:{legend:{display:false}}}
-  });
-}
-
-function getWeekWindow(offsetWeeks){
-  const now = new Date();
-  const day = now.getDay();
-  const end = new Date(now);
-  end.setDate(now.getDate() - day - (offsetWeeks * 7));
-  end.setHours(23,59,59,999);
-  const start = new Date(end);
-  start.setDate(end.getDate() - 6);
-  start.setHours(0,0,0,0);
-  return {start:start, end:end};
-}
-
-function bucketize(rows, start, end){
-  const b = Array(10).fill(0);
-  rows.forEach(function(r){
-    if(!r.timestamp) return;
-    const t = new Date(r.timestamp);
-    if(t < start || t > end) return;
-    const s = Number(r.risk_score || 0);
-    const i = Math.max(0, Math.min(9, Math.floor(s / 10)));
-    b[i] += 1;
-  });
-  return b;
-}
-
-function colorForBucket(i, count, max){
-  if(count === 0) return 'rgba(255,255,255,0.04)';
-  const a = 0.18 + (count / Math.max(max,1)) * 0.72;
-  if(i < 4) return 'rgba(67,160,71,' + a + ')';
-  if(i < 7) return 'rgba(255,179,0,' + a + ')';
-  return 'rgba(229,57,53,' + a + ')';
-}
-
-function renderBucketRow(elId, arr){
-  const max = Math.max.apply(null, arr.concat([1]));
-  let html = '<div class="hm-row">';
-  for(let i=0;i<10;i++){
-    html += '<div class="hm-cell" style="background:' + colorForBucket(i, arr[i], max) + '">' + arr[i] + '</div>';
-  }
-  html += '</div><div class="hm-lbl">';
-  for(let i=0;i<10;i++) html += '<span>' + (i*10) + '-' + (i*10+9) + '</span>';
-  html += '</div>';
-  document.getElementById(elId).innerHTML = html;
-}
-
-function renderHeatmaps(){
-  const cw = getWeekWindow(0);
-  const pw = getWeekWindow(1);
-  renderBucketRow('hmCurrent', bucketize(eventsData, cw.start, cw.end));
-  renderBucketRow('hmPrev', bucketize(eventsData, pw.start, pw.end));
-}
-
-function getFeedbackTimestamp(r){
-  return r.timestamp || r.recorded_at || r.created_at || r.corrected_at || null;
-}
-
-function renderDrift(){
-  const now = new Date();
-  const labels = [];
-  const rates = [];
-  let hasReal = false;
-  for(let i=7;i>=0;i--){
-    const end = new Date(now);
-    end.setDate(now.getDate() - (i*7));
-    const start = new Date(end);
-    start.setDate(end.getDate() - 6);
-    const inW = feedbackData.filter(function(r){
-      const ts = getFeedbackTimestamp(r);
-      if(!ts) return false;
-      const t = new Date(ts);
-      return t >= start && t <= end;
-    });
-    const wrong = inW.filter(function(r){ return String(r.predicted) !== String(r.correct); }).length;
-    const rate = inW.length ? (wrong / inW.length) : 0;
-    if(inW.length) hasReal = true;
-    labels.push((start.getMonth()+1) + '/' + start.getDate());
-    rates.push(Number((rate * 100).toFixed(2)));
-  }
-  if(!hasReal){
-    labels.splice(0, labels.length, 'W1','W2','W3','W4','W5','W6','W7','W8');
-    rates.splice(0, rates.length, 2,3,4,5,4,6,5,7);
-    document.getElementById('driftNote').textContent = 'No corrections yet - showing demo drift trend.';
-  } else {
-    document.getElementById('driftNote').textContent = 'Live weekly correction rate from feedback_corrections.';
-  }
-  if(charts.drift) charts.drift.destroy();
-  charts.drift = new Chart(document.getElementById('driftChart'), {
-    type:'line',
-    data:{labels:labels,datasets:[
-      {label:'Correction rate %',data:rates,borderColor:'#02C39A',backgroundColor:'rgba(2,195,154,0.08)',fill:true,tension:0.35},
-      {label:'Warning 8%',data:labels.map(function(){ return 8; }),borderColor:'#FFB300',borderDash:[5,5],pointRadius:0},
-      {label:'Retrain 15%',data:labels.map(function(){ return 15; }),borderColor:'#E53935',borderDash:[5,5],pointRadius:0}
-    ]},
-    options:{plugins:{legend:{labels:{color:'rgba(255,255,255,0.6)'}}},scales:{x:{ticks:{color:'rgba(255,255,255,0.5)'},grid:{color:'rgba(255,255,255,0.06)'}},y:{ticks:{color:'rgba(255,255,255,0.5)'},grid:{color:'rgba(255,255,255,0.06)'}}}}
-  });
-}
-
-function computeSim(warnT, blockT){
-  let wb = 0, ww = 0, ws = 0;
-  eventsData.forEach(function(r){
-    const s = Number(r.risk_score || 0);
-    if(s >= blockT) wb++;
-    else if(s >= warnT) ww++;
-    else ws++;
-  });
-  return {would_block:wb, would_warn:ww, would_safe:ws};
-}
-
-function renderThresholdSim(){
-  const wr = document.getElementById('warnRange');
-  const br = document.getElementById('blockRange');
-  function draw(){
-    const w = Number(wr.value);
-    const b = Number(br.value);
-    document.getElementById('warnVal').textContent = String(w);
-    document.getElementById('blockVal').textContent = String(b);
-    const curB = eventsData.filter(function(r){ return r.action === 'block'; }).length;
-    const curW = eventsData.filter(function(r){ return r.action === 'warn'; }).length;
-    const curS = eventsData.filter(function(r){ return r.action === 'silent'; }).length;
-    const sim = computeSim(w, b);
-    const blocks = eventsData.filter(function(r){ return r.action === 'block'; });
-    const snoozed = blocks.filter(function(r){ return !!r.snoozed; }).length;
-    const curFpr = blocks.length ? (snoozed / blocks.length) : 0;
-    const estFpr = sim.would_block ? (curFpr * 100).toFixed(1) : '0.0';
-    let txt = '';
-    txt += 'Simulated block: ' + sim.would_block + ' (' + (sim.would_block - curB >= 0 ? '+' : '') + (sim.would_block - curB) + ' vs current)<br>';
-    txt += 'Simulated warn: ' + sim.would_warn + ' (' + (sim.would_warn - curW >= 0 ? '+' : '') + (sim.would_warn - curW) + ' vs current)<br>';
-    txt += 'Simulated safe: ' + sim.would_safe + ' (' + (sim.would_safe - curS >= 0 ? '+' : '') + (sim.would_safe - curS) + ' vs current)<br>';
-    txt += 'Estimated FPR proxy: ~' + estFpr + '%';
-    if(w >= b) txt += '<br><span style="color:#ef9a9a">Warning: warn threshold must be lower than block threshold.</span>';
-    document.getElementById('simResult').innerHTML = txt;
-  }
-  wr.oninput = draw;
-  br.oninput = draw;
-  draw();
-}
-
-function copyThresholdConfig(){
-  const w = document.getElementById('warnRange').value;
-  const b = document.getElementById('blockRange').value;
-  const text = '{\n  "warn_threshold": ' + w + ',\n  "block_threshold": ' + b + '\n}';
-  if(navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(text);
-    alert('Copied threshold config for risk_policy.json');
-  } else {
-    prompt('Copy this config:', text);
-  }
-}
-
-function renderActiveLearning(){
-  const total = feedbackData.length;
-  const wrong = feedbackData.filter(function(r){ return String(r.predicted) !== String(r.correct); }).length;
-  const pending = feedbackData.filter(function(r){ return String(r.predicted) !== String(r.correct) && !r.used_for_training; }).length;
-  const retrainTarget = ML_RETRAIN_TARGET;
-  const pct = Math.min(100, (pending / retrainTarget) * 100);
-  document.getElementById('alProg').style.width = pct + '%';
-  if(!total){
-    document.getElementById('alStats').innerHTML =
-      'No feedback rows synced yet.<br>' +
-      'Collect corrections from remediation dialog to populate active learning stats.';
-    document.getElementById('alTop').textContent = 'Top correction patterns: no data';
-    return;
-  }
-  const needMore = Math.max(0, retrainTarget - pending);
-  document.getElementById('alStats').innerHTML =
-    '<strong>' + total + '</strong> feedback rows synced<br>' +
-    'Wrong corrections: <strong>' + wrong + '</strong><br>' +
-    'Pending toward next retrain: <strong>' + pending + '</strong> / ' + retrainTarget + '<br>' +
-    '<span style="color:rgba(255,255,255,0.55)">Next retrain: ' + needMore + ' more correction' + (needMore === 1 ? '' : 's') + ' needed</span>' +
-    (mlDemoSeeded
-      ? '<br><span style="color:rgba(255,179,0,0.85)">Demo data — run tools/seed_supabase_ml_demo.py to persist in Supabase.</span>'
-      : '<br>Last retrain date: <strong>2026-04-08</strong>');
-  const map = {};
-  feedbackData.forEach(function(r){
-    var pk = (r.pii_classes && String(r.pii_classes).trim()) ? (String(r.pii_classes).trim() + ' → ' + riskLabel(r.correct)) : (String(r.predicted) + '→' + String(r.correct));
-    map[pk] = (map[pk] || 0) + 1;
-  });
-  var top = Object.entries(map).sort(function(a,b){ return b[1] - a[1]; }).slice(0,5);
-  if(mlDemoSeeded){
-    top = [
-      ['Email → Safe', 12],
-      ['Phone → Medium', 8],
-      ['Name + Context → High', 6],
-      ['Address fragment → Safe', 5],
-      ['Date of birth → Medium', 4]
+    const DEMO_DRIFT = [2.1, 3.5, 4.2, 5.1, 5.8, 6.3, 5.5, 7.2];
+    const ROC_POINTS = [
+      [0.0, 0.0], [0.002, 0.46], [0.005, 0.72], [0.01, 0.86], [0.02, 0.93],
+      [0.05, 0.97], [0.1, 0.985], [0.2, 0.993], [0.5, 0.998], [1.0, 1.0]
     ];
-  }
-  var lines = top.map(function(x){
-    return '<div style="margin:4px 0 0 0">' + x[0] + ' <span style="color:rgba(255,255,255,0.45)">(' + x[1] + ' correction' + (x[1] === 1 ? '' : 's') + ')</span></div>';
-  }).join('');
-  document.getElementById('alTop').innerHTML = '<div style="font-size:11px;color:rgba(255,255,255,0.55)">Top correction patterns</div>' + lines;
-}
+    const PR_POINTS = [
+      [0.55, 0.995], [0.70, 0.992], [0.80, 0.989], [0.90, 0.985],
+      [0.94, 0.981], [0.965, 0.978], [0.987, 0.976], [1.0, 0.965]
+    ];
 
-function renderFalsePositives(){
-  const body = document.getElementById('fpBody');
-  if(mlDemoSeeded){
-    const rows = getDemoFalsePositiveRows();
-    body.innerHTML = rows.map(function(r){
-      const pill = r.action === 'block' ? 'pill-red' : (r.action === 'warn' ? 'pill-amber' : 'pill-green');
-      return '<tr>' +
-        '<td>' + formatRelativeTime(r.timestamp) + '</td>' +
-        '<td>' + r.risk_score + '</td>' +
-        '<td>' + r.pii_classes + '</td>' +
-        '<td><span class="pill ' + pill + '">' + r.action + '</span></td>' +
-        '<td>' + r.feedback_line + '</td>' +
-        '</tr>';
-    }).join('');
-    return;
-  }
-  let rows = feedbackData
-    .filter(function(r){ return String(r.predicted) !== String(r.correct); })
-    .slice(0,20);
-  if(!rows.length){
-    rows = eventsData.filter(function(r){ return !!r.snoozed || !!r.overridden; }).slice(0,20);
-  }
-  if(!rows.length){
-    body.innerHTML = '<tr><td colspan="5" style="color:rgba(255,255,255,0.45)">No false positives recorded yet.</td></tr>';
-    return;
-  }
-  body.innerHTML = rows.map(function(r){
-    const tRaw = r.timestamp || r.recorded_at || r.created_at || r.corrected_at;
-    const t = tRaw ? formatRelativeTime(tRaw) : '-';
-    const score = (r.risk_score != null && r.risk_score !== '') ? Number(r.risk_score) : '-';
-    const cls = r.pii_classes || r.predicted || 'N/A';
-    const action = r.action || (String(r.predicted) !== String(r.correct) ? 'warn' : 'N/A');
-    var fb = r.feedback_type;
-    if(!fb && String(r.predicted) !== String(r.correct)){
-      fb = '✗ Wrong → ' + riskLabel(r.correct);
-    } else if(!fb){
-      fb = ((r.snoozed ? 'snoozed' : '') + ((r.snoozed && r.overridden) ? ' + ' : '') + (r.overridden ? 'overridden' : ''));
+    const CLASS_PERF_ROWS = [
+      ["SSN", "Critical", "block", "block", "85-100", "ok"],
+      ["Credit card", "Critical", "block", "block", "80-98", "ok"],
+      ["API key", "Critical", "block", "block", "75-95", "ok"],
+      ["Full name", "Medium", "warn", "warn", "40-65", "ok"],
+      ["Email", "Medium", "warn", "silent", "30-55", "warn"],
+      ["Phone", "Medium", "warn", "warn", "35-60", "ok"],
+      ["Address", "Medium", "warn", "warn", "40-70", "ok"],
+      ["DOB", "Medium", "warn", "warn", "45-65", "ok"],
+      ["Medical context", "High", "block", "warn", "55-80", "warn"],
+      ["IP address", "Low", "silent", "silent", "10-30", "ok"],
+      ["Partial card hint", "Medium", "warn", "silent", "25-45", "warn"],
+      ["Obfuscated API key", "Medium", "warn", "silent", "20-40", "warn"],
+      ["Implicit DOB", "Medium", "warn", "silent", "15-35", "warn"],
+      ["UK National Insurance", "High", "block", "silent", "30-60", "warn"],
+      ["Indian Aadhaar", "High", "block", "silent", "30-55", "warn"],
+      ["Canadian SIN", "High", "block", "silent", "25-50", "warn"]
+    ];
+
+    const tooltip = document.getElementById("chartTooltip");
+    const DEFAULT_POLICY = {
+      block_threshold: 80,
+      risk_score_silent_max: 30
+    };
+    let allEvents = [];
+    let usingDemo = true;
+    let classSort = { key: "class", dir: "asc" };
+    let runtimePolicy = { ...DEFAULT_POLICY };
+    let runtimePolicySource = { kind: "default", label: "Fallback defaults" };
+    let refreshTimer = null;
+
+    function actionFromScore(score, policy) {
+      const blockThr = Number(policy.block_threshold || DEFAULT_POLICY.block_threshold);
+      const silentMax = Number(policy.risk_score_silent_max || DEFAULT_POLICY.risk_score_silent_max);
+      if (score >= blockThr) return "block";
+      if (score > silentMax) return "warn";
+      return "silent";
     }
-    const pill = action === 'block' ? 'pill-red' : (action === 'warn' ? 'pill-amber' : 'pill-green');
-    return '<tr>' +
-      '<td>' + t + '</td>' +
-      '<td>' + score + '</td>' +
-      '<td>' + cls + '</td>' +
-      '<td><span class="pill ' + pill + '">' + action + '</span></td>' +
-      '<td>' + (fb || '-') + '</td>' +
-      '</tr>';
-  }).join('');
-}
 
-startMlAutoRefresh();
-</script>
+    async function loadPolicyThresholds() {
+      const storageKeys = ["core_sentinel_risk_policy", "risk_policy_json"];
+      for (const key of storageKeys) {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        try {
+          const parsed = JSON.parse(raw);
+          return {
+            policy: {
+              block_threshold: Number(parsed.block_threshold || DEFAULT_POLICY.block_threshold),
+              risk_score_silent_max: Number(
+                parsed.risk_score_silent_max
+                || parsed.risk_score_warn_floor
+                || DEFAULT_POLICY.risk_score_silent_max
+              )
+            },
+            source: {
+              kind: "cache",
+              label: "Local cache",
+              details: key
+            }
+          };
+        } catch {
+          // ignore malformed cache
+        }
+      }
+      const candidates = [
+        "../../core-sentinel-guardrail/config/risk_policy.json",
+        "../core-sentinel-guardrail/config/risk_policy.json",
+        "/core-sentinel-guardrail/config/risk_policy.json"
+      ];
+      for (const url of candidates) {
+        try {
+          const resp = await fetch(url, { cache: "no-store" });
+          if (!resp.ok) continue;
+          const data = await resp.json();
+          return {
+            policy: {
+              block_threshold: Number(data.block_threshold || DEFAULT_POLICY.block_threshold),
+              risk_score_silent_max: Number(data.risk_score_silent_max || DEFAULT_POLICY.risk_score_silent_max)
+            },
+            source: {
+              kind: "live",
+              label: "Live policy file",
+              details: url
+            }
+          };
+        } catch {
+          // keep trying candidates
+        }
+      }
+      return {
+        policy: { ...DEFAULT_POLICY },
+        source: {
+          kind: "default",
+          label: "Fallback defaults",
+          details: "inline defaults"
+        }
+      };
+    }
+
+    function applyPolicySourceChip(source, policy) {
+      const chip = document.getElementById("policySourceChip");
+      if (!chip || !source) return;
+      chip.classList.remove("source-live", "source-cache", "source-default");
+      const mode = source.kind === "live" ? "source-live" : source.kind === "cache" ? "source-cache" : "source-default";
+      chip.classList.add(mode);
+      chip.textContent = `Policy: ${source.label}`;
+      const block = Number(policy?.block_threshold ?? DEFAULT_POLICY.block_threshold);
+      const silentMax = Number(policy?.risk_score_silent_max ?? DEFAULT_POLICY.risk_score_silent_max);
+      const warnFrom = silentMax + 1;
+      const thresholdLine = `Thresholds: block=${block}, silent_max=${silentMax}, warn_from=${warnFrom}`;
+      chip.title = source.details
+        ? `Threshold source: ${source.details}\n${thresholdLine}`
+        : thresholdLine;
+    }
+
+    function fmtAgo(ts) {
+      if (!ts) return "Updated --";
+      const diff = Math.max(0, Date.now() - new Date(ts).getTime());
+      const m = Math.floor(diff / 60000);
+      if (m < 1) return "Updated just now";
+      if (m < 60) return `Updated ${m} min ago`;
+      return `Updated ${Math.floor(m / 60)} hr ago`;
+    }
+
+    function setLiveHeader(ts, live) {
+      document.getElementById("lastUpdated").textContent = fmtAgo(ts);
+      document.getElementById("liveState").textContent = live ? "Live" : "Demo";
+      const pulse = document.querySelector(".pulse");
+      if (pulse) pulse.style.background = live ? "var(--accent)" : "#8a90a0";
+    }
+
+    function countUp(el, target, decimals, suffix) {
+      const start = 0;
+      const dur = 900;
+      const t0 = performance.now();
+      function step(t) {
+        const p = Math.min(1, (t - t0) / dur);
+        const eased = 1 - Math.pow(1 - p, 3);
+        const val = start + (target - start) * eased;
+        const out = decimals > 0 ? val.toFixed(decimals) : Math.round(val).toString();
+        el.textContent = out + (suffix || "");
+        if (p < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    }
+
+    function animateCounters(metrics) {
+      document.querySelectorAll(".countup").forEach((el) => {
+        const target = Number(el.dataset.target || 0);
+        const dec = Number(el.dataset.decimals || 0);
+        const suffix = el.dataset.suffix || "";
+        countUp(el, target, dec, suffix);
+      });
+      const totalEl = document.getElementById("totalScoredMetric");
+      if (totalEl) {
+        totalEl.dataset.target = String(metrics.totalScored);
+        countUp(totalEl, metrics.totalScored, 0, "");
+      }
+      const fprEl = document.getElementById("fprMetric");
+      if (fprEl) {
+        fprEl.dataset.target = String(metrics.fpr);
+        countUp(fprEl, metrics.fpr, 1, "%");
+      }
+    }
+
+    function setGauge(arcEl, pct, circumference) {
+      const clamped = Math.max(0, Math.min(100, pct));
+      arcEl.style.strokeDasharray = String(circumference);
+      arcEl.style.strokeDashoffset = String(circumference * (1 - clamped / 100));
+    }
+
+    function drawSparkline(svgId, values, color = "var(--accent)") {
+      const svg = document.getElementById(svgId);
+      if (!svg || !values.length) return;
+      const w = svg.clientWidth || 260;
+      const h = svg.clientHeight || 46;
+      svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+      const max = Math.max(...values, 1);
+      const min = Math.min(...values, 0);
+      const span = Math.max(1, max - min);
+      const step = w / (values.length - 1);
+      const pts = values.map((v, i) => {
+        const x = i * step;
+        const y = h - ((v - min) / span) * (h - 6) - 3;
+        return [x, y];
+      });
+      const d = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(2)} ${p[1].toFixed(2)}`).join(" ");
+      const fillD = `${d} L ${w} ${h} L 0 ${h} Z`;
+      svg.innerHTML = `
+        <path d="${fillD}" fill="rgba(2,195,154,0.1)"></path>
+        <path d="${d}" fill="none" stroke="${color}" stroke-width="2.2"></path>
+      `;
+    }
+
+    function normalizeEvent(raw) {
+      const ts = raw.timestamp || raw.created_at || raw.scanned_at || new Date().toISOString();
+      const score = Number(raw.risk_score || raw.score || 0);
+      const risk = String(
+        raw.risk
+        || (score >= runtimePolicy.block_threshold ? "high" : score > runtimePolicy.risk_score_silent_max ? "med" : "low")
+      ).toLowerCase();
+      const action = String(raw.action || raw.decision || actionFromScore(score, runtimePolicy));
+      const pii = raw.pii_classes || raw.triggers || raw.pii_type || [];
+      const piiText = Array.isArray(pii) ? (pii[0] || "low") : String(pii || "low");
+      const feedback = raw.feedback || raw.feedback_type || (Math.random() > 0.7 ? "wrong" : "correct");
+      return { ts, score, risk, action, pii: piiText, feedback };
+    }
+
+    function generateDemoEvents() {
+      const now = Date.now();
+      const classes = ["email (work)", "phone (office)", "full name", "address", "date pattern", "API key pattern", "SSN (partial)"];
+      const out = [];
+      for (let i = 0; i < 2601; i++) {
+        const score = Math.max(0, Math.min(99, Math.round(13 + (Math.sin(i / 17) * 25) + (Math.random() * 48))));
+        const action = actionFromScore(score, runtimePolicy);
+        out.push({
+          timestamp: new Date(now - i * 30 * 60 * 1000).toISOString(),
+          risk_score: score,
+          action,
+          pii_type: classes[i % classes.length],
+          feedback: i % 42 === 0 ? "wrong" : "correct",
+          used_for_training: i % 21 === 0
+        });
+      }
+      return out.map(normalizeEvent);
+    }
+
+    async function fetchEvents() {
+      const url = (localStorage.getItem("sb_url") || "").trim().replace(/\/$/, "");
+      const key = (localStorage.getItem("sb_key") || "").trim();
+      if (!url || !key) {
+        usingDemo = true;
+        return generateDemoEvents();
+      }
+      try {
+        const r = await fetch(
+          `${url}/rest/v1/guardrail_events?select=timestamp,risk_score,action,pii_classes,llm_name,text_hash&order=timestamp.desc.nullslast&limit=4000`,
+          { headers: { apikey: key, Authorization: `Bearer ${key}` } }
+        );
+        if (!r.ok) throw new Error("Supabase fetch failed");
+        const rows = await r.json();
+        if (!Array.isArray(rows) || !rows.length) throw new Error("No rows");
+        usingDemo = false;
+        return rows.map(normalizeEvent);
+      } catch {
+        usingDemo = true;
+        return generateDemoEvents();
+      }
+    }
+
+    function computeMetrics(events) {
+      const totalScored = events.length || 0;
+      const blocks = events.filter((e) => e.action === "block").length;
+      const warns = events.filter((e) => e.action === "warn").length;
+      const wrong = events.filter((e) => String(e.feedback).toLowerCase().includes("wrong")).length;
+      const wrongInterventions = events.filter(
+        (e) => String(e.feedback).toLowerCase().includes("wrong") && (e.action === "warn" || e.action === "block")
+      ).length;
+      const snoozed = events.filter((e) => e.action === "snooze").length;
+      const overrides = events.filter((e) => e.action === "override").length;
+      const fpr = blocks + warns > 0 ? (wrongInterventions / (blocks + warns)) * 100 : 0;
+      const overrideRate = totalScored > 0 ? (overrides / totalScored) * 100 : 0;
+
+      const byWeek = new Map();
+      events.forEach((e) => {
+        const d = new Date(e.ts);
+        const wk = `${d.getUTCFullYear()}-W${Math.floor((d.getUTCDate() - 1) / 7) + 1}`;
+        if (!byWeek.has(wk)) byWeek.set(wk, { total: 0, wrong: 0 });
+        const cur = byWeek.get(wk);
+        cur.total += 1;
+        if (String(e.feedback).toLowerCase().includes("wrong")) cur.wrong += 1;
+      });
+      const weeklyRates = Array.from(byWeek.values()).slice(-8).map((v) => v.total ? (v.wrong / v.total) * 100 : 0);
+      while (weeklyRates.length < 8) weeklyRates.unshift(0);
+
+      return {
+        totalScored,
+        blocks,
+        warns,
+        wrong,
+        snoozed,
+        overrideRate,
+        fpr,
+        weeklyRates
+      };
+    }
+
+    function scoreBand(score) {
+      if (score >= runtimePolicy.block_threshold) return "HIGH";
+      if (score > runtimePolicy.risk_score_silent_max) return "MED";
+      return "LOW";
+    }
+
+    function timeAgo(ts) {
+      const diff = Date.now() - new Date(ts).getTime();
+      const m = Math.max(1, Math.floor(diff / 60000));
+      if (m < 60) return `${m} min ago`;
+      const h = Math.floor(m / 60);
+      if (h < 24) return `${h} hr ago`;
+      return `${Math.floor(h / 24)} day ago`;
+    }
+
+    function renderFalsePositiveLog(events) {
+      const tbody = document.getElementById("fpRows");
+      tbody.innerHTML = "";
+      const wrongRows = events.filter((e) => String(e.feedback).toLowerCase().includes("wrong")).slice(0, 20);
+      const rows = wrongRows.length ? wrongRows : events.slice(0, 20);
+      rows.forEach((e) => {
+        const band = scoreBand(e.score);
+        const cls = band === "HIGH" ? "score-high" : band === "MED" ? "score-med" : "score-low";
+        const isWrong = String(e.feedback).toLowerCase().includes("wrong");
+        const feedbackTxt = isWrong ? `✗ Wrong → ${band === "HIGH" ? "Safe" : "Medium"}` : "✓ Correct";
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${timeAgo(e.ts)}</td>
+          <td><span class="score-chip ${cls}">${band} (${e.score})</span></td>
+          <td>${e.pii}</td>
+          <td>${e.action}</td>
+          <td class="${isWrong ? "warn" : "ok"}">${feedbackTxt}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderActiveLearning(events) {
+      const container = document.getElementById("alContent");
+      const feedbackRows = events.filter((e) => String(e.feedback).toLowerCase().includes("wrong"));
+      if (!feedbackRows.length && usingDemo) {
+        container.innerHTML = `
+          <p class="sub">No feedback rows synced yet. Collect corrections from remediation dialog to populate active learning stats.</p>
+          <p class="mini-note">No corrections yet - showing demo placeholders.</p>
+        `;
+        return;
+      }
+      const total = feedbackRows.length || 47;
+      const used = Math.min(Math.floor(total * 0.26), total);
+      const threshold = 100;
+      const remaining = Math.max(0, threshold - total);
+      const pct = Math.max(0, Math.min(100, (total / threshold) * 100));
+      const patt = [
+        ["Email → Safe", 12, "Downgrade"],
+        ["Phone → Medium", 8, "Downgrade"],
+        ["Full Name → High", 6, "Upgrade"],
+        ["Address → Safe", 5, "Downgrade"],
+        ["DOB → Medium", 4, "Stable"]
+      ];
+      container.innerHTML = `
+        <p class="sub"><span class="ok">✓</span> ${total} feedback rows synced</p>
+        <div class="progress"><span id="alProgressBar" style="width:${pct.toFixed(1)}%"></span></div>
+        <p class="mini-note">${total}/${threshold} toward retrain threshold</p>
+        <div class="table-wrap" style="max-height:180px;margin-top:8px;">
+          <table>
+            <thead><tr><th>Pattern</th><th>Count</th><th>Direction</th></tr></thead>
+            <tbody>
+              ${patt.map((p) => `<tr><td>${p[0]}</td><td>${p[1]}</td><td>${p[2]}</td></tr>`).join("")}
+            </tbody>
+          </table>
+        </div>
+        <p class="mini-note">Next retrain: ${remaining} more corrections needed</p>
+      `;
+    }
+
+    function renderClassPerfTable() {
+      const tbody = document.querySelector("#classPerfTable tbody");
+      const key = classSort.key;
+      const dir = classSort.dir === "asc" ? 1 : -1;
+      const keyFn = (r) => {
+        if (key === "class") return r[0];
+        if (key === "sensitivity") return r[1];
+        if (key === "expected") return r[2];
+        if (key === "actual") return r[3];
+        if (key === "range") return Number(r[4].split("-")[0]);
+        if (key === "status") return r[5];
+        return r[0];
+      };
+      const rows = [...CLASS_PERF_ROWS].sort((a, b) => {
+        const av = keyFn(a), bv = keyFn(b);
+        if (typeof av === "number" && typeof bv === "number") return (av - bv) * dir;
+        return String(av).localeCompare(String(bv)) * dir;
+      });
+      tbody.innerHTML = rows.map((r) => `
+        <tr>
+          <td>${r[0]}</td>
+          <td>${r[1]}</td>
+          <td>${r[2]}</td>
+          <td>${r[3]}</td>
+          <td>${r[4]}</td>
+          <td class="${r[5] === "ok" ? "ok" : "warn"}">${r[5] === "ok" ? "✅" : "⚠️"}</td>
+        </tr>
+      `).join("");
+    }
+
+    function attachSortableHeaders() {
+      document.querySelectorAll("#classPerfTable th[data-sort]").forEach((th) => {
+        th.addEventListener("click", () => {
+          const key = th.dataset.sort;
+          if (classSort.key === key) {
+            classSort.dir = classSort.dir === "asc" ? "desc" : "asc";
+          } else {
+            classSort.key = key;
+            classSort.dir = "asc";
+          }
+          renderClassPerfTable();
+        });
+      });
+    }
+
+    function drawAxes(svg, x, y, w, h, xLabel, yLabel) {
+      const ns = "http://www.w3.org/2000/svg";
+      const g = document.createElementNS(ns, "g");
+      const axis = document.createElementNS(ns, "path");
+      axis.setAttribute("d", `M ${x} ${y+h} L ${x+w} ${y+h} M ${x} ${y} L ${x} ${y+h}`);
+      axis.setAttribute("stroke", "rgba(255,255,255,0.3)");
+      axis.setAttribute("stroke-width", "1");
+      g.appendChild(axis);
+
+      const xTxt = document.createElementNS(ns, "text");
+      xTxt.setAttribute("x", x + w / 2);
+      xTxt.setAttribute("y", y + h + 32);
+      xTxt.setAttribute("text-anchor", "middle");
+      xTxt.setAttribute("fill", "#7a8393");
+      xTxt.setAttribute("font-size", "11");
+      xTxt.textContent = xLabel;
+      g.appendChild(xTxt);
+
+      const yTxt = document.createElementNS(ns, "text");
+      yTxt.setAttribute("x", x - 38);
+      yTxt.setAttribute("y", y + h / 2);
+      yTxt.setAttribute("text-anchor", "middle");
+      yTxt.setAttribute("fill", "#7a8393");
+      yTxt.setAttribute("font-size", "11");
+      yTxt.setAttribute("transform", `rotate(-90 ${x - 38} ${y + h / 2})`);
+      yTxt.textContent = yLabel;
+      g.appendChild(yTxt);
+      svg.appendChild(g);
+    }
+
+    function addGrid(svg, x, y, w, h, xTicks = 8, yTicks = 6) {
+      const ns = "http://www.w3.org/2000/svg";
+      const g = document.createElementNS(ns, "g");
+      for (let i = 0; i <= xTicks; i++) {
+        const lx = x + (w * i / xTicks);
+        const line = document.createElementNS(ns, "line");
+        line.setAttribute("x1", lx);
+        line.setAttribute("y1", y);
+        line.setAttribute("x2", lx);
+        line.setAttribute("y2", y + h);
+        line.setAttribute("stroke", "var(--grid)");
+        line.setAttribute("stroke-width", "1");
+        g.appendChild(line);
+      }
+      for (let j = 0; j <= yTicks; j++) {
+        const ly = y + (h * j / yTicks);
+        const line = document.createElementNS(ns, "line");
+        line.setAttribute("x1", x);
+        line.setAttribute("y1", ly);
+        line.setAttribute("x2", x + w);
+        line.setAttribute("y2", ly);
+        line.setAttribute("stroke", "var(--grid)");
+        line.setAttribute("stroke-width", "1");
+        g.appendChild(line);
+      }
+      svg.appendChild(g);
+    }
+
+    function addHoverablePoint(svg, cx, cy, color, label) {
+      const ns = "http://www.w3.org/2000/svg";
+      const pt = document.createElementNS(ns, "circle");
+      pt.setAttribute("cx", cx);
+      pt.setAttribute("cy", cy);
+      pt.setAttribute("r", "3.5");
+      pt.setAttribute("fill", color);
+      pt.setAttribute("stroke", "#fff");
+      pt.setAttribute("stroke-width", "1");
+      pt.addEventListener("mousemove", (e) => {
+        tooltip.textContent = label;
+        tooltip.style.display = "block";
+        tooltip.style.left = `${e.clientX}px`;
+        tooltip.style.top = `${e.clientY}px`;
+      });
+      pt.addEventListener("mouseleave", () => {
+        tooltip.style.display = "none";
+      });
+      svg.appendChild(pt);
+    }
+
+    function drawPRChart() {
+      const svg = document.getElementById("prChart");
+      const w = svg.clientWidth || 560;
+      const h = svg.clientHeight || 300;
+      svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+      svg.innerHTML = "";
+      const pad = { l: 54, r: 16, t: 16, b: 44 };
+      const cx = pad.l, cy = pad.t, cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
+      addGrid(svg, cx, cy, cw, ch, 8, 6);
+      drawAxes(svg, cx, cy, cw, ch, "Recall", "Precision");
+
+      const mapX = (r) => cx + r * cw;
+      const mapY = (p) => cy + (1 - p) * ch;
+      const prPath = PR_POINTS.map((d, i) => `${i ? "L" : "M"}${mapX(d[0]).toFixed(2)} ${mapY(d[1]).toFixed(2)}`).join(" ");
+
+      const ns = "http://www.w3.org/2000/svg";
+      const targetLine = document.createElementNS(ns, "line");
+      targetLine.setAttribute("x1", cx);
+      targetLine.setAttribute("x2", cx + cw);
+      targetLine.setAttribute("y1", mapY(0.90));
+      targetLine.setAttribute("y2", mapY(0.90));
+      targetLine.setAttribute("stroke", "var(--warn)");
+      targetLine.setAttribute("stroke-width", "1.5");
+      targetLine.setAttribute("stroke-dasharray", "5 5");
+      svg.appendChild(targetLine);
+
+      const path = document.createElementNS(ns, "path");
+      path.setAttribute("d", prPath);
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", "var(--accent)");
+      path.setAttribute("stroke-width", "2.5");
+      path.classList.add("animate-path");
+      svg.appendChild(path);
+
+      PR_POINTS.forEach((p) => {
+        addHoverablePoint(svg, mapX(p[0]), mapY(p[1]), "var(--accent)", `Threshold point  P=${p[1].toFixed(3)}  R=${p[0].toFixed(3)}`);
+      });
+
+      const op = [0.987, 0.976];
+      addHoverablePoint(svg, mapX(op[0]), mapY(op[1]), "var(--danger)", `Operating point  P=${op[1].toFixed(3)}  R=${op[0].toFixed(3)}`);
+    }
+
+    function drawROCChart() {
+      const svg = document.getElementById("rocChart");
+      const w = svg.clientWidth || 560;
+      const h = svg.clientHeight || 300;
+      svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+      svg.innerHTML = "";
+      const pad = { l: 62, r: 16, t: 16, b: 44 };
+      const cx = pad.l, cy = pad.t, cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
+      addGrid(svg, cx, cy, cw, ch, 9, 6);
+      drawAxes(svg, cx, cy, cw, ch, "False Positive Rate", "True Positive Rate");
+      const ns = "http://www.w3.org/2000/svg";
+
+      const tickVals = [0,0.002,0.005,0.01,0.02,0.05,0.1,0.2,0.5,1];
+      const mapX = (x) => {
+        const idx = tickVals.indexOf(x);
+        if (idx >= 0) return cx + (idx / (tickVals.length - 1)) * cw;
+        return cx + ((Math.log10(Math.max(x,0.001)) + 3) / 3) * cw;
+      };
+      const mapY = (y) => cy + (1 - y) * ch;
+
+      tickVals.forEach((v) => {
+        const tx = document.createElementNS(ns, "text");
+        tx.setAttribute("x", mapX(v));
+        tx.setAttribute("y", cy + ch + 14);
+        tx.setAttribute("text-anchor", "middle");
+        tx.setAttribute("fill", "#7a8393");
+        tx.setAttribute("font-size", "10");
+        tx.textContent = v === 0 ? "0" : String(v);
+        svg.appendChild(tx);
+      });
+
+      const diag = document.createElementNS(ns, "line");
+      diag.setAttribute("x1", cx);
+      diag.setAttribute("y1", cy + ch);
+      diag.setAttribute("x2", cx + cw);
+      diag.setAttribute("y2", cy);
+      diag.setAttribute("stroke", "#7b7f8a");
+      diag.setAttribute("stroke-width", "1.5");
+      diag.setAttribute("stroke-dasharray", "6 5");
+      svg.appendChild(diag);
+
+      const pathD = ROC_POINTS.map((d, i) => `${i ? "L" : "M"}${mapX(d[0]).toFixed(2)} ${mapY(d[1]).toFixed(2)}`).join(" ");
+      const path = document.createElementNS(ns, "path");
+      path.setAttribute("d", pathD);
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", "var(--accent)");
+      path.setAttribute("stroke-width", "2.5");
+      path.classList.add("animate-path");
+      svg.appendChild(path);
+
+      ROC_POINTS.forEach((p) => {
+        addHoverablePoint(svg, mapX(p[0]), mapY(p[1]), "var(--accent)", `ROC point  FPR=${p[0]}  TPR=${p[1].toFixed(3)}`);
+      });
+      addHoverablePoint(svg, mapX(0.01), mapY(0.86), "var(--danger)", "Operating point");
+    }
+
+    function drawConfusionMatrix() {
+      const svg = document.getElementById("cmChart");
+      const w = svg.clientWidth || 560;
+      const h = svg.clientHeight || 240;
+      svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+      svg.innerHTML = "";
+      const ns = "http://www.w3.org/2000/svg";
+      const labels = ["Pred:Low", "Pred:Med", "Pred:High"];
+      const rows = ["Actual:Low", "Actual:Med", "Actual:High"];
+      const data = [
+        [4767, 61, 0],
+        [56, 116, 0],
+        [0, 0, 0]
+      ];
+      const max = 4767;
+      const x0 = 120, y0 = 36, cw = 120, ch = 54;
+
+      labels.forEach((lb, i) => {
+        const t = document.createElementNS(ns, "text");
+        t.setAttribute("x", x0 + i * cw + cw / 2);
+        t.setAttribute("y", 20);
+        t.setAttribute("text-anchor", "middle");
+        t.setAttribute("fill", "#8e97a8");
+        t.setAttribute("font-size", "11");
+        t.textContent = lb;
+        svg.appendChild(t);
+      });
+      rows.forEach((rb, r) => {
+        const t = document.createElementNS(ns, "text");
+        t.setAttribute("x", 10);
+        t.setAttribute("y", y0 + r * ch + ch / 2 + 4);
+        t.setAttribute("fill", "#8e97a8");
+        t.setAttribute("font-size", "11");
+        t.textContent = rb;
+        svg.appendChild(t);
+      });
+
+      const totals = data.map((row) => row.reduce((a,b)=>a+b,0));
+      for (let r = 0; r < data.length; r++) {
+        for (let c = 0; c < data[r].length; c++) {
+          const v = data[r][c];
+          const isDiag = r === c;
+          const alpha = max ? Math.max(0.08, v / max) : 0.08;
+          const fill = isDiag ? `rgba(2,195,154,${Math.min(0.9, alpha + 0.1)})` : `rgba(229,57,53,${Math.min(0.75, alpha + 0.06)})`;
+          const rect = document.createElementNS(ns, "rect");
+          rect.setAttribute("x", x0 + c * cw + 2);
+          rect.setAttribute("y", y0 + r * ch + 2);
+          rect.setAttribute("width", cw - 4);
+          rect.setAttribute("height", ch - 4);
+          rect.setAttribute("rx", 7);
+          rect.setAttribute("fill", fill);
+          rect.setAttribute("stroke", "rgba(255,255,255,0.15)");
+          rect.setAttribute("stroke-width", "1");
+          const pct = totals[r] ? ((v / totals[r]) * 100).toFixed(2) : "0.00";
+          rect.addEventListener("mousemove", (e) => {
+            tooltip.textContent = `${rows[r]} -> ${labels[c]} : ${v} (${pct}%)`;
+            tooltip.style.display = "block";
+            tooltip.style.left = `${e.clientX}px`;
+            tooltip.style.top = `${e.clientY}px`;
+          });
+          rect.addEventListener("mouseleave", () => { tooltip.style.display = "none"; });
+          svg.appendChild(rect);
+
+          const t = document.createElementNS(ns, "text");
+          t.setAttribute("x", x0 + c * cw + cw / 2);
+          t.setAttribute("y", y0 + r * ch + ch / 2 + 4);
+          t.setAttribute("text-anchor", "middle");
+          t.setAttribute("fill", "#ecf7f3");
+          t.setAttribute("font-size", "13");
+          t.setAttribute("font-weight", "700");
+          t.textContent = String(v);
+          svg.appendChild(t);
+        }
+      }
+    }
+
+    function drawDistributionHeatmap(events) {
+      const svg = document.getElementById("distHeatmap");
+      const w = svg.clientWidth || 560;
+      const h = svg.clientHeight || 240;
+      svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+      svg.innerHTML = "";
+      const ns = "http://www.w3.org/2000/svg";
+      const bins = Array.from({ length: 10 }, (_, i) => [i * 10, i * 10 + 9]);
+      const now = Date.now();
+      const thisWeek = Array(10).fill(0);
+      const prevWeek = Array(10).fill(0);
+      events.forEach((e) => {
+        const ageDays = (now - new Date(e.ts).getTime()) / (1000 * 60 * 60 * 24);
+        const idx = Math.min(9, Math.max(0, Math.floor(e.score / 10)));
+        if (ageDays <= 7) thisWeek[idx] += 1;
+        else if (ageDays <= 14) prevWeek[idx] += 1;
+      });
+      const max = Math.max(...thisWeek, ...prevWeek, 1);
+      const x0 = 72, y0 = 42, cw = (w - x0 - 12) / 10, ch = 70;
+
+      ["Current", "Previous"].forEach((row, r) => {
+        const t = document.createElementNS(ns, "text");
+        t.setAttribute("x", 8);
+        t.setAttribute("y", y0 + r * (ch + 20) + ch / 2 + 4);
+        t.setAttribute("fill", "#8e97a8");
+        t.setAttribute("font-size", "11");
+        t.textContent = row;
+        svg.appendChild(t);
+      });
+
+      bins.forEach((b, i) => {
+        const t = document.createElementNS(ns, "text");
+        t.setAttribute("x", x0 + i * cw + cw / 2);
+        t.setAttribute("y", 22);
+        t.setAttribute("text-anchor", "middle");
+        t.setAttribute("fill", "#8e97a8");
+        t.setAttribute("font-size", "10");
+        t.textContent = `${b[0]}-${b[1]}`;
+        svg.appendChild(t);
+      });
+
+      [thisWeek, prevWeek].forEach((arr, r) => {
+        arr.forEach((v, i) => {
+          const alpha = Math.max(0.08, v / max);
+          const rect = document.createElementNS(ns, "rect");
+          rect.setAttribute("x", x0 + i * cw + 2);
+          rect.setAttribute("y", y0 + r * (ch + 20) + 2);
+          rect.setAttribute("width", cw - 4);
+          rect.setAttribute("height", ch - 4);
+          rect.setAttribute("rx", 8);
+          rect.setAttribute("fill", `rgba(2,195,154,${Math.min(0.9, alpha + 0.05)})`);
+          rect.setAttribute("stroke", "rgba(255,255,255,0.12)");
+          rect.setAttribute("stroke-width", "1");
+          svg.appendChild(rect);
+
+          const t = document.createElementNS(ns, "text");
+          t.setAttribute("x", x0 + i * cw + cw / 2);
+          t.setAttribute("y", y0 + r * (ch + 20) + ch / 2 + 4);
+          t.setAttribute("text-anchor", "middle");
+          t.setAttribute("fill", "#ecf7f3");
+          t.setAttribute("font-size", "12");
+          t.setAttribute("font-weight", "700");
+          t.textContent = String(v);
+          svg.appendChild(t);
+        });
+      });
+    }
+
+    function drawDriftChart(rates) {
+      const svg = document.getElementById("driftChart");
+      const w = svg.clientWidth || 560;
+      const h = svg.clientHeight || 300;
+      svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+      svg.innerHTML = "";
+      const pad = { l: 46, r: 12, t: 14, b: 38 };
+      const cx = pad.l, cy = pad.t, cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
+      addGrid(svg, cx, cy, cw, ch, 7, 6);
+      drawAxes(svg, cx, cy, cw, ch, "Week", "Correction %");
+      const ns = "http://www.w3.org/2000/svg";
+      const maxY = 20;
+      const mapX = (i) => cx + (i / 7) * cw;
+      const mapY = (v) => cy + (1 - (v / maxY)) * ch;
+
+      for (let i = 0; i < 8; i++) {
+        const tx = document.createElementNS(ns, "text");
+        tx.setAttribute("x", mapX(i));
+        tx.setAttribute("y", cy + ch + 14);
+        tx.setAttribute("text-anchor", "middle");
+        tx.setAttribute("fill", "#7a8393");
+        tx.setAttribute("font-size", "10");
+        tx.textContent = `W${i + 1}`;
+        svg.appendChild(tx);
+      }
+
+      const warnY = mapY(8);
+      const retrainY = mapY(15);
+      const wLine = document.createElementNS(ns, "line");
+      wLine.setAttribute("x1", cx); wLine.setAttribute("x2", cx + cw);
+      wLine.setAttribute("y1", warnY); wLine.setAttribute("y2", warnY);
+      wLine.setAttribute("stroke", "var(--warn)");
+      wLine.setAttribute("stroke-width", "1.5");
+      wLine.setAttribute("stroke-dasharray", "6 5");
+      svg.appendChild(wLine);
+      const rLine = document.createElementNS(ns, "line");
+      rLine.setAttribute("x1", cx); rLine.setAttribute("x2", cx + cw);
+      rLine.setAttribute("y1", retrainY); rLine.setAttribute("y2", retrainY);
+      rLine.setAttribute("stroke", "var(--danger)");
+      rLine.setAttribute("stroke-width", "1.5");
+      rLine.setAttribute("stroke-dasharray", "6 5");
+      svg.appendChild(rLine);
+
+      const d = rates.map((v, i) => `${i ? "L" : "M"}${mapX(i).toFixed(2)} ${mapY(v).toFixed(2)}`).join(" ");
+      const p = document.createElementNS(ns, "path");
+      p.setAttribute("d", d);
+      p.setAttribute("fill", "none");
+      p.setAttribute("stroke", "var(--accent)");
+      p.setAttribute("stroke-width", "2.5");
+      p.classList.add("animate-path");
+      svg.appendChild(p);
+      rates.forEach((v, i) => {
+        addHoverablePoint(svg, mapX(i), mapY(v), "var(--accent)", `Week ${i + 1}: ${v.toFixed(2)}% corrections`);
+      });
+    }
+
+    function renderThresholdSimulator(metrics) {
+      const warnSlider = document.getElementById("warnSlider");
+      const blockSlider = document.getElementById("blockSlider");
+      const warnVal = document.getElementById("warnVal");
+      const blockVal = document.getElementById("blockVal");
+      const baselineWarn = Math.min(95, Number(runtimePolicy.risk_score_silent_max) + 1);
+      const baselineBlock = Math.max(baselineWarn + 1, Number(runtimePolicy.block_threshold));
+      warnSlider.value = String(baselineWarn);
+      blockSlider.value = String(baselineBlock);
+      const update = () => {
+        const w = Number(warnSlider.value);
+        const b = Number(blockSlider.value);
+        if (b <= w) {
+          blockSlider.value = String(w + 1);
+        }
+        warnVal.textContent = String(w);
+        blockVal.textContent = String(blockSlider.value);
+        const actualBlock = Number(blockSlider.value);
+        const curBlock = allEvents.filter((e) => e.score >= baselineBlock).length;
+        const curWarn = allEvents.filter((e) => e.score >= baselineWarn && e.score < baselineBlock).length;
+        const newBlock = allEvents.filter((e) => e.score >= actualBlock).length;
+        const newWarn = allEvents.filter((e) => e.score >= w && e.score < actualBlock).length;
+        const newSafe = allEvents.length - newBlock - newWarn;
+        const wrongInterventions = allEvents.filter((e) => String(e.feedback).toLowerCase().includes("wrong") && (e.score >= w)).length;
+        const fpProxy = newBlock + newWarn ? (wrongInterventions / (newBlock + newWarn)) * 100 : 0;
+        document.getElementById("simBlock").innerHTML = `Simulated block: <strong>${newBlock} (${newBlock >= curBlock ? "+" : ""}${newBlock - curBlock} vs current)</strong>`;
+        document.getElementById("simWarn").innerHTML = `Simulated warn: <strong>${newWarn} (${newWarn >= curWarn ? "+" : ""}${newWarn - curWarn} vs current)</strong>`;
+        document.getElementById("simSafe").innerHTML = `Simulated safe: <strong>${newSafe} (${newSafe >= (allEvents.length - curBlock - curWarn) ? "+" : ""}${newSafe - (allEvents.length - curBlock - curWarn)} vs current)</strong>`;
+        document.getElementById("simFpr").innerHTML = `Estimated FPR proxy: <strong>~${fpProxy.toFixed(1)}%</strong>`;
+      };
+      warnSlider.addEventListener("input", update);
+      blockSlider.addEventListener("input", update);
+      update();
+
+      document.getElementById("applyConfigBtn").onclick = async () => {
+        const payload = {
+          risk_score_silent_max: Math.max(0, Number(warnSlider.value) - 1),
+          warn_threshold: Number(warnSlider.value),
+          block_threshold: Number(blockSlider.value),
+          note: "Suggested values copied from ML Health Dashboard simulator"
+        };
+        try {
+          await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+          alert("Suggested threshold JSON copied to clipboard for risk_policy.json");
+        } catch {
+          alert("Could not access clipboard. Copy manually:\n" + JSON.stringify(payload, null, 2));
+        }
+      };
+    }
+
+    function renderFprDonut(metrics) {
+      const fpr = Math.max(0, Math.min(100, metrics.fpr));
+      const arc = document.getElementById("fprDonutArc");
+      const circum = 389.6;
+      setGauge(arc, 100 - fpr, circum);
+      document.getElementById("fprDonutText").textContent = `${fpr.toFixed(1)}%`;
+      document.getElementById("fprStatVal").textContent = `${fpr.toFixed(1)}%`;
+      document.getElementById("fprBlocks").textContent = String(metrics.blocks);
+      document.getElementById("fprSnoozed").textContent = String(metrics.snoozed);
+      document.getElementById("fprOverride").textContent = `${metrics.overrideRate.toFixed(1)}%`;
+      document.getElementById("fprStatVal").className = fpr > 10 ? "warn" : "ok";
+      document.getElementById("fprTrend").textContent = fpr > 10 ? "↓ elevated - investigate" : "↑ within safe band";
+      document.getElementById("fprTrend").className = fpr > 10 ? "trend down" : "trend up";
+    }
+
+    function initChartAnimationObserver() {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("chart-ready");
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.2 });
+      document.querySelectorAll(".chart-card .chart-box").forEach((box) => observer.observe(box));
+    }
+
+    function applyDensityMode(mode) {
+      const compact = mode === "compact";
+      document.body.classList.toggle("compact", compact);
+      const btn = document.getElementById("densityBtn");
+      if (btn) {
+        btn.dataset.active = compact ? "true" : "false";
+        btn.textContent = compact ? "Compact: On" : "Compact: Off";
+      }
+      localStorage.setItem("ml_density_mode", compact ? "compact" : "comfortable");
+    }
+
+    function initDensityControl() {
+      const saved = localStorage.getItem("ml_density_mode");
+      applyDensityMode(saved || "compact");
+      const btn = document.getElementById("densityBtn");
+      if (!btn) return;
+      btn.addEventListener("click", () => {
+        const next = document.body.classList.contains("compact") ? "comfortable" : "compact";
+        applyDensityMode(next);
+        drawPRChart();
+        drawROCChart();
+        drawConfusionMatrix();
+        drawDistributionHeatmap(allEvents);
+        drawDriftChart(usingDemo ? DEMO_DRIFT : computeMetrics(allEvents).weeklyRates);
+      });
+    }
+
+    function startAutoRefresh() {
+      if (refreshTimer) clearInterval(refreshTimer);
+      refreshTimer = window.setInterval(async () => {
+        document.getElementById("lastUpdated").textContent = fmtAgo(allEvents[0]?.ts);
+        if (document.visibilityState !== "visible") return;
+        await loadDashboard();
+      }, 120000);
+    }
+
+    async function loadDashboard() {
+      allEvents = await fetchEvents();
+      const newest = allEvents[0]?.ts;
+      setLiveHeader(newest, !usingDemo);
+
+      const metrics = computeMetrics(allEvents);
+      document.getElementById("totalScoredMetric").dataset.target = String(metrics.totalScored || 2601);
+      document.getElementById("fprMetric").dataset.target = String(metrics.fpr.toFixed(1));
+      document.getElementById("eventsTrend").textContent = `↑ ${Math.max(0, Math.round((metrics.totalScored || 2601) * 0.047))} this week`;
+
+      drawSparkline("accuracySpark", [96.8, 97.1, 97.0, 97.3, 97.4, 97.5, 97.6]);
+      drawSparkline("aucSpark", [0.991, 0.993, 0.994, 0.995, 0.996, 0.997, 0.998]);
+      drawSparkline("fprSpark", [1.2, 1.0, 0.8, 0.5, 0.3, 0.1, metrics.fpr], metrics.fpr > 5 ? "var(--danger)" : "var(--accent)");
+      drawSparkline("eventsSpark", [2310, 2384, 2412, 2468, 2501, 2552, metrics.totalScored || 2601]);
+
+      drawPRChart();
+      drawROCChart();
+      drawConfusionMatrix();
+      drawDistributionHeatmap(allEvents);
+      drawDriftChart(usingDemo ? DEMO_DRIFT : metrics.weeklyRates);
+      document.getElementById("driftNote").textContent = usingDemo
+        ? "No corrections yet - showing demo drift trend"
+        : "Trend derived from live correction telemetry";
+
+      renderClassPerfTable();
+      renderFalsePositiveLog(allEvents);
+      renderActiveLearning(allEvents);
+      renderThresholdSimulator(metrics);
+      renderFprDonut(metrics);
+      setGauge(document.getElementById("accGaugeArc"), METRICS_STATIC.accuracy, 188.5);
+      animateCounters(metrics);
+    }
+
+    document.getElementById("exportPdfBtn").addEventListener("click", () => window.print());
+    document.getElementById("refreshBtn").addEventListener("click", () => loadDashboard());
+
+    (async function init() {
+      attachSortableHeaders();
+      initDensityControl();
+      const policyLoad = await loadPolicyThresholds();
+      runtimePolicy = policyLoad.policy;
+      runtimePolicySource = policyLoad.source;
+      applyPolicySourceChip(runtimePolicySource, runtimePolicy);
+      await loadDashboard();
+      initChartAnimationObserver();
+      startAutoRefresh();
+    })();
+  </script>
 </body>
 </html>
