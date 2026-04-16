@@ -816,6 +816,46 @@
     let mlSbStatusRetrain = "";
     let mlSbStatusEvents = "";
 
+    function parseSummaryJsonField(raw) {
+      if (raw == null) return null;
+      if (typeof raw === "object") return raw;
+      if (typeof raw === "string") {
+        try {
+          const o = JSON.parse(raw);
+          return typeof o === "object" && o ? o : null;
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    }
+
+    /** Macro AUPRC for KPIs when metrics.auc is absent (older Supabase rows). */
+    function deriveMacroAuprc(summary) {
+      if (!summary || typeof summary !== "object") return Number.NaN;
+      const m = Number(summary.metrics?.auc);
+      if (Number.isFinite(m)) return m;
+      const cls = summary.evaluation?.pr_curve_summary?.classes;
+      if (cls && typeof cls === "object") {
+        const vals = [];
+        for (const k of ["low", "med", "high"]) {
+          const v = Number(cls[k]?.auprc);
+          if (Number.isFinite(v)) vals.push(v);
+        }
+        if (vals.length) return vals.reduce((a, b) => a + b, 0) / vals.length;
+      }
+      const pol = summary.policy?.thresholds;
+      if (pol && typeof pol === "object") {
+        const vals = [];
+        for (const k of ["low", "med", "high"]) {
+          const v = Number(pol[k]?.auprc);
+          if (Number.isFinite(v)) vals.push(v);
+        }
+        if (vals.length) return vals.reduce((a, b) => a + b, 0) / vals.length;
+      }
+      return Number.NaN;
+    }
+
     function actionFromScore(score, policy) {
       const blockThr = Number(policy.block_threshold || DEFAULT_POLICY.block_threshold);
       const silentMax = Number(policy.risk_score_silent_max || DEFAULT_POLICY.risk_score_silent_max);
@@ -887,6 +927,12 @@
                 continue;
               }
               const row = Array.isArray(rows) ? rows[0] : null;
+              if (!row) continue;
+              const fromJson = parseSummaryJsonField(row.summary_json);
+              if (fromJson) {
+                mlSbStatusRetrain = "";
+                return fromJson;
+              }
               const summary = rowToSummary(row);
               if (summary) {
                 mlSbStatusRetrain = "";
@@ -940,10 +986,15 @@
         const n = Number(v);
         return Number.isFinite(n) ? n : Number.NaN;
       };
+      const aucResolved = (() => {
+        const direct = toUnitOrNaN(metrics.auc);
+        if (Number.isFinite(direct)) return direct;
+        return deriveMacroAuprc(summary);
+      })();
       METRICS_STATIC = {
         ...METRICS_STATIC,
         accuracy: toPctOrNaN(metrics.accuracy),
-        auc: toUnitOrNaN(metrics.auc),
+        auc: aucResolved,
         precision: toUnitOrNaN(metrics.precision),
         fpr: pctFromUnit(metrics.fpr_non_high_as_high, METRICS_STATIC.fpr)
       };
@@ -966,6 +1017,8 @@
       const hasFeedbackLabels = Boolean(metrics && metrics.hasFeedbackLabels);
       const eventsSource = usingDemo
         ? "demo events"
+        : metrics && metrics.fprFromCalibration
+          ? "calibration FPR (validation sweep; not user feedback)"
         : hasFeedbackLabels
           ? "live feedback labels"
           : "live events (no feedback labels)";
@@ -975,9 +1028,11 @@
       const fpr = document.getElementById("fprSource");
       if (acc) acc.textContent = `Source: ${modelSource}`;
       if (prec) prec.textContent = `Source: ${modelSource}`;
-      if (auc) auc.textContent = retrainSummary && Number.isFinite(Number((retrainSummary.metrics || {}).auc))
-        ? "Source: live retrain metadata"
-        : "Source: unavailable";
+      if (auc) {
+        const hasAuc = retrainSummary && Number.isFinite(Number((retrainSummary.metrics || {}).auc))
+          || Number.isFinite(deriveMacroAuprc(retrainSummary));
+        auc.textContent = hasAuc ? "Source: live retrain metadata" : "Source: unavailable";
+      }
       if (fpr) fpr.textContent = `Source: ${eventsSource}`;
     }
 
@@ -1244,9 +1299,17 @@
       ).length;
       const snoozed = events.filter((e) => e.action === "snooze").length;
       const overrides = events.filter((e) => e.action === "override").length;
-      const fpr = hasFeedbackLabels && (blocks + warns > 0)
+      let fpr = hasFeedbackLabels && (blocks + warns > 0)
         ? (wrongInterventions / (blocks + warns)) * 100
         : Number.NaN;
+      let fprFromCalibration = false;
+      if (!Number.isFinite(fpr) && !usingDemo && retrainSummary) {
+        const cal = Number(retrainSummary.metrics?.fpr_non_high_as_high);
+        if (Number.isFinite(cal)) {
+          fpr = cal <= 1 ? cal * 100 : cal;
+          fprFromCalibration = true;
+        }
+      }
       const overrideRate = totalScored > 0 ? (overrides / totalScored) * 100 : 0;
 
       const weekMs = 7 * 24 * 60 * 60 * 1000;
@@ -1274,6 +1337,7 @@
         snoozed,
         overrideRate,
         fpr,
+        fprFromCalibration,
         hasFeedbackLabels,
         weeklyRates
       };
@@ -1526,6 +1590,20 @@
         return;
       }
 
+      const polHigh = retrainSummary?.policy?.thresholds?.high;
+      const polAuprc = Number(polHigh?.auprc);
+      if (retrainSummary && Number.isFinite(polAuprc) && prSub) {
+        prSub.textContent = `Policy snapshot: high-class AUPRC ≈ ${polAuprc.toFixed(3)} (full PR curve needs evaluation bundle in retrain summary)`;
+        addHoverablePoint(
+          svg,
+          mapX(0.5),
+          mapY(Math.max(0.1, Math.min(0.99, polAuprc))),
+          "var(--accent)",
+          `High-class AUPRC (from policy) ≈ ${polAuprc.toFixed(3)}`
+        );
+        return;
+      }
+
       if (usingDemo) {
         if (prSub) prSub.textContent = "Demo PR curve (illustrative)";
         const prPath = PR_POINTS.map((d, i) => `${i ? "L" : "M"}${mapX(d[0]).toFixed(2)} ${mapY(d[1]).toFixed(2)}`).join(" ");
@@ -1586,10 +1664,14 @@
       diag.setAttribute("stroke-dasharray", "6 5");
       svg.appendChild(diag);
 
-      const liveRec = retrainSummary?.evaluation?.threshold_calibration?.recommended || {};
+      const liveRec = retrainSummary?.evaluation?.threshold_calibration?.recommended
+        || retrainSummary?.evaluation?.threshold_calibration?.current_metrics
+        || {};
       const liveFpr = Number(liveRec.fpr_non_high_as_high);
       const liveTpr = Number(liveRec.recall_high);
-      const liveAuc = Number(retrainSummary?.metrics?.auc);
+      const liveAuc = Number.isFinite(Number(retrainSummary?.metrics?.auc))
+        ? Number(retrainSummary.metrics.auc)
+        : deriveMacroAuprc(retrainSummary);
       if (rocAucBadge) {
         if (Number.isFinite(liveAuc)) {
           rocAucBadge.textContent = liveAuc.toFixed(3);
@@ -1607,6 +1689,19 @@
           mapY(Math.max(0, Math.min(1, liveTpr))),
           "var(--danger)",
           `Live operating point  FPR=${liveFpr.toFixed(3)}  TPR=${liveTpr.toFixed(3)}`
+        );
+        return;
+      }
+
+      const mFpr = Number(retrainSummary?.metrics?.fpr_non_high_as_high);
+      const mRec = Number(retrainSummary?.metrics?.recall_high);
+      if (Number.isFinite(mFpr) && Number.isFinite(mRec)) {
+        addHoverablePoint(
+          svg,
+          mapX(Math.max(0, Math.min(1, mFpr))),
+          mapY(Math.max(0, Math.min(1, mRec))),
+          "var(--danger)",
+          `Metrics row  FPR=${mFpr.toFixed(3)}  TPR=${mRec.toFixed(3)}`
         );
         return;
       }
@@ -1904,6 +1999,14 @@
         if (fprBadge) {
           fprBadge.textContent = "Needs feedback labels";
           fprBadge.className = "badge";
+        }
+      } else if (metrics.fprFromCalibration) {
+        document.getElementById("fprStatVal").className = fpr > 10 ? "warn" : "ok";
+        document.getElementById("fprTrend").textContent = "validation sweep estimate (not user feedback)";
+        document.getElementById("fprTrend").className = "trend up";
+        if (fprBadge) {
+          fprBadge.textContent = "Calib. FPR";
+          fprBadge.className = "badge good";
         }
       } else {
         document.getElementById("fprStatVal").className = fpr > 10 ? "warn" : "ok";
