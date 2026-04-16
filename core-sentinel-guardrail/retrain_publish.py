@@ -85,6 +85,24 @@ def _compact_stage_rows(stage_results: list[dict[str, Any]] | None) -> list[dict
     return out
 
 
+def _macro_auprc_from_pr_curve(pr: dict[str, Any]) -> float | None:
+    """Mean AUPRC across low/med/high from pr_curve_summary.json; dashboard uses as metrics.auc."""
+    classes = pr.get("classes")
+    if not isinstance(classes, dict):
+        return None
+    vals: list[float] = []
+    for k in ("low", "med", "high"):
+        c = classes.get(k)
+        if isinstance(c, dict) and c.get("auprc") is not None:
+            try:
+                vals.append(float(c["auprc"]))
+            except (TypeError, ValueError):
+                continue
+    if not vals:
+        return None
+    return sum(vals) / len(vals)
+
+
 def build_retrain_dashboard_summary(
     *,
     stage_results: list[dict[str, Any]] | None = None,
@@ -109,6 +127,7 @@ def build_retrain_dashboard_summary(
     model_mtime = MODEL_DIR.stat().st_mtime if model_exists else None
     failed_stage = next((s["name"] for s in stages if s.get("status") != "success"), None)
     pipeline_status = "success" if not failed_stage else "failed"
+    auc_macro = _macro_auprc_from_pr_curve(pr_curve)
 
     summary: dict[str, Any] = {
         "artifact_version": 1,
@@ -135,6 +154,7 @@ def build_retrain_dashboard_summary(
             "precision": best.get("eval_precision"),
             "recall": best.get("eval_recall"),
             "f1": best.get("eval_f1"),
+            "auc": auc_macro,
             "fpr_non_high_as_high": recommended.get("fpr_non_high_as_high"),
             "precision_low": best.get("eval_precision_low"),
             "recall_low": best.get("eval_recall_low"),

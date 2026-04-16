@@ -40,6 +40,29 @@ STATE_FILE = _ROOT / "logs" / "supabase_sync_state.json"
 # Throttle repeated "offline / bad URL" logs (seconds between messages).
 _NETWORK_WARN_INTERVAL_SEC = 300.0
 _last_network_warn_ts = 0.0
+_logged_placeholder_url = False
+
+
+def is_placeholder_supabase_url(url: str | None) -> bool:
+    """True when SUPABASE_URL is empty or still a docs/template hostname (not a real project)."""
+    raw = (url or "").strip()
+    if not raw:
+        return True
+    try:
+        from urllib.parse import urlparse
+
+        host = (urlparse(raw).hostname or "").lower()
+    except Exception:
+        return True
+    if not host:
+        return True
+    if "<" in host or ">" in host:
+        return True
+    if host in ("your-project.supabase.co", "xxxx.supabase.co", "example.supabase.co"):
+        return True
+    if "your-project" in host:
+        return True
+    return False
 
 
 def _is_dns_or_network_error(exc: BaseException) -> bool:
@@ -118,9 +141,20 @@ def save_last_synced_id(last_id: int) -> None:
 
 
 def get_supabase_client():
+    global _logged_placeholder_url
     url = os.environ.get("SUPABASE_URL", "").strip()
     key = os.environ.get("SUPABASE_ANON_KEY", "").strip()
     if not url or not key:
+        return None
+    if is_placeholder_supabase_url(url):
+        if not _logged_placeholder_url:
+            _logged_placeholder_url = True
+            print(
+                "[sync] SUPABASE_URL is still a template (e.g. <your-project>.supabase.co). "
+                "Replace it with your project URL from Supabase → Settings → API, then restart. "
+                "Sync disabled until then.",
+                flush=True,
+            )
         return None
     try:
         from urllib.parse import urlparse

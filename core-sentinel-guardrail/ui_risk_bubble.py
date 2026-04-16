@@ -1207,6 +1207,16 @@ class RiskBubble(QtWidgets.QWidget):
         self.update()
         self._traffic_indicator.update()
 
+    def _stop_hold_timer_safe(self) -> None:
+        """Stop hold pulse timer; clear ref if the C++ object was already destroyed."""
+        t = self._hold_timer
+        if t is None:
+            return
+        try:
+            t.stop()
+        except RuntimeError:
+            self._hold_timer = None
+
     def set_hold_state(self, locked: bool, critical: bool = False) -> None:
         """Paste-hold: red pill, pulsing score ring, lock glyph until user remediates."""
         self._hold_critical = bool(critical)
@@ -1218,10 +1228,15 @@ class RiskBubble(QtWidgets.QWidget):
                 self._hold_timer = QtCore.QTimer(self)
                 self._hold_timer.setInterval(500)
                 self._hold_timer.timeout.connect(self._pulse_hold)
-            self._hold_timer.start()
+            try:
+                self._hold_timer.start()
+            except RuntimeError:
+                self._hold_timer = QtCore.QTimer(self)
+                self._hold_timer.setInterval(500)
+                self._hold_timer.timeout.connect(self._pulse_hold)
+                self._hold_timer.start()
         else:
-            if self._hold_timer is not None:
-                self._hold_timer.stop()
+            self._stop_hold_timer_safe()
         self.update()
         self._traffic_indicator.update()
 

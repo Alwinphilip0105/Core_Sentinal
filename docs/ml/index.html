@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Optional: default Supabase project URL for this deployment (anon key still via Hub or form below). -->
+<meta name="core-sentinel-supabase-url" content="https://uwirvbwufmoruvtcpbit.supabase.co">
 <title>Core Sentinel - ML Health Dashboard</title>
   <link rel="icon" type="image/svg+xml" href="../favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -451,6 +453,15 @@
       .heatmap-svg { height: 220px; }
     }
 
+    .sb-wrap { margin: 0 auto 16px; width: min(var(--maxw), calc(100% - 28px)); }
+    .sb-details { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; }
+    .sb-summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted); list-style-position: outside; }
+    .sb-grid { display: grid; gap: 10px; margin-top: 10px; }
+    .sb-grid label { display: grid; gap: 4px; font-size: 11px; color: var(--muted); }
+    .sb-grid input { background: var(--grid); border: 1px solid rgba(255,255,255,0.1); color: var(--text); padding: 8px 10px; border-radius: 8px; font-size: 12px; width: 100%; max-width: 520px; }
+    .sb-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .sb-hint { margin: 0; line-height: 1.45; max-width: 720px; }
+
     @media print {
       body { background: #fff !important; color: #111 !important; }
       .topbar, .actions, .btn { display: none !important; }
@@ -489,6 +500,25 @@
 </div>
   </div>
   </header>
+
+  <div class="sb-wrap" id="mlSbPanel">
+    <details class="sb-details" open>
+      <summary class="sb-summary">Supabase connection (live retrain + events)</summary>
+      <div class="sb-grid">
+        <label>Project URL
+          <input type="url" id="mlSbUrl" placeholder="https://your-project-ref.supabase.co" autocomplete="url" />
+        </label>
+        <label>Anon public key
+          <input type="password" id="mlSbKey" placeholder="eyJhbGciOiJIUzI1NiIs…" autocomplete="off" />
+        </label>
+        <div class="sb-actions">
+          <button type="button" class="btn btn-accent" id="mlSbSave">Save &amp; reload</button>
+          <span class="mini-note" id="mlSbStatus" style="color: var(--muted);"></span>
+        </div>
+        <p class="mini-note sb-hint">Same credentials as the <a href="../hub.html">documentation hub</a> (<code>sb_url</code> / <code>sb_key</code>). Keys: <strong>Supabase → Project Settings → API</strong>. If you see <strong>401 / 403 / PGRST</strong>, run the SQL in <code>core-sentinel-guardrail/supabase/retrain_runs.sql</code> and <code>…/supabase/guardrail_events.sql</code> (creates tables + anon read/insert policies). At least one <code>retrain_runs</code> row (e.g. after auto-retrain publish) fills the metrics strip; empty <code>guardrail_events</code> is OK.</p>
+      </div>
+    </details>
+  </div>
 
   <main class="container">
     <section class="row row-4">
@@ -783,6 +813,8 @@
     let runtimePolicySource = { kind: "default", label: "Fallback defaults" };
     let refreshTimer = null;
     let retrainSummary = null;
+    let mlSbStatusRetrain = "";
+    let mlSbStatusEvents = "";
 
     function actionFromScore(score, policy) {
       const blockThr = Number(policy.block_threshold || DEFAULT_POLICY.block_threshold);
@@ -799,42 +831,74 @@
     }
 
     async function loadRetrainSummary() {
+      mlSbStatusRetrain = "";
       const sbUrl = (localStorage.getItem("sb_url") || "").trim().replace(/\/$/, "");
       const sbKey = (localStorage.getItem("sb_key") || "").trim();
       const configuredTable = (localStorage.getItem("retrain_runs_table") || "").trim();
       const tables = Array.from(new Set([configuredTable, "retrain_runs"].filter(Boolean)));
+      const headers = {
+        apikey: sbKey,
+        Authorization: `Bearer ${sbKey}`,
+        Accept: "application/json",
+      };
+
+      function rowToSummary(row) {
+        if (!row) return null;
+        return row.summary_json && typeof row.summary_json === "object"
+          ? row.summary_json
+          : {
+              generated_at: row.run_at,
+              model: { version_tag: row.model_version_tag },
+              metrics: {
+                accuracy: row.accuracy,
+                precision: row.precision,
+                recall: row.recall,
+                f1: row.f1,
+                recall_high: row.recall_high,
+                recall_med: row.recall_med,
+                fpr_non_high_as_high: row.fpr_non_high_as_high,
+              },
+              feedback: { rows_used_for_retrain: row.feedback_rows },
+            };
+      }
+
       if (sbUrl && sbKey) {
         for (const table of tables) {
-          try {
-            const resp = await fetch(
-              `${sbUrl}/rest/v1/${encodeURIComponent(table)}?select=run_at,accuracy,precision,recall,f1,recall_high,recall_med,feedback_rows,fpr_non_high_as_high,model_version_tag,summary_json&order=run_at.desc.nullslast&limit=1`,
-              { headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` }, cache: "no-store" }
-            );
-            if (!resp.ok) continue;
-            const rows = await resp.json();
-            const row = Array.isArray(rows) ? rows[0] : null;
-            if (row) {
-              return row.summary_json && typeof row.summary_json === "object"
-                ? row.summary_json
-                : {
-                    generated_at: row.run_at,
-                    model: { version_tag: row.model_version_tag },
-                    metrics: {
-                      accuracy: row.accuracy,
-                      precision: row.precision,
-                      recall: row.recall,
-                      f1: row.f1,
-                      recall_high: row.recall_high,
-                      recall_med: row.recall_med,
-                      fpr_non_high_as_high: row.fpr_non_high_as_high
-                    },
-                    feedback: { rows_used_for_retrain: row.feedback_rows }
-                  };
+          const queryAttempts = [
+            "select=summary_json,run_at&order=run_at.desc.nullslast&limit=1",
+            "select=run_at,accuracy,precision,recall,f1,recall_high,recall_med,feedback_rows,fpr_non_high_as_high,model_version_tag,summary_json&order=run_at.desc.nullslast&limit=1",
+          ];
+          for (const qs of queryAttempts) {
+            try {
+              const resp = await fetch(`${sbUrl}/rest/v1/${encodeURIComponent(table)}?${qs}`, {
+                headers,
+                cache: "no-store",
+              });
+              const rawText = await resp.text();
+              if (!resp.ok) {
+                mlSbStatusRetrain = `${table}: HTTP ${resp.status} ${rawText.slice(0, 120)}`;
+                continue;
+              }
+              let rows;
+              try {
+                rows = JSON.parse(rawText);
+              } catch {
+                mlSbStatusRetrain = `${table}: invalid JSON`;
+                continue;
+              }
+              const row = Array.isArray(rows) ? rows[0] : null;
+              const summary = rowToSummary(row);
+              if (summary) {
+                mlSbStatusRetrain = "";
+                return summary;
+              }
+            } catch (e) {
+              mlSbStatusRetrain = `${table}: ${e && e.message ? e.message : String(e)}`;
             }
-          } catch {
-            // try next table candidate
           }
         }
+      } else {
+        mlSbStatusRetrain = "Configure URL + anon key below (or save from Hub).";
       }
 
       const candidates = [
@@ -847,7 +911,14 @@
           const resp = await fetch(url, { cache: "no-store" });
           if (!resp.ok) continue;
           const data = await resp.json();
-          if (data && typeof data === "object") return data;
+          if (data && typeof data === "object") {
+            if (sbUrl && sbKey && mlSbStatusRetrain) {
+              mlSbStatusRetrain += " — loaded retrain summary from local JSON fallback.";
+            } else {
+              mlSbStatusRetrain = "";
+            }
+            return data;
+          }
         } catch {
           // try next candidate
         }
@@ -1109,23 +1180,50 @@
     }
 
     async function fetchEvents() {
+      mlSbStatusEvents = "";
       const url = (localStorage.getItem("sb_url") || "").trim().replace(/\/$/, "");
       const key = (localStorage.getItem("sb_key") || "").trim();
       if (!url || !key) {
         usingDemo = true;
+        mlSbStatusEvents = "No Supabase URL/key — using demo events.";
         return generateDemoEvents();
       }
+      const evHeaders = {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        Accept: "application/json",
+      };
       try {
         const r = await fetch(
           `${url}/rest/v1/guardrail_events?select=id,timestamp,risk_score,action,pii_classes,llm_name,text_hash&order=timestamp.desc.nullslast,id.desc&limit=4000`,
-          { headers: { apikey: key, Authorization: `Bearer ${key}` } }
+          { headers: evHeaders, cache: "no-store" }
         );
-        if (!r.ok) throw new Error("Supabase fetch failed");
-        const rows = await r.json();
-        if (!Array.isArray(rows) || !rows.length) throw new Error("No rows");
+        const rawText = await r.text();
+        if (!r.ok) {
+          mlSbStatusEvents = `guardrail_events: HTTP ${r.status} ${rawText.slice(0, 160)}`;
+          usingDemo = true;
+          return generateDemoEvents();
+        }
+        let rows;
+        try {
+          rows = JSON.parse(rawText);
+        } catch {
+          mlSbStatusEvents = "guardrail_events: invalid JSON";
+          usingDemo = true;
+          return generateDemoEvents();
+        }
+        if (!Array.isArray(rows)) {
+          mlSbStatusEvents = "guardrail_events: unexpected response";
+          usingDemo = true;
+          return generateDemoEvents();
+        }
         usingDemo = false;
+        if (!rows.length) {
+          mlSbStatusEvents = "Connected — no rows in guardrail_events yet.";
+        }
         return rows.map(normalizeEvent);
-      } catch {
+      } catch (e) {
+        mlSbStatusEvents = e && e.message ? e.message : String(e);
         usingDemo = true;
         return generateDemoEvents();
       }
@@ -1916,12 +2014,68 @@
       renderFprDonut(metrics);
       setGauge(document.getElementById("accGaugeArc"), METRICS_STATIC.accuracy, 188.5);
       animateCounters(metrics);
+      updateMlSbStatusLine();
+    }
+
+    function updateMlSbStatusLine() {
+      const el = document.getElementById("mlSbStatus");
+      if (!el) return;
+      const parts = [];
+      if (mlSbStatusRetrain) parts.push(mlSbStatusRetrain);
+      if (mlSbStatusEvents) parts.push(mlSbStatusEvents);
+      const msg = parts.filter(Boolean).join(" · ");
+      if (!msg) {
+        const u = (localStorage.getItem("sb_url") || "").trim();
+        const k = (localStorage.getItem("sb_key") || "").trim();
+        if (u && k) {
+          el.textContent = "Live Supabase endpoints OK (see details above if charts look empty).";
+          el.style.color = "var(--accent)";
+        } else {
+          el.textContent = "Paste Project URL + anon key, then Save & reload.";
+          el.style.color = "var(--muted)";
+        }
+        return;
+      }
+      el.textContent = msg;
+      el.style.color = /HTTP \d|invalid|unexpected|Configure|No Supabase/i.test(msg) ? "var(--warn)" : "var(--accent)";
+    }
+
+    function initMlSupabasePanel() {
+      const urlEl = document.getElementById("mlSbUrl");
+      const keyEl = document.getElementById("mlSbKey");
+      const meta = document.querySelector('meta[name="core-sentinel-supabase-url"]');
+      const metaUrl = meta && meta.content ? meta.content.trim() : "";
+      if (urlEl) {
+        urlEl.value = (localStorage.getItem("sb_url") || metaUrl || "").trim();
+      }
+      if (keyEl) {
+        keyEl.value = localStorage.getItem("sb_key") || "";
+      }
+      const save = document.getElementById("mlSbSave");
+      if (save) {
+        save.addEventListener("click", async () => {
+          const u = (urlEl && urlEl.value || "").trim().replace(/\/$/, "");
+          const k = (keyEl && keyEl.value || "").trim();
+          if (!u || !k) {
+            const st = document.getElementById("mlSbStatus");
+            if (st) {
+              st.textContent = "Enter both URL and anon key.";
+              st.style.color = "var(--warn)";
+            }
+            return;
+          }
+          localStorage.setItem("sb_url", u);
+          localStorage.setItem("sb_key", k);
+          await loadDashboard();
+        });
+      }
     }
 
     document.getElementById("exportPdfBtn").addEventListener("click", () => window.print());
     document.getElementById("refreshBtn").addEventListener("click", () => loadDashboard());
 
     (async function init() {
+      initMlSupabasePanel();
       attachSortableHeaders();
       initDensityControl();
       const policyLoad = await loadPolicyThresholds();

@@ -40,11 +40,20 @@ create index if not exists retrain_runs_status_idx
 create index if not exists retrain_runs_summary_json_gin_idx
   on public.retrain_runs using gin (summary_json);
 
--- Optional RLS example for dashboard reads from anon:
--- alter table public.retrain_runs enable row level security;
--- create policy "retrain_runs_select" on public.retrain_runs
---   for select to anon using (true);
---
--- Writes from the app are best with service role key. If you must use anon for writes:
--- create policy "retrain_runs_insert" on public.retrain_runs
---   for insert to anon with check (true);
+-- RLS: ML dashboard + hub read retrain_runs with the anon key. Run if you see HTTP 401/403.
+alter table public.retrain_runs enable row level security;
+
+drop policy if exists "retrain_runs_select_anon" on public.retrain_runs;
+create policy "retrain_runs_select_anon"
+  on public.retrain_runs
+  for select
+  to anon
+  using (true);
+
+-- Inserts from auto_retrain publish: prefer service role locally; anon insert optional:
+drop policy if exists "retrain_runs_insert_anon" on public.retrain_runs;
+create policy "retrain_runs_insert_anon"
+  on public.retrain_runs
+  for insert
+  to anon
+  with check (true);

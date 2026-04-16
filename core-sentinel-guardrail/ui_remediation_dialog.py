@@ -32,6 +32,7 @@ from pii_remediation import (
     rephrase_text,
 )
 from feedback_store import count_pending_wrong_feedback, record_feedback
+from sentinel_sync_daemon import is_placeholder_supabase_url
 from toast import Toast, show_toast
 from font_clamp import MIN_PX_BODY, paint_font_px
 
@@ -1633,6 +1634,8 @@ class RemediationDialog(QtWidgets.QDialog):
         url = os.environ.get("SUPABASE_URL")
         key = os.environ.get("SUPABASE_ANON_KEY")
         if not url or not key:
+            return
+        if is_placeholder_supabase_url(url):
             return
         try:
             from supabase import create_client
