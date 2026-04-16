@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!-- Optional: default Supabase project URL for this deployment (anon key still via Hub or form below). -->
-<meta name="core-sentinel-supabase-url" content="https://uwirvbwufmoruvtcpbit.supabase.co">
+<meta name="core-sentinel-supabase-url" content="">
 <title>Core Sentinel - ML Health Dashboard</title>
   <link rel="icon" type="image/svg+xml" href="../favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -503,8 +503,22 @@
 
   <div class="sb-wrap" id="mlSbPanel">
     <details class="sb-details" open>
-      <summary class="sb-summary">Supabase connection (live retrain + events)</summary>
-      <div class="sb-grid">
+      <summary class="sb-summary">Supabase (admin only — URL &amp; anon key)</summary>
+      <div id="mlSbAdminGate" class="sb-grid sb-gate">
+        <p class="mini-note sb-hint" style="margin:0;">
+          Project URL and anon key are <strong>not shown</strong> until you sign in with the same <strong>access key</strong> as the
+          <a href="../hub.html">documentation hub</a> (Admin panel), or configure them there first — this page will then use saved credentials for charts without displaying them.
+        </p>
+        <label class="mini-note">Access key
+          <input type="password" id="mlSbAccessKey" placeholder="Same as Hub → Admin" autocomplete="off" style="max-width:320px;" />
+        </label>
+        <div class="sb-actions">
+          <button type="button" class="btn btn-accent" id="mlSbUnlockBtn">Unlock credential form</button>
+          <span class="mini-note" id="mlSbGateErr" style="color:var(--warn);"></span>
+        </div>
+        <p class="mini-note" style="color:var(--muted);">After signing in on the Hub, you can return here — session is shared in this browser.</p>
+      </div>
+      <div id="mlSbAdminForm" class="sb-grid" style="display:none;">
         <label>Project URL
           <input type="url" id="mlSbUrl" placeholder="https://your-project-ref.supabase.co" autocomplete="url" />
         </label>
@@ -513,10 +527,11 @@
         </label>
         <div class="sb-actions">
           <button type="button" class="btn btn-accent" id="mlSbSave">Save &amp; reload</button>
-          <span class="mini-note" id="mlSbStatus" style="color: var(--muted);"></span>
+          <button type="button" class="btn" id="mlSbSignOut" style="border:1px solid var(--line);background:transparent;color:var(--muted);">Sign out (clear admin view)</button>
         </div>
-        <p class="mini-note sb-hint">Same credentials as the <a href="../hub.html">documentation hub</a> (<code>sb_url</code> / <code>sb_key</code>). Keys: <strong>Supabase → Project Settings → API</strong>. If you see <strong>401 / 403 / PGRST</strong>, run the SQL in <code>core-sentinel-guardrail/supabase/retrain_runs.sql</code> and <code>…/supabase/guardrail_events.sql</code> (creates tables + anon read/insert policies). At least one <code>retrain_runs</code> row (e.g. after auto-retrain publish) fills the metrics strip; empty <code>guardrail_events</code> is OK.</p>
+        <p class="mini-note sb-hint">Keys: <strong>Supabase → Project Settings → API</strong>. If you see <strong>401 / 403 / PGRST</strong>, run SQL in <code>core-sentinel-guardrail/supabase/retrain_runs.sql</code> and <code>guardrail_events.sql</code>. One <code>retrain_runs</code> row helps metrics; empty <code>guardrail_events</code> is OK.</p>
       </div>
+      <p class="mini-note" id="mlSbStatus" style="margin-top:12px;color:var(--muted);"></p>
     </details>
   </div>
 
@@ -543,8 +558,8 @@
       <article class="card">
         <h3>AUC Score</h3>
         <div class="metric-val countup" id="aucMetric" data-target="0.998" data-decimals="3">0.000</div>
-        <span class="badge good">Excellent</span>
-        <div class="trend up">↑ +0.002 vs previous run</div>
+        <span class="badge good" id="aucBadge">Excellent</span>
+        <div class="trend up" id="aucTrend">↑ +0.002 vs previous run</div>
         <div class="mini-note" id="aucSource">Source: demo baseline</div>
         <svg class="sparkline" id="aucSpark"></svg>
       </article>
@@ -816,6 +831,33 @@
     let mlSbStatusRetrain = "";
     let mlSbStatusEvents = "";
 
+    const HUB_ADMIN_SESSION_KEY = "hub_admin_session";
+    const HUB_ADMIN_SESSION_MS = 8 * 60 * 60 * 1000;
+    const HUB_ADMIN_ACCESS_KEY = "sentinel2026";
+
+    function getHubAdminSession() {
+      try {
+        const raw = localStorage.getItem(HUB_ADMIN_SESSION_KEY);
+        if (!raw) return null;
+        const s = JSON.parse(raw);
+        if (!s || typeof s.exp !== "number") return null;
+        if (Date.now() > s.exp) {
+          localStorage.removeItem(HUB_ADMIN_SESSION_KEY);
+          return null;
+        }
+        return s;
+      } catch {
+        return null;
+      }
+    }
+
+    function setHubAdminSessionFromMl() {
+      localStorage.setItem(
+        HUB_ADMIN_SESSION_KEY,
+        JSON.stringify({ exp: Date.now() + HUB_ADMIN_SESSION_MS, email: "" })
+      );
+    }
+
     function parseSummaryJsonField(raw) {
       if (raw == null) return null;
       if (typeof raw === "object") return raw;
@@ -831,6 +873,12 @@
     }
 
     /** Macro AUPRC for KPIs when metrics.auc is absent (older Supabase rows). */
+    function parseFprFromCalibrationMetricsVal(s) {
+      if (!s || typeof s !== "string") return Number.NaN;
+      const m = s.match(/fpr_non_high_as_high[^0-9]*([0-9.]+)/i);
+      return m ? Number(m[1]) : Number.NaN;
+    }
+
     function deriveMacroAuprc(summary) {
       if (!summary || typeof summary !== "object") return Number.NaN;
       const m = Number(summary.metrics?.auc);
@@ -1029,8 +1077,7 @@
       if (acc) acc.textContent = `Source: ${modelSource}`;
       if (prec) prec.textContent = `Source: ${modelSource}`;
       if (auc) {
-        const hasAuc = retrainSummary && Number.isFinite(Number((retrainSummary.metrics || {}).auc))
-          || Number.isFinite(deriveMacroAuprc(retrainSummary));
+        const hasAuc = Number.isFinite(METRICS_STATIC.auc);
         auc.textContent = hasAuc ? "Source: live retrain metadata" : "Source: unavailable";
       }
       if (fpr) fpr.textContent = `Source: ${eventsSource}`;
@@ -1304,7 +1351,18 @@
         : Number.NaN;
       let fprFromCalibration = false;
       if (!Number.isFinite(fpr) && !usingDemo && retrainSummary) {
-        const cal = Number(retrainSummary.metrics?.fpr_non_high_as_high);
+        let cal = Number(retrainSummary.metrics?.fpr_non_high_as_high);
+        if (!Number.isFinite(cal)) {
+          const tc = retrainSummary.evaluation?.threshold_calibration;
+          const rec = tc?.recommended || tc?.current_metrics;
+          if (rec && typeof rec === "object") {
+            cal = Number(rec.fpr_non_high_as_high);
+          }
+        }
+        if (!Number.isFinite(cal)) {
+          const s = retrainSummary.policy?.inference_3class_labels?._calibration_metrics_val;
+          cal = parseFprFromCalibrationMetricsVal(s);
+        }
         if (Number.isFinite(cal)) {
           fpr = cal <= 1 ? cal * 100 : cal;
           fprFromCalibration = true;
@@ -2067,8 +2125,86 @@
       }, 120000);
     }
 
+    async function fetchRiskPolicyFull() {
+      const candidates = [];
+      try {
+        candidates.push(new URL("./risk_policy.json", window.location.href).href);
+      } catch {
+        /* ignore */
+      }
+      candidates.push(
+        "./risk_policy.json",
+        "../../core-sentinel-guardrail/config/risk_policy.json",
+        "../core-sentinel-guardrail/config/risk_policy.json",
+        "/core-sentinel-guardrail/config/risk_policy.json"
+      );
+      const seen = new Set();
+      for (const url of candidates) {
+        if (!url || seen.has(url)) continue;
+        seen.add(url);
+        try {
+          const r = await fetch(url, { cache: "no-store" });
+          if (!r.ok) continue;
+          const pol = await r.json();
+          if (pol && typeof pol === "object" && (pol.thresholds || pol.inference_3class_labels)) return pol;
+        } catch {
+          /* try next */
+        }
+      }
+      return null;
+    }
+
+    async function enrichRetrainSummaryFromRiskPolicyFile() {
+      if (!retrainSummary) return;
+      const needAuc = !Number.isFinite(METRICS_STATIC.auc);
+      const hasCalibStr = Boolean(retrainSummary.policy?.inference_3class_labels?._calibration_metrics_val);
+      if (!needAuc && hasCalibStr) return;
+      try {
+        const pol = await fetchRiskPolicyFull();
+        if (!pol || typeof pol !== "object") return;
+        const nextPolicy = { ...(retrainSummary.policy || {}) };
+        if (needAuc && pol.thresholds) {
+          const prev = nextPolicy.thresholds || {};
+          const merged = { ...prev };
+          for (const k of Object.keys(pol.thresholds)) {
+            merged[k] = { ...(prev[k] || {}), ...(pol.thresholds[k] || {}) };
+          }
+          nextPolicy.thresholds = merged;
+        }
+        if (!hasCalibStr && pol.inference_3class_labels) {
+          nextPolicy.inference_3class_labels = {
+            ...(nextPolicy.inference_3class_labels || {}),
+            ...pol.inference_3class_labels,
+          };
+        }
+        retrainSummary.policy = nextPolicy;
+        if (needAuc) applyRetrainSummary(retrainSummary);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    function updateAucKpiChrome() {
+      const badge = document.getElementById("aucBadge");
+      const trend = document.getElementById("aucTrend");
+      const auc = METRICS_STATIC.auc;
+      if (!badge || !trend) return;
+      if (Number.isFinite(auc)) {
+        badge.textContent = auc >= 0.95 ? "Excellent" : auc >= 0.85 ? "Strong" : "Moderate";
+        badge.className = auc >= 0.85 ? "badge good" : "badge";
+        trend.textContent = "↑ macro AUPRC (retrain metadata ± policy file)";
+        trend.className = "trend up";
+      } else {
+        badge.textContent = "AUPRC unavailable";
+        badge.className = "badge";
+        trend.textContent = "Add metrics.auc in Supabase row or host ml/risk_policy.json beside this page";
+        trend.className = "trend down";
+      }
+    }
+
     async function loadDashboard() {
       applyRetrainSummary(await loadRetrainSummary());
+      await enrichRetrainSummaryFromRiskPolicyFile();
       allEvents = await fetchEvents();
       const newest = allEvents[0]?.ts;
       setLiveHeader(newest || retrainSummary?.generated_at, !usingDemo);
@@ -2085,9 +2221,16 @@
         ? "↑ stable operating precision"
         : "↑ robust on validation sweep";
       updateKpiSources(metrics);
+      updateAucKpiChrome();
 
       drawSparkline("accuracySpark", [96.8, 97.1, 97.0, 97.3, 97.4, 97.5, 97.6]);
-      drawSparkline("aucSpark", [0.991, 0.993, 0.994, 0.995, 0.996, 0.997, 0.998]);
+      drawSparkline(
+        "aucSpark",
+        Number.isFinite(METRICS_STATIC.auc)
+          ? [0.991, 0.993, 0.994, 0.995, 0.996, 0.997, METRICS_STATIC.auc]
+          : [0, 0, 0, 0, 0, 0, 0],
+        Number.isFinite(METRICS_STATIC.auc) ? "var(--accent)" : "rgba(255,255,255,0.12)"
+      );
       drawSparkline(
         "fprSpark",
         Number.isFinite(metrics.fpr) ? [1.2, 1.0, 0.8, 0.5, 0.3, 0.1, metrics.fpr] : [0, 0, 0, 0, 0, 0, 0],
@@ -2131,10 +2274,14 @@
         const u = (localStorage.getItem("sb_url") || "").trim();
         const k = (localStorage.getItem("sb_key") || "").trim();
         if (u && k) {
-          el.textContent = "Live Supabase endpoints OK (see details above if charts look empty).";
+          el.textContent = getHubAdminSession()
+            ? "Live Supabase endpoints OK."
+            : "Using saved browser credentials (Admin unlock or Hub to change).";
           el.style.color = "var(--accent)";
         } else {
-          el.textContent = "Paste Project URL + anon key, then Save & reload.";
+          el.textContent = getHubAdminSession()
+            ? "Enter URL + anon key, then Save & reload."
+            : "Admin: unlock the panel above or set credentials in Hub → Admin.";
           el.style.color = "var(--muted)";
         }
         return;
@@ -2143,7 +2290,18 @@
       el.style.color = /HTTP \d|invalid|unexpected|Configure|No Supabase/i.test(msg) ? "var(--warn)" : "var(--accent)";
     }
 
-    function initMlSupabasePanel() {
+    function applyMlSupabasePanelMode() {
+      const gate = document.getElementById("mlSbAdminGate");
+      const form = document.getElementById("mlSbAdminForm");
+      const ok = !!getHubAdminSession();
+      if (gate) gate.style.display = ok ? "none" : "block";
+      if (form) form.style.display = ok ? "grid" : "none";
+      if (ok) {
+        fillMlSupabaseAdminInputs();
+      }
+    }
+
+    function fillMlSupabaseAdminInputs() {
       const urlEl = document.getElementById("mlSbUrl");
       const keyEl = document.getElementById("mlSbKey");
       const meta = document.querySelector('meta[name="core-sentinel-supabase-url"]');
@@ -2154,9 +2312,44 @@
       if (keyEl) {
         keyEl.value = localStorage.getItem("sb_key") || "";
       }
+    }
+
+    function initMlSupabasePanel() {
+      applyMlSupabasePanelMode();
+
+      const unlockBtn = document.getElementById("mlSbUnlockBtn");
+      const keyIn = document.getElementById("mlSbAccessKey");
+      const gateErr = document.getElementById("mlSbGateErr");
+      if (unlockBtn && keyIn) {
+        unlockBtn.addEventListener("click", () => {
+          const k = (keyIn.value || "").trim();
+          if (k !== HUB_ADMIN_ACCESS_KEY) {
+            if (gateErr) gateErr.textContent = "Invalid access key (same as Hub → Admin).";
+            return;
+          }
+          if (gateErr) gateErr.textContent = "";
+          keyIn.value = "";
+          setHubAdminSessionFromMl();
+          applyMlSupabasePanelMode();
+          loadDashboard();
+        });
+      }
+
+      const signOut = document.getElementById("mlSbSignOut");
+      if (signOut) {
+        signOut.addEventListener("click", () => {
+          localStorage.removeItem(HUB_ADMIN_SESSION_KEY);
+          applyMlSupabasePanelMode();
+          loadDashboard();
+        });
+      }
+
       const save = document.getElementById("mlSbSave");
+      const urlEl = document.getElementById("mlSbUrl");
+      const keyEl = document.getElementById("mlSbKey");
       if (save) {
         save.addEventListener("click", async () => {
+          if (!getHubAdminSession()) return;
           const u = (urlEl && urlEl.value || "").trim().replace(/\/$/, "");
           const k = (keyEl && keyEl.value || "").trim();
           if (!u || !k) {
