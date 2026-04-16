@@ -174,3 +174,25 @@ def is_monitoring_paused() -> bool:
 def set_monitoring_paused(v: bool) -> None:
     global _monitoring_paused
     _monitoring_paused = bool(v)
+
+
+def ui_edge_insets() -> tuple[int, int, int, int]:
+    """
+    Extra margin (left, top, right, bottom) inside QScreen.availableGeometry() when placing
+    the RiskBubble and toasts so they sit clear of maximized browser / embedded dashboards.
+    Override with env GUARDRAIL_UI_EDGE_INSETS=\"L,T,R,B\" (pixels). Default gives ~80px from the
+    right edge; set to \"0,0,0,0\" for legacy flush-to-edge behavior.
+    """
+    raw = (os.environ.get("GUARDRAIL_UI_EDGE_INSETS") or "12,12,80,48").strip()
+    parts: list[int] = []
+    for x in raw.split(","):
+        x = x.strip()
+        if not x:
+            continue
+        try:
+            parts.append(max(0, int(x)))
+        except ValueError:
+            parts.append(0)
+    while len(parts) < 4:
+        parts.append(0)
+    return (parts[0], parts[1], parts[2], parts[3])

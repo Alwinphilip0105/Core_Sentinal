@@ -21,7 +21,13 @@ if str(_ROOT) not in sys.path:
 
 import numpy as np
 import torch
-from sklearn.metrics import auc, classification_report, confusion_matrix, precision_recall_curve
+from sklearn.metrics import (
+    auc,
+    classification_report,
+    confusion_matrix,
+    precision_recall_curve,
+    roc_auc_score,
+)
 from torch.nn.functional import softmax
 from torch.utils.data import DataLoader
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments
@@ -311,6 +317,22 @@ def main() -> None:
         if key in safety:
             print(f"  {key}: {safety[key]}")
 
+    roc_auc_macro: float | None = None
+    if n_samples > 0 and num_labels_cfg >= 2:
+        try:
+            u = np.unique(all_labels_arr)
+            if len(u) >= 2:
+                roc_auc_macro = float(
+                    roc_auc_score(
+                        all_labels_arr,
+                        all_probs_arr,
+                        multi_class="ovr",
+                        average="macro",
+                    )
+                )
+        except ValueError:
+            roc_auc_macro = None
+
     reports_dir = _ROOT / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
     summary_path = reports_dir / "pr_curve_summary.json"
@@ -320,10 +342,13 @@ def main() -> None:
         "test_split_size": int(n_samples),
         "classes": classes_out,
         "safety_profile": safety,
+        "roc_auc_macro": roc_auc_macro,
     }
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(out_payload, f, indent=2)
     print(f"\n  Wrote {summary_path}")
+    if roc_auc_macro is not None:
+        print(f"\n  Macro ROC-AUC (OvR, test split): {roc_auc_macro:.6f}")
 
     print("\nDone.")
 

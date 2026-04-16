@@ -20,7 +20,7 @@ if str(Path(__file__).resolve().parent) not in sys.path:
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 from active_window_llm import detect_llm_window, get_active_llm_name
-from guardrail_runtime import get_monitor_llm_only, is_monitoring_paused, set_monitoring_paused
+from guardrail_runtime import get_monitor_llm_only, is_monitoring_paused, set_monitoring_paused, ui_edge_insets
 from pii_remediation import encrypt_pii, encrypt_text, hash_pii, mask_pii, mask_pii_spans, redact_all_literal
 
 import user_settings
@@ -802,8 +802,9 @@ class RiskBubble(QtWidgets.QWidget):
         if screen is None:
             return top_left
         g = screen.availableGeometry()
-        x = max(g.left(), min(top_left.x(), g.right() - self.width() + 1))
-        y = max(g.top(), min(top_left.y(), g.bottom() - self.height() + 1))
+        L, T, R, B = ui_edge_insets()
+        x = max(g.left() + L, min(top_left.x(), g.right() - self.width() + 1 - R))
+        y = max(g.top() + T, min(top_left.y(), g.bottom() - self.height() + 1 - B))
         return QtCore.QPoint(x, y)
 
     def _move_to_default_corner(self) -> None:
@@ -814,9 +815,10 @@ class RiskBubble(QtWidgets.QWidget):
         if not screen:
             return
         g = screen.availableGeometry()
+        _L, _T, R, B = ui_edge_insets()
         self.move(
-            g.right() - self.width() - 20,
-            g.bottom() - self.height() - 80,
+            g.right() - self.width() - 20 - R,
+            g.bottom() - self.height() - 80 - B,
         )
 
     def _restore_pill_position(self) -> None:
@@ -876,8 +878,9 @@ class RiskBubble(QtWidgets.QWidget):
         if scr is None and app:
             scr = app.primaryScreen()
         g = scr.availableGeometry() if scr else QtCore.QRect(0, 0, 1920, 1080)
-        if end_global.x() > g.right() - 12:
-            overflow = end_global.x() - (g.right() - 12)
+        _L, _T, R_inset, _B = ui_edge_insets()
+        if end_global.x() > g.right() - 12 - R_inset:
+            overflow = end_global.x() - (g.right() - 12 - R_inset)
             tb_top_left.setX(max(g.left() + 4, tb_top_left.x() - overflow))
         if tb_top_left.y() < g.top() + 4:
             tb_top_left.setY(g.top() + 4)

@@ -126,17 +126,40 @@
     .lg-warn::before{background:var(--warn)}
     .lg-block::before{background:var(--danger)}
 
-    .heatmap-wrap{overflow:auto}
-    .heatmap-grid{
-      display:grid;grid-template-columns:128px repeat(7,minmax(56px,1fr));gap:6px;min-width:680px;
+    .heatmap-wrap{
+      overflow:auto;
+      max-height:min(420px,56vh);
+      border-radius:10px;
+      border:1px solid rgba(124,156,255,0.12);
+      background:rgba(6,16,28,0.45);
+      scrollbar-width:thin;
+      scrollbar-color:rgba(124,156,255,0.35) rgba(6,16,28,0.9);
     }
-    .hm-corner{font-size:10px;color:#7a8aa0;text-transform:uppercase;letter-spacing:.06em;padding:4px 2px}
+    .heatmap-wrap::-webkit-scrollbar{width:8px;height:8px}
+    .heatmap-wrap::-webkit-scrollbar-track{background:rgba(0,0,0,0.2);border-radius:4px}
+    .heatmap-wrap::-webkit-scrollbar-thumb{background:rgba(124,156,255,0.28);border-radius:4px}
+    .heatmap-wrap::-webkit-scrollbar-corner{background:transparent}
+    .heatmap-grid{
+      display:grid;
+      grid-template-columns:minmax(152px,1.1fr) repeat(7,minmax(72px,1fr));
+      gap:8px;
+      align-items:stretch;
+      min-width:min(100%,860px);
+      padding:4px 2px 8px;
+    }
+    .hm-corner{font-size:10px;color:#7a8aa0;text-transform:uppercase;letter-spacing:.06em;padding:6px 4px;align-self:end}
     .hm-axis-y{font-size:10px;color:#7a8aa0;writing-mode:vertical-rl;transform:rotate(180deg);justify-self:center;padding:4px 0}
     .hm-legend{margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--muted)}
     .hm-grad{flex:1;min-width:140px;height:10px;border-radius:6px;border:1px solid rgba(124,156,255,0.2);
       background:linear-gradient(90deg,rgba(229,57,53,0.08),rgba(229,57,53,0.88))}
-    .cell-h{font-size:11px;color:#99a4b3;padding:2px 4px}
-    .row-l{font-size:12px;color:#d8deea;padding-top:8px}
+    .cell-h{
+      font-size:10px;color:#99a4b3;padding:4px 2px;line-height:1.25;text-align:center;
+      white-space:normal;word-break:break-word;min-height:40px;display:flex;align-items:center;justify-content:center;
+    }
+    .row-l{
+      font-size:12px;color:#d8deea;padding:10px 6px 0 2px;line-height:1.3;word-break:break-word;
+      min-width:0;align-self:center;
+    }
     .hm-cell{
       border-radius:8px;border:1px solid rgba(124,156,255,0.14);min-height:44px;display:grid;place-items:center;
       cursor:pointer;font-size:12px;font-weight:700;color:#f2fbfa;
@@ -144,7 +167,13 @@
     }
     .hm-cell:hover{transform:translateY(-1px);border-color:rgba(124,156,255,0.45)}
 
-    .table-wrap{border:1px solid rgba(124,156,255,0.14);border-radius:12px;overflow:auto;background:rgba(8,19,32,0.88)}
+    .table-wrap{
+      border:1px solid rgba(124,156,255,0.14);border-radius:12px;overflow:auto;background:rgba(8,19,32,0.88);
+      scrollbar-width:thin;
+      scrollbar-color:rgba(124,156,255,0.35) rgba(8,19,32,0.9);
+    }
+    .table-wrap::-webkit-scrollbar{width:8px;height:8px}
+    .table-wrap::-webkit-scrollbar-thumb{background:rgba(124,156,255,0.25);border-radius:4px}
     table{width:100%;border-collapse:collapse;min-width:760px}
     th{
       position:sticky;top:0;background:#11233a;color:#aab8cf;font-size:10px;text-transform:uppercase;letter-spacing:.04em;
@@ -316,8 +345,10 @@
 
         <article class="card">
           <h3>Department Risk Heatmap</h3>
-          <p class="sub">Click any cell to drill into category-level events.</p>
+          <p class="sub">Click any cell to drill into category-level events. <span style="opacity:.85">“Other” = no mapped entity tag (often tier-only low/med/high).</span></p>
           <div class="heatmap-wrap"><div class="heatmap-grid" id="deptHeatmap"></div></div>
+          <div class="hm-legend" id="hmLegend" style="margin-top:10px"></div>
+          <p class="sub" id="heatmapWindowHint" style="margin-top:6px;font-size:11px"></p>
           <div id="drillInfo"></div>
         </article>
       </section>
@@ -435,6 +466,15 @@
     const ALERT_CFG_KEY = "fleet_alert_config";
     const DEPARTMENTS = ["Engineering", "HR", "Finance", "Legal", "Sales"];
     const CAT_KEYS = ["SSN", "Email", "Phone", "API Key", "Address", "Medical", "Unclassified"];
+    const CAT_HEADER_LABELS = {
+      SSN: "SSN",
+      Email: "Email",
+      Phone: "Phone",
+      "API Key": "API Key",
+      Address: "Address",
+      Medical: "Medical",
+      Unclassified: "Other",
+    };
     const tip = document.getElementById("tip");
 
     let state = {
@@ -646,6 +686,18 @@
         TOKEN: "API Key",
         OTHER_PII: "Unclassified",
         O: null,
+        ORG: "Email",
+        ORGANIZATION: "Email",
+        COMPANY: "Email",
+        GPE: "Address",
+        FAC: "Address",
+        NORP: "Unclassified",
+        PRODUCT: "Unclassified",
+        EVENT: "Unclassified",
+        WORK_OF_ART: "Unclassified",
+        LAW: "Address",
+        MISC: "Unclassified",
+        PII: "Unclassified",
       };
       if (Object.prototype.hasOwnProperty.call(map, u)) return map[u];
       return undefined;
@@ -698,7 +750,15 @@
       }
       if (cats.size) return Array.from(cats);
       const joined = semantic.join(" ");
-      const c = categorizePII(joined);
+      let c = categorizePII(joined);
+      if (c === "Unclassified" && tokens.length) {
+        const rawBlob = tokens.join(" ");
+        c = categorizePII(rawBlob);
+      }
+      if (c === "Unclassified" && r) {
+        const blob = [r.pii_class, r.pii_classes, r.triggers].filter((x) => x != null && x !== "").join(" ");
+        c = categorizePII(blob);
+      }
       return [c && c !== "Unclassified" ? c : "Unclassified"];
     }
 
@@ -1000,12 +1060,12 @@
       document.getElementById("mBlockedPct").textContent = `${in24.length ? ((blocked / in24.length) * 100).toFixed(1) : "0.0"}% of total`;
       animateNumber(document.getElementById("mOverride"), overRate, "%", 1);
       document.getElementById("mOverrideBadge").textContent = overRate <= 5 ? "Below 5% target" : "Above 5% target";
-      const onote = document.getElementById("mOverrideNote");
-      if (onote) {
+        const onote = document.getElementById("mOverrideNote");
+        if (onote) {
         const flagged = in24.filter((r) => r.override).length;
         onote.textContent = flagged
-          ? `${flagged} override-related event(s) in last 24h (from events + optional feedback join).`
-          : "No override flags in the last 24h. Ensure `guardrail_events` includes override/context, or `feedback_corrections.feedback_type` contains \"override\" for joined hashes.";
+          ? `${flagged} override-related event(s) in last 24h.`
+          : "No overrides in this window. To track them: persist action=override (or feedback “override”) from the app into Supabase.";
       }
       drawSparkline("evSpark", lastDaysSeries(rows, 7).map((d) => d.total ?? (d.safe + d.warn + d.block)));
     }
@@ -1111,8 +1171,8 @@
     function renderHeatmap(rows) {
       const host = document.getElementById("deptHeatmap");
       const legend = document.getElementById("hmLegend");
-      host.innerHTML = "";
-      host.innerHTML += `<div class="hm-corner">Dept \\ Type</div>${CAT_KEYS.map((k) => `<div class="cell-h">${k}</div>`).join("")}`;
+      if (!host) return;
+      host.textContent = "";
       const flat = [];
       rows.forEach((r) => CAT_KEYS.forEach((k) => flat.push(r[k] || 0)));
       const max = Math.max(...flat, 1);
@@ -1120,8 +1180,27 @@
         legend.innerHTML = `<span>Intensity (count)</span><div class="hm-grad" title="0 → ${max} events"></div><span>0</span><span style="font-weight:700;color:#f2fbfa">${max}</span>`;
       }
 
+      const corner = document.createElement("div");
+      corner.className = "hm-corner";
+      corner.textContent = "Dept \\ Type";
+      host.appendChild(corner);
+      CAT_KEYS.forEach((k) => {
+        const h = document.createElement("div");
+        h.className = "cell-h";
+        h.textContent = CAT_HEADER_LABELS[k] || k;
+        h.title =
+          k === "Unclassified"
+            ? "No mapped entity type (tier-only labels, unknown NER tag, or empty)."
+            : `${k}-related events`;
+        host.appendChild(h);
+      });
+
       rows.forEach((r) => {
-        host.innerHTML += `<div class="row-l">${r.department}</div>`;
+        const rowLabel = document.createElement("div");
+        rowLabel.className = "row-l";
+        rowLabel.textContent = r.department;
+        rowLabel.title = r.department;
+        host.appendChild(rowLabel);
         CAT_KEYS.forEach((k) => {
           const n = r[k] || 0;
           const alpha = n === 0 ? 0.06 : Math.min(0.86, (n / max) * 0.9);
@@ -1130,11 +1209,12 @@
           el.type = "button";
           el.className = "hm-cell";
           el.style.background = bg;
-          el.innerHTML = String(n);
-          el.title = `${r.department} · ${k} = ${n} (rolling window matches timeline)`;
+          el.textContent = String(n);
+          el.title = `${r.department} · ${CAT_HEADER_LABELS[k] || k} = ${n}`;
           el.onclick = () => {
             state.drill = { department: r.department, category: k };
-            document.getElementById("drillInfo").textContent = `Drill down: ${r.department} · ${k}`;
+            const di = document.getElementById("drillInfo");
+            if (di) di.textContent = `Drill down: ${r.department} · ${CAT_HEADER_LABELS[k] || k}`;
             applyAuditFilters();
           };
           host.appendChild(el);

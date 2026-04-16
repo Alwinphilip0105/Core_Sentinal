@@ -290,6 +290,23 @@
       overflow: auto;
       max-height: 292px;
       background: #0f0f16;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.22) rgba(15, 15, 22, 0.9);
+    }
+    .table-wrap::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    .table-wrap::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: 4px;
+    }
+    .table-wrap::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.18);
+      border-radius: 4px;
+    }
+    .table-wrap::-webkit-scrollbar-corner {
+      background: transparent;
     }
     table {
       width: 100%;
@@ -556,7 +573,8 @@
       </article>
 
       <article class="card">
-        <h3>AUC Score</h3>
+        <h3>Macro AUPRC</h3>
+        <p class="sub" id="aucKpiSub" style="margin:0 0 6px;font-size:11px;color:var(--muted);line-height:1.35;">Mean PR-AUC (low / med / high). This is not ROC-AUC.</p>
         <div class="metric-val countup" id="aucMetric" data-target="0.998" data-decimals="3">0.000</div>
         <span class="badge good" id="aucBadge">Excellent</span>
         <div class="trend up" id="aucTrend">↑ +0.002 vs previous run</div>
@@ -598,8 +616,8 @@
       </article>
 
       <article class="card chart-card">
-        <h3>ROC Curve</h3>
-        <p class="sub">AUC: <span class="badge" id="rocAucBadge">N/A</span></p>
+        <h3>ROC (operating point)</h3>
+        <p class="sub" id="rocSub">ROC-AUC: <span class="badge" id="rocAucBadge">N/A</span><span id="rocSubExpl"> — ROC-AUC not in summary yet. Red point = calibrated FPR vs recall (high). Headline KPI is macro PR-AUC, not ROC-AUC.</span></p>
         <div class="chart-box" id="rocChartCard">
           <svg class="chart-svg" id="rocChart"></svg>
       </div>
@@ -622,7 +640,7 @@
 
       <article class="card">
         <h3>Performance by PII Class</h3>
-        <p class="sub" id="classPerfSub">Reference diagnostics table (policy expectations vs baseline behavior).</p>
+        <p class="sub" id="classPerfSub">Synthetic reference rows (not live production telemetry).</p>
         <div class="table-wrap">
           <table id="classPerfTable">
             <thead>
@@ -784,9 +802,9 @@
       ["Partial card hint", "Medium", "warn", "silent", "25-45", "warn"],
       ["Obfuscated API key", "Medium", "warn", "silent", "20-40", "warn"],
       ["Implicit DOB", "Medium", "warn", "silent", "15-35", "warn"],
-      ["UK National Insurance", "High", "block", "silent", "30-60", "warn"],
-      ["Indian Aadhaar", "High", "block", "silent", "30-55", "warn"],
-      ["Canadian SIN", "High", "block", "silent", "25-50", "warn"]
+      ["UK National Insurance", "High", "block", "block", "30-60", "ok"],
+      ["Indian Aadhaar", "High", "block", "block", "30-55", "ok"],
+      ["Canadian SIN", "High", "block", "block", "25-50", "ok"]
     ];
     const CONFUSION_MATRIX = [
       [4767, 61, 12],
@@ -1078,7 +1096,9 @@
       if (prec) prec.textContent = `Source: ${modelSource}`;
       if (auc) {
         const hasAuc = Number.isFinite(METRICS_STATIC.auc);
-        auc.textContent = hasAuc ? "Source: live retrain metadata" : "Source: unavailable";
+        auc.textContent = hasAuc
+          ? "Source: live retrain metadata (metrics.auc = macro AUPRC)"
+          : "Source: unavailable";
       }
       if (fpr) fpr.textContent = `Source: ${eventsSource}`;
     }
@@ -1727,16 +1747,23 @@
         || {};
       const liveFpr = Number(liveRec.fpr_non_high_as_high);
       const liveTpr = Number(liveRec.recall_high);
-      const liveAuc = Number.isFinite(Number(retrainSummary?.metrics?.auc))
-        ? Number(retrainSummary.metrics.auc)
-        : deriveMacroAuprc(retrainSummary);
+      const _rawRoc = retrainSummary?.metrics?.roc_auc;
+      const rocAucOnly = _rawRoc != null && _rawRoc !== "" ? Number(_rawRoc) : Number.NaN;
+      const rocSubExpl = document.getElementById("rocSubExpl");
       if (rocAucBadge) {
-        if (Number.isFinite(liveAuc)) {
-          rocAucBadge.textContent = liveAuc.toFixed(3);
+        if (Number.isFinite(rocAucOnly)) {
+          rocAucBadge.textContent = rocAucOnly.toFixed(3);
           rocAucBadge.className = "badge good";
+          if (rocSubExpl) {
+            rocSubExpl.textContent = " (validation). Red point = calibrated FPR vs TPR (high).";
+          }
         } else {
           rocAucBadge.textContent = "N/A";
           rocAucBadge.className = "badge";
+          if (rocSubExpl) {
+            rocSubExpl.textContent =
+              " — ROC-AUC not exported in retrain summary yet. Red point = calibrated FPR vs recall (high). Headline KPI is macro PR-AUC, not ROC-AUC.";
+          }
         }
       }
 
@@ -2184,20 +2211,27 @@
       }
     }
 
+    function tierMacroAuprc(m) {
+      if (!Number.isFinite(m)) return { label: "AUPRC unavailable", cls: "badge", trend: "Add metrics.auc or ml/risk_policy.json" };
+      if (m >= 0.58) return { label: "Solid", cls: "badge good", trend: "↑ mean PR-AUC across classes (typical band ~0.45–0.65)" };
+      if (m >= 0.48) return { label: "Moderate", cls: "badge", trend: "↑ mean PR-AUC — not comparable to ROC-AUC scale" };
+      if (m >= 0.35) return { label: "Fair", cls: "badge warn", trend: "→ consider more data or calibration" };
+      return { label: "Low", cls: "badge warn", trend: "↓ review PR curves and thresholds" };
+    }
+
     function updateAucKpiChrome() {
       const badge = document.getElementById("aucBadge");
       const trend = document.getElementById("aucTrend");
       const auc = METRICS_STATIC.auc;
       if (!badge || !trend) return;
+      const t = tierMacroAuprc(auc);
+      badge.textContent = t.label;
+      badge.className = t.cls;
       if (Number.isFinite(auc)) {
-        badge.textContent = auc >= 0.95 ? "Excellent" : auc >= 0.85 ? "Strong" : "Moderate";
-        badge.className = auc >= 0.85 ? "badge good" : "badge";
-        trend.textContent = "↑ macro AUPRC (retrain metadata ± policy file)";
-        trend.className = "trend up";
+        trend.textContent = t.trend;
+        trend.className = t.cls.includes("warn") ? "trend down" : "trend up";
       } else {
-        badge.textContent = "AUPRC unavailable";
-        badge.className = "badge";
-        trend.textContent = "Add metrics.auc in Supabase row or host ml/risk_policy.json beside this page";
+        trend.textContent = t.trend;
         trend.className = "trend down";
       }
     }
@@ -2244,8 +2278,8 @@
       const cmNote = document.getElementById("cmNote");
       if (cmNote) {
         cmNote.textContent = Number.isFinite(METRICS_STATIC.accuracy)
-          ? `Reference matrix shown. Live eval accuracy: ${METRICS_STATIC.accuracy.toFixed(1)}%`
-          : "Reference matrix shown (live confusion export unavailable).";
+          ? `Illustrative 3×3 layout (not exported from this run). Live eval accuracy from metadata: ${METRICS_STATIC.accuracy.toFixed(1)}%.`
+          : "Illustrative 3×3 layout; live confusion matrix export unavailable.";
       }
       drawDistributionHeatmap(allEvents);
       drawDriftChart(usingDemo ? DEMO_DRIFT : metrics.weeklyRates);

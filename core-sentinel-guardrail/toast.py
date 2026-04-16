@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QEasingCurve, QPropertyAnimation, QRect, QTimer, Qt
 from PyQt6.QtGui import QGuiApplication
+
+from guardrail_runtime import ui_edge_insets
 from PyQt6.QtWidgets import (
     QGraphicsOpacityEffect,
     QHBoxLayout,
@@ -70,9 +72,10 @@ class Toast(QWidget):
 
         screen = QGuiApplication.primaryScreen()
         g = screen.availableGeometry() if screen is not None else QRect(0, 0, 1920, 1080)
+        _L, _T, R, B = ui_edge_insets()
         self.move(
-            g.right() - self.width() - 20,
-            g.bottom() - self.height() - 20,
+            g.right() - self.width() - 20 - R,
+            g.bottom() - self.height() - 20 - B,
         )
 
         self._opacity_effect = QGraphicsOpacityEffect(self)
