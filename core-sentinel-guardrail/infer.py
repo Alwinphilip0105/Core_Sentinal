@@ -52,6 +52,46 @@ from risk_policy_loader import (
 # Suppress "Torch was not compiled with flash attention" (harmless; uses standard attention)
 warnings.filterwarnings("ignore", message=".*flash attention.*")
 
+_HIPAA_AGE_OVER_89 = r"(?:9\d|1[01]\d|12\d)"
+
+_HIPAA_CRITICAL_RULES: list[tuple[re.Pattern[str], str, str]] = [
+    (
+        re.compile(
+            r"(?ix)\b(?:mrn|medical\s*record(?:\s*number)?)\s*(?:[:#-]|\bis\b)?\s*\d{5,12}\b"
+        ),
+        "Medical Record Number (MRN)",
+        "critical",
+    ),
+    (
+        re.compile(
+            r"(?ix)\bdea(?:\s*(?:number|no|\#))?\s*[:#-]?\s*[A-Z]{2}\d{7}\b"
+        ),
+        "DEA number",
+        "critical",
+    ),
+    (
+        re.compile(
+            r"(?ix)\bnpi(?:\s*(?:number|no|\#))?\s*[:#-]?\s*\d{10}\b"
+        ),
+        "NPI",
+        "critical",
+    ),
+    (
+        re.compile(
+            r"(?ix)\b(?:member|beneficiary|policy)\s*(?:id|identifier|number|no|\#)?\s*[:#-]?\s*[A-Z0-9][A-Z0-9-]{4,24}\b"
+        ),
+        "Health Plan ID",
+        "critical",
+    ),
+    (
+        re.compile(
+            rf"(?ix)\b(?:age\s*[:#-]?\s*{_HIPAA_AGE_OVER_89}\b|aged\s+{_HIPAA_AGE_OVER_89}\b|{_HIPAA_AGE_OVER_89}[-\s]?year[-\s]?old\b|{_HIPAA_AGE_OVER_89}\s+years?\s+old\b)"
+        ),
+        "Age over 89",
+        "critical",
+    ),
+]
+
 def _is_windows_torch_dll_error(exc: BaseException) -> bool:
     s = str(exc).lower()
     return (
@@ -581,6 +621,7 @@ def get_pii_spans(
     spans: list[dict] = []
 
     spans.extend(strong_regex_pii_spans(t))
+    spans.extend(_hipaa_critical_spans(t))
     spans.extend(kb_rule_spans(t))
 
     meta = sliding_meta or {}
@@ -1256,6 +1297,38 @@ def _shannon_entropy(s: str) -> float:
     return -sum((c / n) * math.log2(c / n) for c in counts.values())
 
 
+def _hipaa_critical_spans(text: str) -> list[dict]:
+    """Regex spans for HIPAA-specific identifiers that should be treated as critical."""
+    if not text or not text.strip():
+        return []
+    out: list[dict] = []
+    seen: set[tuple[int, int, str]] = set()
+    for rx, class_name, risk_tier in _HIPAA_CRITICAL_RULES:
+        for m in rx.finditer(text):
+            key = (m.start(), m.end(), class_name)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(
+                {
+                    "start": m.start(),
+                    "end": m.end(),
+                    "class": class_name,
+                    "match": m.group()[:500],
+                    "source": "regex",
+                    "risk": risk_tier,
+                }
+            )
+    return sorted(
+        out,
+        key=lambda s: (
+            int(s.get("start", 0)),
+            int(s.get("end", 0)),
+            str(s.get("class", "")),
+        ),
+    )
+
+
 # Regex rules that strongly suggest API keys / secrets (always treat as critical).
 # Each tuple: (compiled pattern, UI class label, span risk tier: "high" | "critical").
 _CRITICAL_SECRET_RULES: list[tuple[re.Pattern[str], str, str]] = [
@@ -1757,6 +1830,10 @@ def score_clipboard_with_pii(
     eff_min = max(min_confidence, 0.65) if context == "document" else min_confidence
     ts = text.strip()
     critical_secret_detected = detect_critical_secret_leak(ts)
+    hipaa_critical_spans = _hipaa_critical_spans(ts)
+    hipaa_critical_triggers = list(
+        dict.fromkeys(str(span.get("class", "")).strip() for span in hipaa_critical_spans if span.get("class"))
+    )
 
     cached = None
     if context != "document":
@@ -1810,11 +1887,19 @@ def score_clipboard_with_pii(
     if critical_secret_detected:
         risk = "high"
         override_applied = True
+    if hipaa_critical_triggers:
+        risk = "high"
+        override_applied = True
     # Include regex triggers in message when risk is high (for block/warn messages)
     triggers = get_pii_override_triggers(ts) if (override_applied or risk in ("high", "med")) else []
+    if hipaa_critical_triggers:
+        triggers.extend(hipaa_critical_triggers)
+        triggers = list(dict.fromkeys(triggers))
     if critical_secret_detected and not triggers:
         triggers = ["critical_secret"]
     merged_score_for_penalty = compute_risk_score(risk, triggers)
+    if hipaa_critical_triggers:
+        merged_score_for_penalty = max(merged_score_for_penalty, 95)
     if (
         not critical_secret_detected
         and not triggers
@@ -1866,6 +1951,9 @@ def score_clipboard_with_pii(
     risk_score = merged_score_for_penalty
     if critical_secret_detected:
         risk_score = max(risk_score, 90)
+    if hipaa_critical_triggers:
+        decision = "block"
+        block = True
 
     score_block_min = _risk_score_force_block_min()
     if score_block_min >= 1 and risk_score >= score_block_min:

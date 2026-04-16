@@ -2,27 +2,27 @@
   "block_threshold": 80,
   "thresholds": {
     "low": {
-      "warn": 0.842,
-      "block": 0.992,
+      "warn": 0.82,
+      "block": 0.97,
       "action_override": "silent",
       "note": "Low risk never interrupts user \u2014 logged only",
       "derived_from": "pr_curve_precision_0.85",
-      "auprc": 0.651
+      "auprc": 0.6958
     },
     "med": {
-      "warn": 0.847,
-      "block": 0.997,
+      "warn": 0.797,
+      "block": 0.947,
       "action_override": "warn_only",
       "note": "Medium risk shows badge/toast, never blocks",
       "derived_from": "pr_curve_precision_0.85",
-      "auprc": 0.4014
+      "auprc": 0.3844
     },
     "high": {
-      "warn": 0.847,
-      "block": 0.997,
+      "warn": 0.819,
+      "block": 0.969,
       "note": "High risk shows panel and blocks paste",
       "derived_from": "pr_curve_precision_0.85",
-      "auprc": 0.4928
+      "auprc": 0.4496
     }
   },
   "class_overrides": {
@@ -73,6 +73,6 @@
   "critical_secret": {
     "min_token_entropy_bits": 4.2
   },
-  "_calibrated_at": "2026-04-15T23:45:13.734843+00:00",
+  "_calibrated_at": "2026-04-16T12:27:49.273300+00:00",
   "_calibration_source": "reports/pr_curve_summary.json"
 }
