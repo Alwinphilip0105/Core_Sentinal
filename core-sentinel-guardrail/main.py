@@ -129,6 +129,8 @@ def auto_retrain() -> None:
 
     def _run() -> None:
         global _retrain_notifier
+        timeout_env = "GUARDRAIL_TRAIN_TIMEOUT_SEC"
+        default_timeout = 14400
         try:
             guardrail_root = Path(__file__).resolve().parent
             python = sys.executable
@@ -165,10 +167,19 @@ def auto_retrain() -> None:
 
             if _retrain_notifier is not None:
                 _retrain_notifier.show_success.emit()
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as exc:
+            timed_out_after = int(getattr(exc, "timeout", 0) or 0)
+            if timed_out_after <= 0:
+                timed_out_after = int(train_timeout or default_timeout)
             print(
-                "[retrain] train.py timed out — increase GUARDRAIL_TRAIN_TIMEOUT_SEC "
-                "(default 14400) or set to 0/none for no limit.",
+                f"[retrain] TIMED OUT after {timed_out_after}s.\n"
+                f"  FIX: Your {timeout_env} is set to {timed_out_after}.\n"
+                f"  Options:\n"
+                f"    1. Remove {timeout_env} from your environment "
+                f"(default: {default_timeout}s / 4hr)\n"
+                f"    2. Set {timeout_env}=14400 for 4 hours\n"
+                f"    3. Set {timeout_env}=none for no time limit\n"
+                f"  Check: .env file, system env vars, shell profile (~/.bashrc, ~/.zshrc)",
                 flush=True,
             )
             if _retrain_notifier is not None:

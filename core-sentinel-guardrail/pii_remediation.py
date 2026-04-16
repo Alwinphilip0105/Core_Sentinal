@@ -13,7 +13,15 @@ import re
 from cryptography.fernet import Fernet
 
 # Patterns (aligned with risk_mapping for consistency)
-_SSN = re.compile(r"\b\d{3}[-\s]?\d{2}[-\s]?\d{4}\b")
+_SSN = re.compile(
+    r"(?ix)"
+    r"(?:"
+    r"\b\d{3}[-\s*]?\d{2}[-\s*]?\d{4}\b"
+    r"|"
+    r"(?:ssn|social\s*security(?:\s*number)?|tax\s*id)\s*[:#-]?\s*"
+    r"\d{3}[-\s*]?\d{2}[-\s*]?\d{3,4}\b"
+    r")"
+)
 _CC = re.compile(r"\b(?:\d[-\s]*){12,19}\d\b")
 _EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 _IPV4 = re.compile(

@@ -11,7 +11,8 @@ W_TL = 28
 # Match the pill body height so both segments share the same top/bottom boundary.
 H_TL = 34
 
-COLOR_HOUSING = QtGui.QColor(28, 28, 30, 215)
+# Transparent by default to remove persistent background frame behind the indicator.
+COLOR_HOUSING = QtGui.QColor(28, 28, 30, 0)
 COLOR_BORDER = QtGui.QColor(200, 200, 200, 80)
 
 

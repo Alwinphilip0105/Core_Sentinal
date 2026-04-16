@@ -276,7 +276,8 @@ class RiskBubble(QtWidgets.QWidget):
         self._critical_task_count = 0
         self._idle_pixmap: Optional[QtGui.QPixmap] = None
         self._idle_pixmap_source: str = ""
-        self._current_bg = QtGui.QColor(COLOR_HOUSING)
+        # Keep default idle chrome transparent (remove persistent background frame).
+        self._current_bg = QtGui.QColor(0, 0, 0, 0)
         # Background clipboard monitor preview (not a live paste)
         self._clipboard_preview_active = False
         self._preview_level = "safe"
@@ -1189,7 +1190,7 @@ class RiskBubble(QtWidgets.QWidget):
 
     def _pill_target_color(self) -> QtGui.QColor:
         if not self._has_risk_score:
-            return QtGui.QColor(COLOR_HOUSING)
+            return QtGui.QColor(0, 0, 0, 0)
         s = max(0, min(100, int(self._risk_score)))
         if s <= 40:
             return QtGui.QColor(27, 94, 32, 210)
@@ -1231,14 +1232,7 @@ class RiskBubble(QtWidgets.QWidget):
             return COLOR_PILL_PAUSED
         base = None
         if self._is_hovered and not self._has_risk_score:
-            # Stay in the same family as traffic-light housing (avoid solid black vs charcoal)
-            h = QtGui.QColor(COLOR_HOUSING)
-            base = QtGui.QColor(
-                min(255, h.red() + 8),
-                min(255, h.green() + 8),
-                min(255, h.blue() + 8),
-                min(255, h.alpha() + 20),
-            )
+            base = QtGui.QColor(0, 0, 0, 0)
         else:
             base = self._current_bg
         if (
@@ -1339,7 +1333,7 @@ class RiskBubble(QtWidgets.QWidget):
             lab.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
             lab.setStyleSheet(
                 "background: rgba(28,28,30,240); color: white; font-size: 11px; "
-                "padding: 4px 8px; border-radius: 6px; font-family: 'Segoe UI';"
+                "padding: 4px 8px; border-radius: 6px; border: none; font-family: 'Segoe UI';"
             )
             eff = QtWidgets.QGraphicsOpacityEffect(lab)
             lab.setGraphicsEffect(eff)
@@ -2130,7 +2124,7 @@ class RiskBubble(QtWidgets.QWidget):
 
         w.setStyleSheet(
             "QWidget { background: rgba(22,22,24,235); border-radius: 8px; "
-            "border: 1px solid rgba(255,255,255,0.12); }"
+            "border: none; }"
         )
         w.adjustSize()
         pill_global = self.mapToGlobal(QtCore.QPoint(0, 0))

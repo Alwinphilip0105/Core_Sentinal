@@ -20,6 +20,9 @@ from ctypes import wintypes as wt
 
 _replay_lock = threading.Lock()
 _suppress_next_v = False
+_capture_lock = threading.Lock()
+_job_inflight = False
+_last_captured_text = ""
 
 if sys.platform != "win32":
     # Stubs for non-Windows (imports only)
@@ -154,8 +157,10 @@ else:
             return _user32.CallNextHookEx(_hook_handle, nCode, wParam, _lp)
 
         if _replay_lock.locked():
-            print("[hook] replay in progress — passing through", flush=True)
-            return _user32.CallNextHookEx(_hook_handle, nCode, wParam, _lp)
+            # During synthetic replay, swallow extra physical key-repeat Ctrl+V events.
+            # Passing them through can produce duplicate pastes in search fields.
+            print("[hook] replay in progress — suppressing extra Ctrl+V", flush=True)
+            return 1
 
         try:
             from active_window_llm import (
@@ -198,9 +203,20 @@ else:
                 )
 
             text = text.strip()
+            # Coalesce repeated Ctrl+V presses while one paste decision is in-flight.
+            # This avoids queueing duplicate jobs from key repeat / long key holds.
+            with _capture_lock:
+                global _job_inflight, _last_captured_text
+                if _job_inflight:
+                    print("[hook] paste already in-flight — coalescing duplicate Ctrl+V", flush=True)
+                    return 1
+                _job_inflight = True
+                _last_captured_text = text
             try:
                 _score_queue.put_nowait((text, agent_name or "", url, cleaned_title))
             except Exception:
+                with _capture_lock:
+                    _job_inflight = False
                 return _user32.CallNextHookEx(
                     _hook_handle, nCode, wParam, ctypes.c_void_p(lParam)
                 )
@@ -231,31 +247,37 @@ else:
         from guardrail_runtime import is_guard_snoozed, is_recent_duplicate
         from infer import score_clipboard_with_pii, should_bypass_duplicate_skip_for_text
 
-        if _emit_replay is None or _emit_scored is None:
-            return
-
-        if len(text.strip()) < 3:
-            _emit_replay()
-            return
-        if len(text) > _MAX_PASTE_CHARS:
-            text = text[:_MAX_PASTE_CHARS]
-
-        if is_guard_snoozed():
-            _emit_replay()
-            return
-
-        if is_recent_duplicate(text) and not should_bypass_duplicate_skip_for_text(text):
-            _emit_replay()
-            return
-
         try:
-            result = score_clipboard_with_pii(text)
-            payload = copy.deepcopy(result) if isinstance(result, dict) else {}
-        except Exception:
-            _emit_replay()
-            return
+            if _emit_replay is None or _emit_scored is None:
+                return
 
-        _emit_scored(text, payload, agent_name, url, cleaned_title)
+            if len(text.strip()) < 3:
+                _emit_replay()
+                return
+            if len(text) > _MAX_PASTE_CHARS:
+                text = text[:_MAX_PASTE_CHARS]
+
+            if is_guard_snoozed():
+                _emit_replay()
+                return
+
+            if is_recent_duplicate(text) and not should_bypass_duplicate_skip_for_text(text):
+                _emit_replay()
+                return
+
+            try:
+                result = score_clipboard_with_pii(text)
+                payload = copy.deepcopy(result) if isinstance(result, dict) else {}
+            except Exception:
+                _emit_replay()
+                return
+
+            _emit_scored(text, payload, agent_name, url, cleaned_title)
+        finally:
+            # Always release coalescing gate after a decision path is emitted.
+            with _capture_lock:
+                global _job_inflight
+                _job_inflight = False
 
     def _score_worker_loop() -> None:
         while not _stop_score_worker.is_set():

@@ -34,7 +34,7 @@ class ToolbarTooltip(QtWidgets.QWidget):
             font-weight: 500;
             padding: 6px 12px;
             border-radius: 8px;
-            border: 1px solid rgba(255,255,255,0.12);
+            border: none;
             """
         )
         self._label.setTextFormat(QtCore.Qt.TextFormat.RichText)
@@ -205,11 +205,13 @@ class BubbleToolbar(QtWidgets.QWidget):
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, False)
         self.setAutoFillBackground(False)
         self.setObjectName("bubbleToolbar")
-        self.setStyleSheet(
-            "#bubbleToolbar { background: transparent; border: none; }"
-        )
+        self.setStyleSheet("")
+        pal = self.palette()
+        pal.setColor(QtGui.QPalette.ColorRole.Window, QtCore.Qt.GlobalColor.transparent)
+        self.setPalette(pal)
 
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -286,3 +288,10 @@ class BubbleToolbar(QtWidgets.QWidget):
         if b is not None:
             QtCore.QTimer.singleShot(200, b._maybe_hide_toolbar)
         super().leaveEvent(event)
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        # Force transparent top-level surface; avoids residual Win/DWM frame tint.
+        del event
+        p = QtGui.QPainter(self)
+        p.setCompositionMode(QtGui.QPainter.CompositionMode.CompositionMode_Source)
+        p.fillRect(self.rect(), QtCore.Qt.GlobalColor.transparent)
