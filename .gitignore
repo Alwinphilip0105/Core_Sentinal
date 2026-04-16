@@ -79,3 +79,13 @@ core-sentinel-guardrail/config/user_settings.json
 core-sentinel-guardrail/logs/supabase_sync_state.json
 .venv/
 *.db
+
+# scratch files and logs
+core-sentinel-guardrail/Untitled
+core-sentinel-guardrail/_pipeline_*.txt
+core-sentinel-guardrail/check_training_data.py
+core-sentinel-guardrail/download_production_data.py
+core-sentinel-guardrail/data/additional/
+core-sentinel-guardrail/data/extra_pools/
+core-sentinel-guardrail/data/nemotron/
+core-sentinel-guardrail/data/PRODUCTION_DATA.md
