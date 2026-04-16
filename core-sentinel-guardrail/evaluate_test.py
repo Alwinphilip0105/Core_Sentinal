@@ -1,7 +1,8 @@
 """
 Formal test-set evaluation: load saved TinyBERT guardrail + tokenized Arrow test split,
 run Trainer.evaluate(), print accuracy, macro F1, per-class P/R/F1, and high-class metrics.
-Then PR-curve analysis (AUPRC, threshold at precision ≥0.85), confusion matrix, classification report.
+Then PR-curve analysis (AUPRC, threshold at precision ≥0.85), confusion matrix, classification report,
+and a safety_profile block (true high predicted as low/med vs benign flagged as high).
 
 Run from core-sentinel-guardrail/ (or set GUARDRAIL_ARROW_SAVE_DIR like data.py).
 """
@@ -36,6 +37,63 @@ def _resolve_arrow_dir() -> Path:
     raw = os.environ.get("GUARDRAIL_ARROW_SAVE_DIR", ARROW_SAVE_DIR)
     p = Path(raw)
     return p if p.is_absolute() else (_ROOT / p)
+
+
+def _safety_profile_argmax(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    label_names: list[str],
+) -> dict:
+    """
+    Aggregate errors aligned with guardrail priorities: missing true high is worse than
+    flagging benign text. Uses argmax predictions (same as confusion matrix).
+    """
+    def _idx(name: str) -> int | None:
+        return label_names.index(name) if name in label_names else None
+
+    lo = _idx("low")
+    med = _idx("med")
+    hi = _idx("high")
+    if hi is None:
+        return {"note": "No 'high' label in id2label; safety_profile skipped."}
+
+    n = int(len(y_true))
+    mask_th = y_true == hi
+    n_true_high = int(mask_th.sum())
+    n_true_low = int((y_true == lo).sum()) if lo is not None else 0
+    n_true_med = int((y_true == med).sum()) if med is not None else 0
+
+    th_as_lo = int(((y_true == hi) & (lo is not None) & (y_pred == lo)).sum())
+    th_as_med = int(((y_true == hi) & (med is not None) & (y_pred == med)).sum())
+    th_as_hi = int(((y_true == hi) & (y_pred == hi)).sum())
+
+    high_miss = int(n_true_high - th_as_hi)
+    high_recall = float(th_as_hi / n_true_high) if n_true_high > 0 else 0.0
+
+    low_as_hi = int(((y_true == lo) & (lo is not None) & (y_pred == hi)).sum())
+    med_as_hi = int(((y_true == med) & (med is not None) & (y_pred == hi)).sum())
+
+    worst = float(th_as_lo / n_true_high) if n_true_high > 0 else 0.0
+
+    return {
+        "n_test": n,
+        "n_true_low": n_true_low,
+        "n_true_med": n_true_med,
+        "n_true_high": n_true_high,
+        "true_high_predicted_as_low": th_as_lo,
+        "true_high_predicted_as_med": th_as_med,
+        "true_high_predicted_as_high": th_as_hi,
+        "high_miss_count": high_miss,
+        "high_recall_argmax": round(high_recall, 6),
+        "true_high_as_low_rate_given_true_high": round(worst, 6),
+        "true_low_predicted_as_high": low_as_hi,
+        "true_med_predicted_as_high": med_as_hi,
+        "interpretation": (
+            "Worst failures: true_high_predicted_as_low (high treated as safe). "
+            "Secondary: true_low_predicted_as_high (noisy benign flags). "
+            "Threshold calibration should prioritize high recall before tightening headline F1."
+        ),
+    }
 
 
 def _load_label_config(arrow_dir: Path, model_num_labels: int) -> tuple[int, dict[int, str]]:
@@ -236,6 +294,23 @@ def main() -> None:
         )
     )
 
+    preds_arr = np.asarray(preds, dtype=np.int64)
+    safety = _safety_profile_argmax(all_labels_arr, preds_arr, label_names)
+    print("\n" + "=" * 60)
+    print("Safety-oriented profile (argmax; see README: safety-first metrics)")
+    print("=" * 60)
+    for key in (
+        "n_true_high",
+        "true_high_predicted_as_low",
+        "true_high_predicted_as_med",
+        "high_miss_count",
+        "high_recall_argmax",
+        "true_low_predicted_as_high",
+        "true_med_predicted_as_high",
+    ):
+        if key in safety:
+            print(f"  {key}: {safety[key]}")
+
     reports_dir = _ROOT / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
     summary_path = reports_dir / "pr_curve_summary.json"
@@ -244,6 +319,7 @@ def main() -> None:
         "model_path": str(MODEL_DIR.resolve().as_posix()),
         "test_split_size": int(n_samples),
         "classes": classes_out,
+        "safety_profile": safety,
     }
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(out_payload, f, indent=2)

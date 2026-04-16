@@ -68,8 +68,18 @@ def aggregate_span_risks(span_labels: list[str]) -> str:
 
 
 # --- Strong PII regex overrides (compiled once) ---
-# SSN-like: 123-45-6789 or 123456789 (9 digits, optional dashes)
-_SSN = re.compile(r"\b\d{3}[-\s]?\d{2}[-\s]?\d{4}\b")
+# SSN-like:
+# - canonical 9-digit forms: 123-45-6789 / 123 45 6789 / 123*45*6789 / 123456789
+# - edge-case short tail (e.g. "SSN: 223-45-453") only when explicit SSN context is present
+_SSN = re.compile(
+    r"(?ix)"
+    r"(?:"
+    r"\b\d{3}[-\s*]?\d{2}[-\s*]?\d{4}\b"
+    r"|"
+    r"(?:ssn|social\s*security(?:\s*number)?|tax\s*id)\s*[:#-]?\s*"
+    r"\d{3}[-\s*]?\d{2}[-\s*]?\d{3,4}\b"
+    r")"
+)
 # Credit card: 4 groups of 4 digits, optional spaces/dashes (simplified; no Luhn here)
 _CC = re.compile(r"\b(?:\d[-\s]*){12,19}\d\b")
 # IBAN: 2 letters + 2 digits + up to 30 alphanumeric (basic)

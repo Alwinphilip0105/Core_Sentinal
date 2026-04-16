@@ -3,8 +3,9 @@
    evaluate_test.py), write per-class block/warn thresholds into config/risk_policy.json
    under policy["thresholds"].
 
-2) run_validation_threshold_sweep: legacy sweep on the validation Arrow split (FPR cap);
-   writes reports/threshold_calibration.json. Run:
+2) run_validation_threshold_sweep: sweep on the validation Arrow split with a safety-first
+   feasible set: high recall floor (GUARDRAIL_CALIB_MIN_HIGH_RECALL), FPR cap, med recall floor.
+   Writes reports/threshold_calibration.json. Run:
    python calibrate_thresholds.py --validation-sweep
 """
 
@@ -35,6 +36,9 @@ PR_CURVE_SUMMARY_PATH = REPORTS_DIR / "pr_curve_summary.json"
 
 # Default FPR cap on non-high rows predicting as high (low+med negatives)
 DEFAULT_MAX_FPR = 0.05
+DEFAULT_MIN_MED_RECALL = 0.35
+# Prefer catching true high-risk rows before optimizing headline precision (guardrail priority).
+DEFAULT_MIN_HIGH_RECALL = 0.85
 
 
 def _resolve_arrow_dir() -> Path:
@@ -114,8 +118,10 @@ def apply_calibrated_thresholds() -> None:
 
 
 def run_validation_threshold_sweep() -> None:
-    """Legacy: sweep validation softmax; writes reports/threshold_calibration.json."""
+    """Sweep validation thresholds: high-recall floor, FPR cap, med-recall floor (safety-first order)."""
     max_fpr = float(os.environ.get("GUARDRAIL_CALIB_MAX_FPR", str(DEFAULT_MAX_FPR)))
+    min_med_recall = float(os.environ.get("GUARDRAIL_CALIB_MIN_MED_RECALL", str(DEFAULT_MIN_MED_RECALL)))
+    min_high_recall = float(os.environ.get("GUARDRAIL_CALIB_MIN_HIGH_RECALL", str(DEFAULT_MIN_HIGH_RECALL)))
     arrow_dir = _resolve_arrow_dir()
     datasets = load_arrow_splits(str(arrow_dir))
 
@@ -155,10 +161,12 @@ def run_validation_threshold_sweep() -> None:
     policy = load_merged_risk_policy(CONFIG_PATH)
     base_th, base_tm = get_inference_3class_label_thresholds(policy)
 
-    best_overall: tuple[float, float, float, float] | None = None
-    feasible: list[tuple[float, float, float, float]] = []
+    # (recall_high, fpr_non_high_as_high, recall_med, th, tm)
+    best_overall: tuple[float, float, float, float, float] | None = None
+    feasible: list[tuple[float, float, float, float, float]] = []
 
     n_high = int((labels == 2).sum())
+    n_med = int((labels == 1).sum())
     n_non_high = int((labels != 2).sum())
     if n_high == 0:
         print("WARNING: no 'high' labels in validation set — recall is undefined.")
@@ -169,42 +177,66 @@ def run_validation_threshold_sweep() -> None:
             tp = int(((pred == 2) & (labels == 2)).sum())
             fn = int(((pred != 2) & (labels == 2)).sum())
             recall_h = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+            tp_med = int(((pred == 1) & (labels == 1)).sum())
+            fn_med = int(((pred != 1) & (labels == 1)).sum())
+            recall_med = tp_med / (tp_med + fn_med) if (tp_med + fn_med) > 0 else 0.0
             fp = int(((pred == 2) & (labels != 2)).sum())
             fpr = fp / n_non_high if n_non_high > 0 else 0.0
 
-            cand = (recall_h, fpr, float(th), float(tm))
-            if fpr <= max_fpr:
+            cand = (recall_h, fpr, recall_med, float(th), float(tm))
+            if (
+                fpr <= max_fpr
+                and recall_med >= min_med_recall
+                and recall_h >= min_high_recall
+            ):
                 feasible.append(cand)
             if best_overall is None:
                 best_overall = cand
-            elif recall_h > best_overall[0] or (recall_h == best_overall[0] and fpr < best_overall[1]):
+            elif (
+                recall_h > best_overall[0]
+                or (recall_h == best_overall[0] and recall_med > best_overall[2])
+                or (recall_h == best_overall[0] and recall_med == best_overall[2] and fpr < best_overall[1])
+            ):
                 best_overall = cand
 
     print("\n" + "=" * 60)
     print("Threshold calibration (validation set, 3-class)")
     print("=" * 60)
-    print(f"  Samples: {len(labels)}  |  true high: {n_high}  |  max FPR (non-high -> pred high): {max_fpr:.2%}")
+    print(
+        f"  Samples: {len(labels)}  |  true high: {n_high}  |  true med: {n_med}  |  "
+        f"max FPR (non-high -> pred high): {max_fpr:.2%}  |  min med recall: {min_med_recall:.2%}  |  "
+        f"min high recall: {min_high_recall:.2%}"
+    )
 
     assert best_overall is not None
     if feasible:
-        feasible.sort(key=lambda x: (-x[0], x[1], x[2], x[3]))
-        r, f, th_opt, tm_opt = feasible[0]
+        feasible.sort(key=lambda x: (-x[0], -x[2], x[1], x[3], x[4]))
+        r, f, r_med, th_opt, tm_opt = feasible[0]
         print(f"\n  Best under FPR cap: prob_threshold_high={th_opt:.4f}, prob_threshold_med={tm_opt:.4f}")
-        print(f"    recall_high={r:.6f}  FPR={f:.6f}")
+        print(f"    recall_high={r:.6f}  recall_med={r_med:.6f}  FPR={f:.6f}")
     else:
-        print(f"\n  No (th, tm) pair satisfied FPR <= {max_fpr:.2%}. Showing unconstrained best recall.")
-        r, f, th_opt, tm_opt = best_overall
+        print(
+            f"\n  No (th, tm) pair satisfied FPR <= {max_fpr:.2%}, med recall >= {min_med_recall:.2%}, "
+            f"and high recall >= {min_high_recall:.2%}. Showing unconstrained best recall."
+        )
+        r, f, r_med, th_opt, tm_opt = best_overall
         print(f"  Best recall (unconstrained FPR={f:.6f}): prob_threshold_high={th_opt:.4f}, prob_threshold_med={tm_opt:.4f}")
-        print(f"    recall_high={r:.6f}")
+        print(f"    recall_high={r:.6f}  recall_med={r_med:.6f}")
 
     base_pred = _predict_buckets_batch(prob_low, prob_med, prob_high, base_th, base_tm)
     base_tp = int(((base_pred == 2) & (labels == 2)).sum())
     base_fn = int(((base_pred != 2) & (labels == 2)).sum())
     base_recall = base_tp / (base_tp + base_fn) if (base_tp + base_fn) > 0 else 0.0
+    base_tp_med = int(((base_pred == 1) & (labels == 1)).sum())
+    base_fn_med = int(((base_pred != 1) & (labels == 1)).sum())
+    base_recall_med = base_tp_med / (base_tp_med + base_fn_med) if (base_tp_med + base_fn_med) > 0 else 0.0
     base_fp = int(((base_pred == 2) & (labels != 2)).sum())
     base_fpr = base_fp / n_non_high if n_non_high > 0 else 0.0
+    base_high_as_low = int(((labels == 2) & (base_pred == 0)).sum())
+    base_high_as_med = int(((labels == 2) & (base_pred == 1)).sum())
     print(f"\n  Current policy (inference_3class_labels): th={base_th:.4f}, tm={base_tm:.4f}")
-    print(f"    recall_high={base_recall:.6f}  FPR={base_fpr:.6f}")
+    print(f"    recall_high={base_recall:.6f}  recall_med={base_recall_med:.6f}  FPR={base_fpr:.6f}")
+    print(f"    true_high->pred_low={base_high_as_low}  true_high->pred_med={base_high_as_med} (worst misses)")
 
     pl, pm, ph = float(prob_low[0]), float(prob_med[0]), float(prob_high[0])
     v_model = int(predict_3class_bucket_from_probs(pl, pm, ph, policy))
@@ -213,20 +245,45 @@ def run_validation_threshold_sweep() -> None:
 
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     out_path = REPORTS_DIR / "threshold_calibration.json"
-    rec_r, rec_f = (feasible[0][0], feasible[0][1]) if feasible else (best_overall[0], best_overall[1])
+    rec_r, rec_f, rec_m = (feasible[0][0], feasible[0][1], feasible[0][2]) if feasible else (
+        best_overall[0],
+        best_overall[1],
+        best_overall[2],
+    )
+    opt_pred = _predict_buckets_batch(prob_low, prob_med, prob_high, float(th_opt), float(tm_opt))
+    opt_high_as_low = int(((labels == 2) & (opt_pred == 0)).sum())
+    opt_high_as_med = int(((labels == 2) & (opt_pred == 1)).sum())
+    if feasible:
+        print(f"\n  Recommended (feasible) true_high->pred_low={opt_high_as_low}  true_high->pred_med={opt_high_as_med}")
+
     summary = {
         "max_fpr": max_fpr,
+        "min_med_recall": min_med_recall,
+        "min_high_recall": min_high_recall,
         "n_val": int(len(labels)),
         "n_true_high": n_high,
+        "n_true_med": n_med,
         "current_policy": {"prob_threshold_high": base_th, "prob_threshold_med": base_tm},
-        "current_metrics": {"recall_high": base_recall, "fpr_non_high_as_high": base_fpr},
+        "current_metrics": {
+            "recall_high": base_recall,
+            "recall_med": base_recall_med,
+            "fpr_non_high_as_high": base_fpr,
+            "true_high_as_low": base_high_as_low,
+            "true_high_as_med": base_high_as_med,
+        },
         "recommended": {
             "prob_threshold_high": float(th_opt),
             "prob_threshold_med": float(tm_opt),
             "recall_high": float(rec_r),
+            "recall_med": float(rec_m),
             "fpr_non_high_as_high": float(rec_f),
+            "true_high_as_low": opt_high_as_low,
+            "true_high_as_med": opt_high_as_med,
         },
-        "note": "Copy recommended values into config/risk_policy.json under inference_3class_labels after review.",
+        "note": (
+            "Safety-first: feasible pairs require min high recall, FPR cap, and med recall floor. "
+            "Copy recommended values into config/risk_policy.json under inference_3class_labels after review."
+        ),
     }
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)

@@ -9,6 +9,7 @@ End-to-end loop for **3-class** (`low` / `med` / `high`) TinyBERT training when 
 1. **Bubble feedback** (`logs/feedback_store.jsonl`) — predicted vs **correct** label (low/med/high).
 2. **Full text** (`logs/feedback_fulltext.jsonl`) — **complete** pasted text per feedback event (one JSON line per submit; last line per hash wins). **New since this file was added**; older feedback may only have previews.
 3. **Hash index** (`logs/hash_index.jsonl`) — **fallback**: up to **500 characters** if no row exists in `feedback_fulltext.jsonl` for that hash.
+4. **Curated JSONL pools** (`data/extra_pools/*.jsonl`) — optional **high** lines and **hard-negative** low/med lines you maintain by hand (see `data/extra_pools/README.txt`). Merged after feedback.
 
 Export prefers **fulltext → preview**. Set env **`GUARDRAIL_FEEDBACK_NO_FULLTEXT=1`** when recording feedback to skip writing full text (e.g. shared machine); export then uses previews only.
 
@@ -40,7 +41,7 @@ Override path: `GUARDRAIL_USER_FEEDBACK_JSONL` or `merge_feedback_to_training.py
 python data.py multi_real_synthetic
 ```
 
-You should see a log line like: `[user_feedback] merged N labeled rows from ...`.
+You should see log lines like: `[user_feedback] merged N labeled rows ...` and, if pools exist, `[extra_pools] merged M curated rows ...`.
 
 ### D. Train and evaluate
 

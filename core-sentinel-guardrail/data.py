@@ -11,6 +11,7 @@ Professional metrics (targets for downstream model):
 
 import csv
 import json
+import math
 import os
 import random
 import re
@@ -68,6 +69,269 @@ _REPORTS_DIR = Path(__file__).resolve().parent.parent / "reports"
 REAL_CANDIDATE_POOL_CSV = _REPORTS_DIR / "real_candidate_pool.csv"
 # Synthetic cap: when enough real labeled data, synthetic_count <= SYNTHETIC_CAP_MULTIPLIER * real_labeled_count
 SYNTHETIC_CAP_MULTIPLIER = 2
+DEFAULT_TRAIN_CAPS = {"high": 5000, "med": 5000, "low": 3000}
+DEFAULT_HIGH_TO_MED_MAX_RATIO = 6.0
+DEFAULT_EVAL_MAX_CLASS_RATIO = 3.0
+DEFAULT_VAL_MIN_COUNTS = {"low": 30, "med": 60, "high": 30}
+DEFAULT_TEST_MIN_COUNTS = {"low": 40, "med": 120, "high": 40}
+DEFAULT_HOLDOUT_MIN_COUNTS = {"low": 20, "med": 20, "high": 20}
+# Train floors: real high is often tiny after pool splits; top up with hard synthetic high (capped).
+DEFAULT_TRAIN_MIN_COUNTS = {"low": 600, "med": 1400, "high": 400}
+TRAIN_SYNTHETIC_HIGH_TOPUP_CAP = 600
+# Optional JSONL pools under data/extra_pools/ (see README.txt there). Not required for training.
+EXTRA_POOL_MAX_PER_FILE = 8000
+# Max rows read from data/enron_real/enron_pii_prompts.jsonl (memory / build time).
+DEFAULT_ENRON_PII_PROMPTS_MAX_ROWS = 20000
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or str(raw).strip() == "":
+        return default
+    try:
+        return int(str(raw).strip())
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or str(raw).strip() == "":
+        return default
+    try:
+        return float(str(raw).strip())
+    except ValueError:
+        return default
+
+
+def _get_num_synthetics() -> int:
+    """Target size for Faker synthetic pool (env GUARDRAIL_NUM_SYNTHETICS, default NUM_SYNTHETICS)."""
+    return max(0, _env_int("GUARDRAIL_NUM_SYNTHETICS", NUM_SYNTHETICS))
+
+
+def _get_synthetic_cap_multiplier() -> int:
+    """Synthetic rows <= multiplier * real_labeled in multi_real_synthetic (GUARDRAIL_SYNTHETIC_CAP_MULTIPLIER)."""
+    return max(0, _env_int("GUARDRAIL_SYNTHETIC_CAP_MULTIPLIER", SYNTHETIC_CAP_MULTIPLIER))
+
+
+def _get_split_ratios() -> tuple[float, float, float]:
+    """
+    Train/val/test fractions for stratified_split when no source holdout (default SPLIT_RATIOS).
+    Override: GUARDRAIL_SPLIT_RATIOS=\"0.7,0.15,0.15\" (must sum to ~1).
+    """
+    raw = os.environ.get("GUARDRAIL_SPLIT_RATIOS", "").strip()
+    if not raw:
+        return SPLIT_RATIOS
+    parts = [p.strip() for p in raw.split(",")]
+    if len(parts) != 3:
+        print(f"[data] GUARDRAIL_SPLIT_RATIOS must have 3 comma-separated floats; using default {SPLIT_RATIOS}")
+        return SPLIT_RATIOS
+    try:
+        a, b, c = float(parts[0]), float(parts[1]), float(parts[2])
+    except ValueError:
+        return SPLIT_RATIOS
+    s = a + b + c
+    if s <= 0 or abs(s - 1.0) > 0.02:
+        print(f"[data] GUARDRAIL_SPLIT_RATIOS must sum to ~1.0; got {s}, using default {SPLIT_RATIOS}")
+        return SPLIT_RATIOS
+    if abs(s - 1.0) > 1e-9:
+        a, b, c = a / s, b / s, c / s
+    return (a, b, c)
+
+
+def _get_pool_val_fraction() -> float:
+    """Fraction of pool for validation when splitting train+val from merged pool (GUARDRAIL_POOL_VAL_FRACTION)."""
+    v = _env_float("GUARDRAIL_POOL_VAL_FRACTION", 0.15)
+    if v <= 0.0 or v >= 1.0:
+        print("[data] GUARDRAIL_POOL_VAL_FRACTION must be in (0,1); using 0.15")
+        return 0.15
+    return v
+
+
+def _get_train_caps() -> dict[str, int]:
+    """Per-class caps after balance_train_risk_classes (GUARDRAIL_TRAIN_CAP_LOW/MED/HIGH)."""
+    return {
+        "low": max(0, _env_int("GUARDRAIL_TRAIN_CAP_LOW", DEFAULT_TRAIN_CAPS["low"])),
+        "med": max(0, _env_int("GUARDRAIL_TRAIN_CAP_MED", DEFAULT_TRAIN_CAPS["med"])),
+        "high": max(0, _env_int("GUARDRAIL_TRAIN_CAP_HIGH", DEFAULT_TRAIN_CAPS["high"])),
+    }
+
+
+def _get_bigcode_max_rows() -> int | None:
+    """
+    Row cap for BigCode PII (GUARDRAIL_BIGCODE_MAX_ROWS). Use 'none', 'all', or '-1' for no cap.
+    """
+    raw = os.environ.get("GUARDRAIL_BIGCODE_MAX_ROWS")
+    if raw is None or str(raw).strip() == "":
+        return BIGCODE_MAX_ROWS
+    s = str(raw).strip().lower()
+    if s in ("none", "all", "-1"):
+        return None
+    try:
+        v = int(s)
+        return None if v <= 0 else v
+    except ValueError:
+        return BIGCODE_MAX_ROWS
+
+
+def _use_multi_real_equal_thirds() -> bool:
+    """
+    Legacy opt-in for forcing multi_real_synthetic train data to ~33/33/33.
+    Disabled by default because it can distort realistic med/high boundaries.
+    """
+    raw = os.environ.get("GUARDRAIL_MULTI_REAL_EQUAL_THIRDS")
+    if raw is None:
+        return False
+    return str(raw).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _rebalance_multi_real_train_equal_thirds(train_rows: list[dict], *, seed: int = 88) -> list[dict]:
+    """
+    Rebalance training data to ~33% low / med / high.
+
+    Target count T is the medium-class count (before this step). High is capped at T
+    (random subsample if there are more). Low and med are brought up to T by oversampling
+    with replacement when needed.
+    """
+    rng = random.Random(seed)
+    by_risk: dict[str, list[dict]] = {"low": [], "med": [], "high": []}
+    for r in train_rows:
+        rk = str(r.get("risk", "")).lower()
+        if rk in by_risk:
+            by_risk[rk].append(r)
+
+    n_low, n_med, n_high = len(by_risk["low"]), len(by_risk["med"]), len(by_risk["high"])
+    if n_low + n_med + n_high == 0:
+        return train_rows
+
+    T = n_med
+    if T == 0:
+        if n_low > 0 and n_high > 0:
+            T = min(n_low, n_high)
+        else:
+            T = max(n_low, n_high, 0)
+        if T <= 0:
+            print("[multi_real_synthetic] equal-thirds: no rows to balance; skipping")
+            return train_rows
+        print(f"[multi_real_synthetic] equal-thirds: med was 0; using T={T} from low/high")
+
+    def _pick(pool: list[dict], k: int, risk: str, sub_seed: int) -> list[dict]:
+        if k <= 0:
+            return []
+        if not pool:
+            return _risk_topup_samples(risk, k, seed=sub_seed)
+        if len(pool) >= k:
+            chosen = rng.sample(pool, k)
+        else:
+            chosen = [dict(r) for r in rng.choices(pool, k=k)]
+        out: list[dict] = []
+        for i, row in enumerate(chosen):
+            nr = dict(row)
+            nr["risk"] = risk
+            sid = str(nr.get("sap_id", "") or "")[:24]
+            nr["sap_id"] = f"eq3-{risk}-{sub_seed}-{i}-{sid}"
+            out.append(nr)
+        return out
+
+    low_rows = _pick(by_risk["low"], T, "low", seed + 11)
+    med_rows = _pick(by_risk["med"], T, "med", seed + 22)
+    high_rows = _pick(by_risk["high"], T, "high", seed + 33)
+
+    merged = low_rows + med_rows + high_rows
+    rng.shuffle(merged)
+    print(
+        f"[multi_real_synthetic] equal-thirds rebalance: T={T} per class "
+        f"(was low/med/high={n_low}/{n_med}/{n_high}) -> train n={len(merged)} "
+        f"(~33% each)"
+    )
+    return merged
+
+
+def _normalize_for_leakage(text: str) -> str:
+    """
+    Canonicalized fingerprint used for dedupe/leakage reduction across near-identical templates.
+    Variable identifiers (numbers, IDs, emails, phones) are collapsed to placeholder tokens.
+    """
+    t = str(text or "").strip().lower()
+    if not t:
+        return ""
+    t = re.sub(r"\b[0-9a-f]{8,}\b", "<hex>", t, flags=re.IGNORECASE)
+    t = re.sub(r"\b[A-Z]{2,5}[-_ ]?\d{3,}\b", "<id>", t, flags=re.IGNORECASE)
+    t = re.sub(r"\b\d{2,}\b", "<num>", t)
+    t = re.sub(r"\b[0-9a-z._%+-]+@[0-9a-z.-]+\.[a-z]{2,}\b", "<email>", t, flags=re.IGNORECASE)
+    t = re.sub(r"\b(?:\+?\d[\d\-\s().]{7,}\d)\b", "<phone>", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+
+def load_extra_pool_rows_for_training(existing_norms: set[str]) -> tuple[list[dict], int]:
+    """
+    Load optional curated JSONL files from data/extra_pools/ (or GUARDRAIL_EXTRA_POOL_DIR):
+      - high_extra.jsonl          -> risk high (extra real-like high-risk lines)
+      - hard_negative_low.jsonl   -> risk low (benign text that should not be scored as high)
+      - hard_negative_med.jsonl   -> risk med (boundary medium vs high)
+
+    Each line: {"text": "..."} (risk is implied by filename). Skips duplicates vs existing_norms
+    and within files (same leakage-normalized fingerprint).
+
+    Returns (rows ready to append to real_labeled_rows, duplicate_skip_count).
+    """
+    raw_dir = os.environ.get("GUARDRAIL_EXTRA_POOL_DIR", "").strip()
+    base = Path(raw_dir) if raw_dir else (Path(__file__).resolve().parent / "data" / "extra_pools")
+    if not base.is_dir():
+        return [], 0
+
+    max_per = _env_int("GUARDRAIL_EXTRA_POOL_MAX_PER_FILE", EXTRA_POOL_MAX_PER_FILE)
+    specs = [
+        ("high_extra.jsonl", "high", "extra_pool_high"),
+        ("hard_negative_low.jsonl", "low", "extra_pool_hard_low"),
+        ("hard_negative_med.jsonl", "med", "extra_pool_hard_med"),
+    ]
+    out: list[dict] = []
+    skipped = 0
+    local_seen: set[str] = set(existing_norms)
+
+    for fname, risk, src in specs:
+        path = base / fname
+        if not path.is_file():
+            continue
+        n_from_file = 0
+        with open(path, encoding="utf-8-sig") as f:
+            for line_no, line in enumerate(f, start=1):
+                if n_from_file >= max_per:
+                    print(f"[extra_pools] {fname}: reached cap ({max_per} lines per file)")
+                    break
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    print(f"[extra_pools] {fname}:{line_no}: invalid JSON, skipped")
+                    continue
+                text = str(obj.get("text") or obj.get("content") or "").strip()
+                if not text:
+                    continue
+                if len(text) < MIN_TEXT_LEN or len(text) > MAX_TEXT_LEN:
+                    continue
+                norm = _normalize_for_leakage(text)
+                if not norm:
+                    continue
+                if norm in local_seen:
+                    skipped += 1
+                    continue
+                local_seen.add(norm)
+                out.append({
+                    "text": text,
+                    "risk": risk,
+                    "is_sap": 0,
+                    "sap_id": f"{src}-{n_from_file}",
+                    "source": src,
+                })
+                n_from_file += 1
+        if n_from_file:
+            print(f"[extra_pools] {fname}: loaded {n_from_file} rows (risk={risk})")
+
+    return out, skipped
+
 
 # --- ai4privacy PII masking (text PII, sequence classification from token-level labels) ---
 AI4PRIVACY_PII_ID = "ai4privacy/pii-masking-43k"
@@ -394,7 +658,7 @@ def nemotron_to_risk_rows(
         texts,
         risks,
         saps,
-        test_size=0.15,
+        test_size=_get_pool_val_fraction(),
         stratify=risks if use_stratify else None,
         random_state=seed,
     )
@@ -436,13 +700,14 @@ def load_patronus_pii(path: str | Path | None = None) -> list[dict]:
                 for r in csv.DictReader(fp):
                     raw_rows.append(dict(r))
         elif f.suffix == ".jsonl":
-            with open(f, encoding="utf-8") as fp:
+            # utf-8-sig: tolerate UTF-8 BOM (e.g. PowerShell Set-Content -Encoding utf8)
+            with open(f, encoding="utf-8-sig") as fp:
                 for line in fp:
                     line = line.strip()
                     if line:
                         raw_rows.append(json.loads(line))
         else:
-            with open(f, encoding="utf-8") as fp:
+            with open(f, encoding="utf-8-sig") as fp:
                 data = json.load(fp)
             if isinstance(data, list):
                 raw_rows.extend(data)
@@ -469,7 +734,7 @@ def load_patronus_pii(path: str | Path | None = None) -> list[dict]:
         if raw_label is not None:
             unique_raw_labels.add(raw_label)
         risk = PATRONUS_SENSITIVITY_TO_RISK.get(raw_label, "med") if raw_label else "med"
-        norm = text.lower().strip()
+        norm = _normalize_for_leakage(text)
         if norm in seen_normalized:
             continue
         seen_normalized.add(norm)
@@ -556,13 +821,13 @@ def load_business_real(path: str | Path | None = None) -> list[dict]:
                 for r in csv.DictReader(fp):
                     raw_rows.append(dict(r))
         elif f.suffix == ".jsonl":
-            with open(f, encoding="utf-8") as fp:
+            with open(f, encoding="utf-8-sig") as fp:
                 for line in fp:
                     line = line.strip()
                     if line:
                         raw_rows.append(json.loads(line))
         else:
-            with open(f, encoding="utf-8") as fp:
+            with open(f, encoding="utf-8-sig") as fp:
                 data = json.load(fp)
             if isinstance(data, list):
                 raw_rows.extend(data)
@@ -592,24 +857,82 @@ def load_business_real(path: str | Path | None = None) -> list[dict]:
     return out
 
 
+# Enron: quick content heuristics so corpora are not treated as all high-risk.
+_ENRON_SSN_RE = re.compile(r"\b\d{3}-\d{2}-\d{4}\b|\b\d{3}\s+\d{2}\s+\d{4}\b")
+_ENRON_CC_RE = re.compile(
+    r"\b(?:4[0-9]{12}(?:[0-9]{3})?|"  # Visa
+    r"5[1-5][0-9]{14}|"
+    r"3[47][0-9]{13}|"
+    r"6(?:011|5[0-9]{2})[0-9]{12})\b"
+)
+_ENRON_PHONE_RE = re.compile(
+    r"(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s/]?[0-9]{3}[-.\s/]?[0-9]{4}\b"
+)
+_ENRON_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+_ENRON_TITLE_PAIR_RE = re.compile(r"\b([A-Z][a-z]{2,14})\s+([A-Z][a-z]{2,14})\b")
+_ENRON_PAIR_FIRST_STOP = frozenset({
+    "the", "and", "but", "for", "not", "are", "was", "has", "his", "her", "its", "our", "all",
+    "this", "that", "with", "from", "have", "been", "will", "your", "any", "can", "may", "did",
+    "get", "got", "she", "him", "they", "who", "how", "out", "one", "two", "per", "via",
+})
+
+
+def _enron_has_capitalized_name_pair(text: str) -> bool:
+    """Heuristic: two consecutive Title Case words (possible person / entity names), excluding common sentence starters."""
+    for m in _ENRON_TITLE_PAIR_RE.finditer(text):
+        a = m.group(1)
+        if a.lower() in _ENRON_PAIR_FIRST_STOP:
+            continue
+        return True
+    return False
+
+
+def _enron_heuristic_risk(text: str) -> str:
+    """
+    Rough label from body text: strong PII-like patterns -> high; title-case name pairs -> med; else low.
+    Does not replace curated dataset labels elsewhere; used only in load_enron_real.
+    """
+    t = text or ""
+    if not t.strip():
+        return "low"
+    if (
+        _ENRON_SSN_RE.search(t)
+        or _ENRON_CC_RE.search(t)
+        or _ENRON_PHONE_RE.search(t)
+        or _ENRON_EMAIL_RE.search(t)
+    ):
+        return "high"
+    if _enron_has_capitalized_name_pair(t):
+        return "med"
+    return "low"
+
+
 def load_enron_real(path: str | Path | None = None) -> list[dict]:
     """
     Load Enron/EDRM-style email or body text from local path.
-    Supports .csv, .json, .jsonl, .txt. Extracts text snippets; if no label column, rows are unlabeled candidates.
-    Returns list of {text, risk, sap_id, source="enron_real"}. risk is None if unlabeled.
+    Supports .csv, .json, .jsonl, .txt. Extracts text snippets.
+
+    Risk is assigned per row using content heuristics (not file labels): SSN / card / phone / email
+    patterns -> high; capitalized word pairs (likely names) -> med; otherwise low.
+
+    ``enron_pii_prompts.jsonl`` is capped at ``GUARDRAIL_ENRON_MAX_ROWS`` (default 20000) to avoid huge loads.
     """
     path = Path(path or ENRON_REAL_PATH)
     if not path.exists():
         print(f"[enron_real] path not found (skipped): {path}")
         return []
     text_keys = ("text", "content", "body", "excerpt", "prompt", "input", "message")
-    label_keys = ("risk", "label", "category", "classification", "sensitivity")
 
     if path.is_file():
         files = [path]
     else:
+        # Skip backup dumps like enron_pii_prompts_full.jsonl (still *.jsonl) to avoid loading 2x.
+        jsonl_files = [p for p in sorted(path.glob("*.jsonl")) if "_full" not in p.name.lower()]
         files = (
-            sorted(path.glob("*.csv")) + sorted(path.glob("*.json")) + sorted(path.glob("*.jsonl")) + sorted(path.glob("*.txt"))
+            sorted(path.glob("*.csv"))
+            + sorted(path.glob("*.json"))
+            + jsonl_files
+            + sorted(path.glob("*.txt"))
         )
 
     raw_rows = []
@@ -620,13 +943,22 @@ def load_enron_real(path: str | Path | None = None) -> list[dict]:
                 for r in csv.DictReader(fp):
                     raw_rows.append(dict(r))
         elif f.suffix == ".jsonl":
-            with open(f, encoding="utf-8") as fp:
+            max_pii = _env_int("GUARDRAIL_ENRON_MAX_ROWS", DEFAULT_ENRON_PII_PROMPTS_MAX_ROWS)
+            is_pii_prompts = f.name == "enron_pii_prompts.jsonl"
+            n_pii = 0
+            with open(f, encoding="utf-8-sig") as fp:
                 for line in fp:
                     line = line.strip()
-                    if line:
-                        raw_rows.append(json.loads(line))
+                    if not line:
+                        continue
+                    if is_pii_prompts and n_pii >= max_pii:
+                        print(f"[enron_real] capped at {max_pii} rows (GUARDRAIL_ENRON_MAX_ROWS)")
+                        break
+                    raw_rows.append(json.loads(line))
+                    if is_pii_prompts:
+                        n_pii += 1
         elif f.suffix == ".json":
-            with open(f, encoding="utf-8") as fp:
+            with open(f, encoding="utf-8-sig") as fp:
                 data = json.load(fp)
             if isinstance(data, list):
                 raw_rows.extend(data)
@@ -656,16 +988,14 @@ def load_enron_real(path: str | Path | None = None) -> list[dict]:
                 text = str(r["text"]).strip()
         if not text:
             continue
-        raw_label = None
-        for k in label_keys:
-            if k in r and r[k] is not None:
-                raw_label = str(r[k]).strip().lower()
-                break
-        risk = PATRONUS_SENSITIVITY_TO_RISK.get(raw_label) if raw_label else None
+        risk = _enron_heuristic_risk(text)
         out.append({"text": text, "risk": risk, "sap_id": f"enron-{len(out)}", "source": "enron_real"})
-    labeled = [r for r in out if r.get("risk") is not None]
-    counts = dict(Counter(r["risk"] for r in labeled)) if labeled else {}
-    print(f"[enron_real] total rows loaded: {len(out)} (labeled: {len(labeled)}, unlabeled: {len(out) - len(labeled)})")
+
+    counts = dict(Counter(r["risk"] for r in out)) if out else {}
+    print(
+        "[enron_real] risk from content heuristics (SSN/card/phone/email -> high; Title Case name pairs -> med; else low)"
+    )
+    print(f"[enron_real] total rows loaded: {len(out)} (all labeled by heuristic)")
     print(f"[enron_real] per-class counts (low/med/high): {counts}")
     return out
 
@@ -696,13 +1026,13 @@ def load_kaggle_sensitive(path: str | Path | None = None) -> list[dict]:
                 for r in csv.DictReader(fp):
                     raw_rows.append(dict(r))
         elif f.suffix == ".jsonl":
-            with open(f, encoding="utf-8") as fp:
+            with open(f, encoding="utf-8-sig") as fp:
                 for line in fp:
                     line = line.strip()
                     if line:
                         raw_rows.append(json.loads(line))
         else:
-            with open(f, encoding="utf-8") as fp:
+            with open(f, encoding="utf-8-sig") as fp:
                 data = json.load(fp)
             if isinstance(data, list):
                 raw_rows.extend(data)
@@ -1039,7 +1369,7 @@ def _build_real_pool_from_sources(
             text = (r.get("text") or "").strip()
             if not text:
                 continue
-            norm = text.strip().lower()
+            norm = _normalize_for_leakage(text)
             if norm in seen:
                 continue
             if len(text) < MIN_TEXT_LEN or len(text) > MAX_TEXT_LEN:
@@ -1087,7 +1417,7 @@ def build_real_candidate_pool(
     source_lists = [
         ("patronus", _load_patronus()),
         ("enron_real", load_enron_real(enron_path)),
-        ("bigcode", load_bigcode_pii()),
+        ("bigcode", load_bigcode_pii(_get_bigcode_max_rows())),
         ("kaggle_sensitive", load_kaggle_sensitive(kaggle_path)),
         ("business_real", load_business_real(business_path)),
     ]
@@ -1111,7 +1441,7 @@ def _merge_and_dedupe_sources(
             text = r.get("text") or ""
             if not text.strip():
                 continue
-            norm = text.strip().lower()
+            norm = _normalize_for_leakage(text)
             if norm in seen:
                 continue
             seen.add(norm)
@@ -1151,7 +1481,7 @@ def patronus_to_risk_rows(
         print("Too few Patronus rows for reliable 3-way stratified split; using all Patronus rows as train augmentation.")
         return patronus_rows, [], []
 
-    return stratified_split(patronus_rows, SPLIT_RATIOS)
+    return stratified_split(patronus_rows)
 
 
 def _sap_id(fake: Faker) -> str:
@@ -1182,11 +1512,14 @@ def _finance_text(fake: Faker, risk: str) -> str:
     return " ".join(parts)
 
 
-def generate_faker_synthetics(n: int = NUM_SYNTHETICS) -> list[dict]:
+def generate_faker_synthetics(n: int | None = None) -> list[dict]:
     """
     Generate n synthetic samples with SAP IDs and finance text.
     Risk distribution: 30% low, 40% med, 30% high.
+    If n is None, uses GUARDRAIL_NUM_SYNTHETICS (default NUM_SYNTHETICS).
     """
+    if n is None:
+        n = _get_num_synthetics()
     fake = Faker()
     Faker.seed(42)
     random.seed(42)
@@ -1240,6 +1573,355 @@ def generate_low_risk_samples(n: int = 3000, seed: int = 42) -> list[dict]:
     return samples
 
 
+def generate_hard_medium_samples(n: int = 2200, seed: int = 143) -> list[dict]:
+    """
+    Medium-risk near-boundary samples.
+    Designed to be harder than generic synthetic text while avoiding clear block-level triggers.
+    """
+    import random as _random
+    from faker import Faker as _Faker
+
+    _random.seed(seed)
+    fake = _Faker()
+    _Faker.seed(seed)
+
+    def _mask(val: str, keep: int = 4) -> str:
+        s = str(val or "")
+        if len(s) <= keep:
+            return "*" * max(1, len(s))
+        return "*" * (len(s) - keep) + s[-keep:]
+
+    samples: list[dict] = []
+    for i in range(max(0, int(n))):
+        mode = i % 6
+        if mode == 0:
+            text = (
+                f"Customer onboarding ticket: contact {fake.email()} and phone {fake.phone_number()}. "
+                f"Account ref ending {_mask(fake.random_number(digits=10, fix_len=True), keep=3)} for verification."
+            )
+        elif mode == 1:
+            text = (
+                f"Support handoff for {fake.name()} in {fake.city()}. "
+                f"Address partially redacted: {fake.street_name()} [redacted], case {fake.uuid4()[:8]}."
+            )
+        elif mode == 2:
+            text = (
+                f"Reimbursement note: transfer approved to beneficiary {fake.company()}. "
+                f"Only last digits shared: account ending {_mask(fake.random_number(digits=12, fix_len=True), keep=4)}."
+            )
+        elif mode == 3:
+            text = (
+                f"Draft email cleanup: remove personal references before LLM paste. "
+                f"Example placeholders: [user_email], [phone], [city], [ticket:{fake.uuid4()[:6]}]."
+            )
+        elif mode == 4:
+            text = (
+                f"QA transcript excerpt: user mentioned DOB month and city for identity check, "
+                f"but full identifiers are masked in summary #{fake.random_number(digits=6, fix_len=True)}."
+            )
+        else:
+            text = (
+                f"Analyst note for incident follow-up: partial token {_mask(fake.uuid4().replace('-', ''), keep=6)} "
+                f"and contact {fake.email()} retained for audit."
+            )
+        samples.append({"text": text, "risk": "med", "sap_id": f"hard-med-{i}", "source": "synthetic_hard_med"})
+    return samples
+
+
+def generate_high_risk_samples(n: int = 1200, seed: int = 211) -> list[dict]:
+    """Synthetic high-risk samples for class-coverage top-up in evaluation splits."""
+    import random as _random
+    from faker import Faker as _Faker
+
+    _random.seed(seed)
+    fake = _Faker()
+    _Faker.seed(seed)
+
+    samples: list[dict] = []
+    for i in range(max(0, int(n))):
+        mode = i % 6
+        if mode == 0:
+            tok_a = str(fake.uuid4()).replace("-", "")
+            tok_b = str(fake.uuid4()).replace("-", "")
+            text = (
+                f"Escalation: credentials leak detected for {fake.user_name()}. "
+                f"API key sk_live_{tok_a[:24]} and password reset token {tok_b}."
+            )
+        elif mode == 1:
+            text = (
+                f"Finance transfer approval contains full account {fake.iban() if hasattr(fake, 'iban') else fake.bban()} "
+                f"with routing {fake.random_number(digits=9, fix_len=True)} and beneficiary {fake.name()}."
+            )
+        elif mode == 2:
+            tok_c = str(fake.uuid4()).replace("-", "")
+            tok_d = str(fake.uuid4()).replace("-", "")
+            text = (
+                f"Security incident report includes bearer token {tok_c}{tok_d[:8]} "
+                f"and private endpoint key AKIA{tok_d[:16].upper()}."
+            )
+        elif mode == 3:
+            text = (
+                f"HR breach sample: employee {fake.name()}, SSN {fake.random_number(digits=3, fix_len=True)}-"
+                f"{fake.random_number(digits=2, fix_len=True)}-{fake.random_number(digits=4, fix_len=True)}, "
+                f"salary {fake.random_int(70000, 190000)}."
+            )
+        elif mode == 4:
+            ins_id = str(fake.uuid4()).replace("-", "")[:12]
+            text = (
+                f"Medical record excerpt for patient {fake.name()} at {fake.address().replace(chr(10), ' ')} "
+                f"with insurance ID {ins_id} and diagnosis notes."
+            )
+        else:
+            jwt_a = str(fake.uuid4()).replace("-", "")
+            jwt_b = str(fake.uuid4()).replace("-", "")
+            jwt_c = str(fake.uuid4()).replace("-", "")
+            text = (
+                f"Production config leak: DB_URL=postgres://admin:{fake.password(length=18)}@{fake.domain_name()}:5432/prod "
+                f"JWT={jwt_a}.{jwt_b[:20]}.{jwt_c[:24]}"
+            )
+        samples.append(
+            {
+                "text": text,
+                "risk": "high",
+                "sap_id": f"hard-high-{i}",
+                "source": "synthetic_hard_high",
+            }
+        )
+    return samples
+
+
+def _risk_topup_samples(risk: str, n: int, *, seed: int) -> list[dict]:
+    rk = str(risk or "").lower()
+    n = max(0, int(n))
+    if n <= 0:
+        return []
+    if rk == "low":
+        rows = generate_low_risk_samples(n=n, seed=seed)
+        return [
+            {"text": r["text"], "risk": "low", "sap_id": f"topup-low-{i}", "source": "synthetic_topup_low"}
+            for i, r in enumerate(rows)
+        ]
+    if rk == "med":
+        rows = generate_hard_medium_samples(n=n, seed=seed)
+        return [
+            {
+                "text": r["text"],
+                "risk": "med",
+                "sap_id": r.get("sap_id", f"topup-med-{i}"),
+                "source": r.get("source", "synthetic_topup_med"),
+            }
+            for i, r in enumerate(rows)
+        ]
+    rows = generate_high_risk_samples(n=n, seed=seed)
+    return [
+        {
+            "text": r["text"],
+            "risk": "high",
+            "sap_id": r.get("sap_id", f"topup-high-{i}"),
+            "source": r.get("source", "synthetic_topup_high"),
+        }
+        for i, r in enumerate(rows)
+    ]
+
+
+def _rebalance_split_for_class_coverage(
+    rows: list[dict],
+    *,
+    split_name: str,
+    min_counts: dict[str, int],
+    max_class_ratio: float = DEFAULT_EVAL_MAX_CLASS_RATIO,
+    seed: int = 42,
+) -> list[dict]:
+    """
+    Ensure low/med/high minimum counts and limit skew in a split.
+    Used for validation/test (and optional holdout) so macro metrics are reliable.
+    """
+    rng = random.Random(seed)
+    out = list(rows or [])
+    if not out:
+        out = []
+
+    by_risk: dict[str, list[dict]] = {"low": [], "med": [], "high": []}
+    for r in out:
+        rk = str(r.get("risk", "")).lower()
+        if rk in by_risk:
+            by_risk[rk].append(r)
+
+    for rk in ("low", "med", "high"):
+        target = max(0, int((min_counts or {}).get(rk, 0)))
+        cur = len(by_risk[rk])
+        if cur < target:
+            need = target - cur
+            by_risk[rk].extend(_risk_topup_samples(rk, need, seed=seed + (13 * (1 + len(rk)))))
+            print(f"[data] {split_name}: topped up {rk} by {need}")
+
+    counts_now = {k: len(v) for k, v in by_risk.items()}
+    positive_counts = [v for v in counts_now.values() if v > 0]
+    if positive_counts:
+        min_n = min(positive_counts)
+        cap = int(max(1, min_n) * max(1.0, float(max_class_ratio)))
+        for rk in ("low", "med", "high"):
+            cur = len(by_risk[rk])
+            if cur > cap:
+                by_risk[rk] = rng.sample(by_risk[rk], cap)
+                print(f"[data] {split_name}: downsampled {rk} from {cur} -> {cap} (ratio cap {max_class_ratio:.1f}:1)")
+
+    merged = by_risk["low"] + by_risk["med"] + by_risk["high"]
+    rng.shuffle(merged)
+    return merged
+
+
+def _enforce_holdout_coverage(
+    source_holdout_rows: list[dict],
+    trainable_real_rows: list[dict],
+    *,
+    min_counts: dict[str, int],
+    seed: int = 42,
+) -> tuple[list[dict], list[dict]]:
+    """
+    Keep holdout source-separated when possible, and guarantee meaningful low/med/high support.
+    Pulls missing classes from trainable real rows (removed from train pool), then synthetic top-up.
+    """
+    rng = random.Random(seed)
+    holdout = list(source_holdout_rows or [])
+    trainable = list(trainable_real_rows or [])
+
+    holdout_by = {"low": [], "med": [], "high": []}
+    for r in holdout:
+        rk = str(r.get("risk", "")).lower()
+        if rk in holdout_by:
+            holdout_by[rk].append(r)
+
+    # Borrow real rows first so holdout remains realistic.
+    for rk in ("low", "med", "high"):
+        target = max(0, int((min_counts or {}).get(rk, 0)))
+        cur = len(holdout_by[rk])
+        need = max(0, target - cur)
+        if need <= 0:
+            continue
+        candidates = [r for r in trainable if str(r.get("risk", "")).lower() == rk]
+        if candidates:
+            take_n = min(need, len(candidates))
+            chosen = rng.sample(candidates, take_n)
+            chosen_ids = {id(x) for x in chosen}
+            trainable = [r for r in trainable if id(r) not in chosen_ids]
+            holdout_by[rk].extend(chosen)
+            need -= take_n
+            print(f"[data] holdout: moved {take_n} real '{rk}' rows from trainable pool")
+        if need > 0:
+            holdout_by[rk].extend(_risk_topup_samples(rk, need, seed=seed + (17 * (1 + len(rk)))))
+            print(f"[data] holdout: synthetic top-up for '{rk}' by {need}")
+
+    merged_holdout = holdout_by["low"] + holdout_by["med"] + holdout_by["high"]
+    rng.shuffle(merged_holdout)
+    return merged_holdout, trainable
+
+
+def _rebalance_split_for_med_coverage(
+    rows: list[dict],
+    *,
+    split_name: str,
+    min_med: int,
+    high_to_med_max_ratio: float = DEFAULT_HIGH_TO_MED_MAX_RATIO,
+    seed: int = 42,
+) -> list[dict]:
+    """
+    Keep medium class from becoming negligible and cap high/med skew in a split.
+    """
+    rng = random.Random(seed)
+    out = list(rows or [])
+    if not out:
+        return out
+    by_risk: dict[str, list[dict]] = {"low": [], "med": [], "high": []}
+    for r in out:
+        rk = str(r.get("risk", "")).lower()
+        if rk in by_risk:
+            by_risk[rk].append(r)
+
+    med_n = len(by_risk["med"])
+    high_n = len(by_risk["high"])
+    if med_n < max(0, int(min_med)):
+        need = int(min_med) - med_n
+        extra = generate_hard_medium_samples(need, seed=seed + 11)
+        by_risk["med"].extend(extra)
+        med_n = len(by_risk["med"])
+        print(f"[data] {split_name}: topped up med by {need} hard samples")
+
+    # Cap high class relative to med to avoid one-class-dominant validation/test.
+    cap_high = int(max(1, med_n) * max(1.0, float(high_to_med_max_ratio)))
+    if high_n > cap_high:
+        by_risk["high"] = rng.sample(by_risk["high"], cap_high)
+        print(f"[data] {split_name}: downsampled high from {high_n} -> {cap_high}")
+
+    merged = by_risk["low"] + by_risk["med"] + by_risk["high"]
+    rng.shuffle(merged)
+    return merged
+
+
+def _rebalance_train_for_class_floors(
+    rows: list[dict],
+    *,
+    min_counts: dict[str, int] | None = None,
+    synthetic_high_cap: int | None = None,
+    seed: int = 42,
+) -> list[dict]:
+    """
+    Ensure minimum low/med/high counts in the training split without downsampling.
+    Synthetic hard-high top-up is capped per run (GUARDRAIL_TRAIN_SYNTHETIC_HIGH_CAP) so the
+    majority of training data stays real + existing synthetic mix for low/med.
+    """
+    rng = random.Random(seed)
+    out = list(rows or [])
+    if not out:
+        return out
+
+    mc = {
+        "low": _env_int("GUARDRAIL_TRAIN_MIN_LOW", DEFAULT_TRAIN_MIN_COUNTS["low"]),
+        "med": _env_int("GUARDRAIL_TRAIN_MIN_MED", DEFAULT_TRAIN_MIN_COUNTS["med"]),
+        "high": _env_int("GUARDRAIL_TRAIN_MIN_HIGH", DEFAULT_TRAIN_MIN_COUNTS["high"]),
+    }
+    if min_counts:
+        for k, v in min_counts.items():
+            if k in mc and v is not None:
+                mc[k] = max(0, int(v))
+
+    cap_high = synthetic_high_cap if synthetic_high_cap is not None else _env_int(
+        "GUARDRAIL_TRAIN_SYNTHETIC_HIGH_CAP", TRAIN_SYNTHETIC_HIGH_TOPUP_CAP
+    )
+    cap_high = max(0, int(cap_high))
+
+    by_risk: dict[str, list[dict]] = {"low": [], "med": [], "high": []}
+    for r in out:
+        rk = str(r.get("risk", "")).lower()
+        if rk in by_risk:
+            by_risk[rk].append(r)
+
+    for rk in ("low", "med", "high"):
+        target = max(0, int(mc.get(rk, 0)))
+        cur = len(by_risk[rk])
+        if cur >= target:
+            continue
+        need = target - cur
+        if rk == "high":
+            allow = min(need, cap_high)
+            if allow < need:
+                print(
+                    f"[data] train: high floor wants {need} more rows but synthetic high cap allows {allow} "
+                    f"(GUARDRAIL_TRAIN_SYNTHETIC_HIGH_CAP={cap_high})"
+                )
+            if allow <= 0:
+                continue
+            by_risk[rk].extend(_risk_topup_samples("high", allow, seed=seed + 401))
+            print(f"[data] train: topped up high by {allow} toward floor {target} (was {cur})")
+        else:
+            by_risk[rk].extend(_risk_topup_samples(rk, need, seed=seed + 223 + sum(ord(c) for c in rk)))
+            print(f"[data] train: topped up {rk} by {need} toward floor {target} (was {cur})")
+
+    merged = by_risk["low"] + by_risk["med"] + by_risk["high"]
+    rng.shuffle(merged)
+    return merged
+
+
 def balance_dataset(
     texts: list,
     labels: list,
@@ -1251,7 +1933,7 @@ def balance_dataset(
     from collections import defaultdict
 
     if caps is None:
-        caps = {"high": 6000, "med": 3000, "low": 3000}
+        caps = dict(DEFAULT_TRAIN_CAPS)
     _random.seed(seed)
     grouped: dict = defaultdict(list)
     for t, lab in zip(texts, labels):
@@ -1276,25 +1958,31 @@ def balance_dataset(
 
 def balance_train_risk_classes(train_rows: list[dict]) -> list[dict]:
     """
-    Append synthetic low-risk samples, cap classes, shuffle (training split only).
+    Rebalance training split with medium hard examples, low-risk baselines, and class caps.
     """
     texts = [r["text"] for r in train_rows]
     labels = [r["risk"] for r in train_rows]
-    for s in generate_low_risk_samples(3000):
+    # Keep low coverage, but prioritize medium hard examples to improve boundary learning.
+    for s in generate_low_risk_samples(1200):
+        texts.append(s["text"])
+        labels.append(s["risk"])
+    for s in generate_hard_medium_samples(2800):
         texts.append(s["text"])
         labels.append(s["risk"])
     texts, labels = balance_dataset(
         texts,
         labels,
-        caps={"high": 6000, "med": 3000, "low": 3000},
+        caps=_get_train_caps(),
         seed=42,
     )
     print("[data] balanced distribution:", Counter(labels))
     return [{"text": t, "risk": lab, "sap_id": ""} for t, lab in zip(texts, labels)]
 
 
-def stratified_split(rows: list[dict], ratios: tuple[float, float, float] = SPLIT_RATIOS):
+def stratified_split(rows: list[dict], ratios: tuple[float, float, float] | None = None):
     """Split rows into train/val/test with stratification on risk when possible."""
+    if ratios is None:
+        ratios = _get_split_ratios()
     train_ratio, val_ratio, test_ratio = ratios
     assert abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-6
 
@@ -1380,6 +2068,10 @@ def build_and_save(
     data_source: "nemotron", "faker", "patronus", "patronus_synthetic", "both", "multi_real_synthetic", "ai4privacy_*".
     For multi_real_synthetic, optional GUARDRAIL_FINANCIAL_PII_PATH loads Training_Set.xlsx / Testing_Set.xlsx (see load_financial_pii_xlsx).
     balance_pii_max/min: for ai4privacy modes, cap/oversample per class (e.g. max 5000, min 200).
+
+    Scale / split (optional env): GUARDRAIL_NUM_SYNTHETICS, GUARDRAIL_SYNTHETIC_CAP_MULTIPLIER,
+    GUARDRAIL_SPLIT_RATIOS (train,val,test), GUARDRAIL_POOL_VAL_FRACTION (val share of trainable pool),
+    GUARDRAIL_TRAIN_CAP_LOW/MED/HIGH, GUARDRAIL_BIGCODE_MAX_ROWS (or "none" for full BigCode split).
     """
     nemotron = None
     if data_source in ("nemotron", "both", "patronus"):
@@ -1388,7 +2080,7 @@ def build_and_save(
     if data_source == "nemotron":
         train_rows, val_rows, test_rows = nemotron_to_risk_rows(nemotron)
     elif data_source == "faker":
-        rows = generate_faker_synthetics(NUM_SYNTHETICS)
+        rows = generate_faker_synthetics()
         train_rows, val_rows, test_rows = stratified_split(rows)
     elif data_source == "patronus":
         base_train, base_val, base_test = nemotron_to_risk_rows(nemotron)
@@ -1416,7 +2108,7 @@ def build_and_save(
             random.shuffle(test_rows)
     elif data_source == "both":
         n_train, n_val, n_test = nemotron_to_risk_rows(nemotron)
-        f_rows = generate_faker_synthetics(NUM_SYNTHETICS)
+        f_rows = generate_faker_synthetics()
         f_train, f_val, f_test = stratified_split(f_rows)
         train_rows = n_train + f_train
         val_rows = n_val + f_val
@@ -1431,7 +2123,7 @@ def build_and_save(
             {"text": r["text"], "risk": r["risk"], "is_sap": 0, "sap_id": r.get("sap_id", f"p-{i}")}
             for i, r in enumerate(patronus_raw)
         ]
-        synthetic_rows = generate_faker_synthetics(NUM_SYNTHETICS)
+        synthetic_rows = generate_faker_synthetics()
         pool = patronus_rows + synthetic_rows
         random.seed(42)
         random.shuffle(pool)
@@ -1449,7 +2141,7 @@ def build_and_save(
             texts = [r["text"] for r in pool]
             saps = [r.get("sap_id", "") for r in pool]
             train_texts, val_texts, train_risks, val_risks, train_saps, val_saps = train_test_split(
-                texts, pool_risks, saps, test_size=0.15, stratify=pool_risks, random_state=42
+                texts, pool_risks, saps, test_size=_get_pool_val_fraction(), stratify=pool_risks, random_state=42
             )
             train_rows = [{"text": t, "risk": r, "sap_id": s} for t, r, s in zip(train_texts, train_risks, train_saps)]
             val_rows = [{"text": t, "risk": r, "sap_id": s} for t, r, s in zip(val_texts, val_risks, val_saps)]
@@ -1472,7 +2164,7 @@ def build_and_save(
         source_lists = [
             ("patronus", _load_patronus()),
             ("enron_real", load_enron_real()),
-            ("bigcode", load_bigcode_pii()),
+            ("bigcode", load_bigcode_pii(_get_bigcode_max_rows())),
             ("kaggle_sensitive", load_kaggle_sensitive()),
             ("business_real", load_business_real(business_path)),
         ]
@@ -1512,16 +2204,59 @@ def build_and_save(
             )
         if uf_list:
             print(f"[user_feedback] merged {len(uf_list)} labeled rows from data/user_feedback/export.jsonl")
+
+        _pool_norms = {_normalize_for_leakage(r["text"]) for r in real_labeled_rows}
+        try:
+            extra_pool_rows, extra_pool_dups = load_extra_pool_rows_for_training(_pool_norms)
+        except Exception as ex:
+            print(f"[extra_pools] skipped: {ex}")
+            extra_pool_rows, extra_pool_dups = [], 0
+        for er in extra_pool_rows:
+            real_labeled_rows.append(er)
+        if extra_pool_rows:
+            print(
+                f"[extra_pools] merged {len(extra_pool_rows)} curated rows "
+                f"(duplicate fingerprints skipped vs existing pool: {extra_pool_dups})"
+            )
+
         n_real_labeled = len(real_labeled_rows)
         n_real_unlabeled = sum(len(rows) for _, rows in source_lists) - n_real_labeled  # approx; pool has dedup/filter
-        cap = max(0, SYNTHETIC_CAP_MULTIPLIER * n_real_labeled) if n_real_labeled else NUM_SYNTHETICS
-        n_synthetic_target = min(NUM_SYNTHETICS, cap) if n_real_labeled else NUM_SYNTHETICS
+        cap = max(0, _get_synthetic_cap_multiplier() * n_real_labeled) if n_real_labeled else _get_num_synthetics()
+        n_synthetic_target = min(_get_num_synthetics(), cap) if n_real_labeled else _get_num_synthetics()
         _syn_raw = generate_faker_synthetics(n_synthetic_target)
         synthetic_rows = [
             {"text": r["text"], "risk": r["risk"], "is_sap": 0, "sap_id": r["sap_id"], "source": "synthetic"}
             for r in _syn_raw
         ]
-        pool = real_labeled_rows + synthetic_rows
+        holdout_raw = str(os.environ.get("GUARDRAIL_SOURCE_HOLDOUT", "enron_real,kaggle_sensitive") or "").strip()
+        holdout_sources = {s.strip().lower() for s in holdout_raw.split(",") if s.strip()}
+        source_holdout_rows: list[dict] = []
+        trainable_real_rows = list(real_labeled_rows)
+        if holdout_sources:
+            source_holdout_rows = [
+                r for r in real_labeled_rows if str(r.get("source", "")).strip().lower() in holdout_sources
+            ]
+            trainable_real_rows = [
+                r for r in real_labeled_rows if str(r.get("source", "")).strip().lower() not in holdout_sources
+            ]
+            if source_holdout_rows:
+                print(
+                    "[multi_real_synthetic] source-separated holdout enabled:",
+                    sorted(holdout_sources),
+                    f"(rows={len(source_holdout_rows)})",
+                )
+            else:
+                print("[multi_real_synthetic] source holdout requested but no matching rows found; continuing normally.")
+
+        if holdout_sources:
+            source_holdout_rows, trainable_real_rows = _enforce_holdout_coverage(
+                source_holdout_rows,
+                trainable_real_rows,
+                min_counts=DEFAULT_HOLDOUT_MIN_COUNTS,
+                seed=42,
+            )
+
+        pool = trainable_real_rows + synthetic_rows
         random.seed(42)
         random.shuffle(pool)
         pool_risks = [r["risk"] for r in pool]
@@ -1530,23 +2265,27 @@ def build_and_save(
         if len(pool) < 20 or min_class < 2:
             train_rows = pool
             val_rows = []
-            test_rows = []
+            test_rows = list(source_holdout_rows)
             print("WARNING: Too few rows or a class with < 2 examples; validation set is empty.")
         else:
-            pool_sources = [r.get("source", "?") for r in pool]
-            try:
-                train_texts, val_texts, train_risks, val_risks, train_saps, val_saps, train_srcs, val_srcs = train_test_split(
-                    [r["text"] for r in pool], pool_risks, [r.get("sap_id", "") for r in pool], pool_sources,
-                    test_size=0.15, stratify=pool_risks, random_state=42
-                )
-            except ValueError:
-                train_texts, val_texts, train_risks, val_risks, train_saps, val_saps, train_srcs, val_srcs = train_test_split(
-                    [r["text"] for r in pool], pool_risks, [r.get("sap_id", "") for r in pool], pool_sources,
-                    test_size=0.15, random_state=42
-                )
-            train_rows = [{"text": t, "risk": r, "sap_id": s, "source": src} for t, r, s, src in zip(train_texts, train_risks, train_saps, train_srcs)]
-            val_rows = [{"text": t, "risk": r, "sap_id": s, "source": src} for t, r, s, src in zip(val_texts, val_risks, val_saps, val_srcs)]
-            test_rows = []
+            if source_holdout_rows:
+                pool_sources = [r.get("source", "?") for r in pool]
+                try:
+                    train_texts, val_texts, train_risks, val_risks, train_saps, val_saps, train_srcs, val_srcs = train_test_split(
+                        [r["text"] for r in pool], pool_risks, [r.get("sap_id", "") for r in pool], pool_sources,
+                        test_size=_get_pool_val_fraction(), stratify=pool_risks, random_state=42
+                    )
+                except ValueError:
+                    train_texts, val_texts, train_risks, val_risks, train_saps, val_saps, train_srcs, val_srcs = train_test_split(
+                        [r["text"] for r in pool], pool_risks, [r.get("sap_id", "") for r in pool], pool_sources,
+                        test_size=_get_pool_val_fraction(), random_state=42
+                    )
+                train_rows = [{"text": t, "risk": r, "sap_id": s, "source": src} for t, r, s, src in zip(train_texts, train_risks, train_saps, train_srcs)]
+                val_rows = [{"text": t, "risk": r, "sap_id": s, "source": src} for t, r, s, src in zip(val_texts, val_risks, val_saps, val_srcs)]
+                test_rows = list(source_holdout_rows)
+            else:
+                # No source-separated holdout available: keep a stratified in-domain test split.
+                train_rows, val_rows, test_rows = stratified_split(pool)
 
         # Manual eval overlap warning
         try:
@@ -1570,6 +2309,7 @@ def build_and_save(
         print(f"[multi_real_synthetic] Synthetic count: {len(synthetic_rows)} (cap: {n_synthetic_target})")
         print(f"[multi_real_synthetic] Final train count: {len(train_rows)}")
         print(f"[multi_real_synthetic] Final validation count: {len(val_rows)}")
+        print(f"[multi_real_synthetic] Final holdout test count: {len(test_rows)}")
         print("Per-class counts — train:", dict(Counter(r["risk"] for r in train_rows)))
         print("Per-class counts — validation:", dict(Counter(r["risk"] for r in val_rows)))
         print("Per-source counts — train:", dict(Counter(r.get("source", "?") for r in train_rows)))
@@ -1581,8 +2321,10 @@ def build_and_save(
                 "synthetic_count": len(synthetic_rows),
                 "train_count": len(train_rows),
                 "val_count": len(val_rows),
+                "test_count": len(test_rows),
                 "train_per_source": dict(Counter(r.get("source", "?") for r in train_rows)),
                 "val_per_source": dict(Counter(r.get("source", "?") for r in val_rows)),
+                "test_per_source": dict(Counter(r.get("source", "?") for r in test_rows)),
             }
             with open(_REPORTS_DIR / "train_val_manifest.json", "w", encoding="utf-8") as f:
                 json.dump(manifest, f, indent=2)
@@ -1618,18 +2360,58 @@ def build_and_save(
             f"got {data_source!r}"
         )
 
-    # Synthetic low + caps on med/high for training; inject low-risk rows into val/test for evaluation
+    # Rebalance splits for better medium-risk coverage and lower template leakage.
     if data_source not in ("ai4privacy_text_only", "ai4privacy_text_plus_real", "ai4privacy_kaggle_en"):
         train_rows = balance_train_risk_classes(train_rows)
-        low_test = generate_low_risk_samples(n=500, seed=99)
-        test_rows.extend(low_test)
-        val_rows.extend(generate_low_risk_samples(n=200, seed=77))
+        train_rows = _rebalance_split_for_med_coverage(train_rows, split_name="train", min_med=1400, seed=42)
+        train_rows = _rebalance_train_for_class_floors(train_rows, seed=55)
+        if data_source == "multi_real_synthetic":
+            if _use_multi_real_equal_thirds():
+                train_rows = _rebalance_multi_real_train_equal_thirds(train_rows, seed=88)
+            else:
+                print(
+                    "[multi_real_synthetic] keeping post-balance train distribution "
+                    "(GUARDRAIL_MULTI_REAL_EQUAL_THIRDS not enabled)"
+                )
+        val_rows = _rebalance_split_for_class_coverage(
+            val_rows,
+            split_name="val",
+            min_counts=DEFAULT_VAL_MIN_COUNTS,
+            max_class_ratio=DEFAULT_EVAL_MAX_CLASS_RATIO,
+            seed=77,
+        )
+        test_rows = _rebalance_split_for_class_coverage(
+            test_rows,
+            split_name="test",
+            min_counts=DEFAULT_TEST_MIN_COUNTS,
+            max_class_ratio=DEFAULT_EVAL_MAX_CLASS_RATIO,
+            seed=99,
+        )
+
+        # Keep legacy synthetic eval injection opt-in only (defaults OFF to reduce leakage bias).
+        inject_eval_synth = str(os.environ.get("GUARDRAIL_INJECT_SYNTH_EVAL", "0")).strip().lower() in {"1", "true", "yes"}
+        if inject_eval_synth:
+            low_test = generate_low_risk_samples(n=160, seed=99)
+            val_rows.extend(generate_low_risk_samples(n=120, seed=77))
+            test_rows.extend(low_test)
+            print("[data] GUARDRAIL_INJECT_SYNTH_EVAL=1 -> added low-risk synthetic rows to val/test")
         for split_name, rows in [("train", train_rows), ("val", val_rows), ("test", test_rows)]:
             dist = Counter(r["risk"] for r in rows)
             print(f"[data] {split_name} distribution: {dict(dist)}")
 
     print("Final merged split sizes and per-class counts:")
     _print_split_summary(train_rows, val_rows, test_rows, prefix="  ")
+    if data_source == "multi_real_synthetic":
+        _td = Counter(r["risk"] for r in train_rows)
+        _tn = len(train_rows)
+        _nl = _td.get("low", 0)
+        _vd = Counter(r["risk"] for r in val_rows)
+        _ted = Counter(r["risk"] for r in test_rows)
+        print(
+            "[multi_real_synthetic] Final class distribution before Arrow save - "
+            f"train: {dict(_td)} (n={_tn}, low_share={_nl / max(1, _tn):.4f}); "
+            f"val: {dict(_vd)} (n={len(val_rows)}); test: {dict(_ted)} (n={len(test_rows)})"
+        )
 
     use_risk_labels = data_source not in ("ai4privacy_text_only", "ai4privacy_text_plus_real", "ai4privacy_kaggle_en")
     if use_risk_labels:
@@ -1640,7 +2422,15 @@ def build_and_save(
     val_ds = Dataset.from_list(val_rows)
     test_ds = Dataset.from_list(test_rows)
 
-    tokenizer = AutoTokenizer.from_pretrained(tinybert_id)
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(tinybert_id)
+    except RuntimeError as e:
+        err = str(e).lower()
+        if "client has been closed" in err or "winerror 10054" in err:
+            print("[data] warning: Hugging Face network hiccup; retrying tokenizer load from local cache.")
+            tokenizer = AutoTokenizer.from_pretrained(tinybert_id, local_files_only=True)
+        else:
+            raise
 
     train_ds = tokenize_dataset(train_ds, tokenizer, max_length=max_length)
     val_ds = tokenize_dataset(val_ds, tokenizer, max_length=max_length)

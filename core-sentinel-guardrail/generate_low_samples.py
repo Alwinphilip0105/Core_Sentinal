@@ -141,6 +141,26 @@ def _generate_category_texts(rng: random.Random, per_category: int) -> list[str]
     return texts
 
 
+def generate_low_template_training_rows(n: int, seed: int = 42) -> list[dict]:
+    """
+    Build n low-risk row dicts for data.py (keys: text, risk, sap_id).
+    Uses the same templates as this module's CLI path (_generate_category_texts).
+    """
+    if n <= 0:
+        return []
+    rng = random.Random(seed)
+    per = max(1, (n + 6) // 7)
+    texts: list[str] = []
+    while len(texts) < n:
+        texts = _generate_category_texts(rng, per_category=per)
+        per += max(1, per // 3)
+    texts = texts[:n]
+    return [
+        {"text": t, "risk": "low", "sap_id": f"lowtpl-{seed}-{i}"}
+        for i, t in enumerate(texts)
+    ]
+
+
 def main() -> None:
     guardrail_dir = Path(__file__).resolve().parent
     arrow_dir = Path(os.environ.get("GUARDRAIL_ARROW_SAVE_DIR", DEFAULT_ARROW_DIR))

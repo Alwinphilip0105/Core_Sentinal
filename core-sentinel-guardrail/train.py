@@ -26,6 +26,7 @@ from transformers import (
     AutoTokenizer,
     Trainer,
     TrainingArguments,
+    EarlyStoppingCallback,
     logging as hf_logging,
 )
 
@@ -38,12 +39,15 @@ TRAIN_CONFIG_PATH = CONFIG_DIR / "train_config.json"
 MODEL_ID = os.environ.get("GUARDRAIL_MODEL_ID", "huawei-noah/TinyBERT_General_4L_312D")
 NUM_LABELS_DEFAULT = 3
 SAVE_DIR = str(_MODEL_ROOT / "models" / "tinybert_guardrail")
-EPOCHS = 5
-LR = 3e-5
+EPOCHS = 6
+LR = 2e-5
 BATCH_SIZE = 16
 WEIGHT_DECAY = 0.01
 MAX_GRAD_NORM = 1.0
 CLASSIFIER_DROPOUT = 0.1
+LABEL_SMOOTHING = 0.05
+EARLY_STOPPING_PATIENCE = 2
+BEST_MODEL_METRIC = "eval_f1"
 ID_TO_RISK_3 = {v: k for k, v in RISK_TO_ID.items()}
 LABEL_CONFIG_FILENAME = "label_config.json"
 
@@ -54,10 +58,19 @@ def load_train_config() -> dict:
         "epochs": EPOCHS,
         "learning_rate": LR,
         "batch_size": BATCH_SIZE,
+        "warmup_ratio": 0.08,
         "weight_decay": WEIGHT_DECAY,
         "max_grad_norm": MAX_GRAD_NORM,
         "classifier_dropout": CLASSIFIER_DROPOUT,
-        "use_class_weights": False,
+        "label_smoothing_factor": LABEL_SMOOTHING,
+        "early_stopping_patience": EARLY_STOPPING_PATIENCE,
+        "metric_for_best_model": BEST_MODEL_METRIC,
+        "use_class_weights": True,
+        "class_weights_3class": None,
+        "class_weight_mode_3class": "balanced",
+        "rebalance_train_3class": True,
+        "rebalance_mode_3class": "min",
+        "rebalance_seed": 42,
     }
     if TRAIN_CONFIG_PATH.exists():
         try:
@@ -69,13 +82,43 @@ def load_train_config() -> dict:
         ("epochs", "GUARDRAIL_EPOCHS"),
         ("learning_rate", "GUARDRAIL_LR"),
         ("batch_size", "GUARDRAIL_BATCH_SIZE"),
+        ("warmup_ratio", "GUARDRAIL_WARMUP_RATIO"),
+        ("label_smoothing_factor", "GUARDRAIL_LABEL_SMOOTHING"),
+        ("early_stopping_patience", "GUARDRAIL_EARLY_STOPPING_PATIENCE"),
+        ("rebalance_seed", "GUARDRAIL_REBALANCE_SEED"),
     ]:
         v = os.environ.get(env_key)
         if v is not None:
             try:
-                defaults[key] = int(v) if key == "epochs" or key == "batch_size" else float(v)
+                defaults[key] = int(v) if key in ("epochs", "batch_size", "early_stopping_patience", "rebalance_seed") else float(v)
             except ValueError:
                 pass
+    metric_env = os.environ.get("GUARDRAIL_BEST_METRIC")
+    if metric_env:
+        defaults["metric_for_best_model"] = str(metric_env).strip()
+    cw_mode_env = os.environ.get("GUARDRAIL_CLASS_WEIGHT_MODE_3CLASS")
+    if cw_mode_env:
+        defaults["class_weight_mode_3class"] = str(cw_mode_env).strip().lower()
+    rb_mode_env = os.environ.get("GUARDRAIL_REBALANCE_MODE_3CLASS")
+    if rb_mode_env:
+        defaults["rebalance_mode_3class"] = str(rb_mode_env).strip().lower()
+    rb_on_env = os.environ.get("GUARDRAIL_REBALANCE_3CLASS")
+    if rb_on_env is not None:
+        defaults["rebalance_train_3class"] = str(rb_on_env).strip().lower() in ("1", "true", "yes", "on")
+    wl, wm, wh = (
+        os.environ.get("GUARDRAIL_WEIGHT_LOW"),
+        os.environ.get("GUARDRAIL_WEIGHT_MED"),
+        os.environ.get("GUARDRAIL_WEIGHT_HIGH"),
+    )
+    if all(x is not None and str(x).strip() != "" for x in (wl, wm, wh)):
+        try:
+            defaults["class_weights_3class"] = [
+                float(str(wl).strip()),
+                float(str(wm).strip()),
+                float(str(wh).strip()),
+            ]
+        except ValueError:
+            pass
     return defaults
 
 
@@ -96,19 +139,111 @@ def compute_class_weights(train_ds: Dataset, num_labels: int) -> torch.Tensor | 
     return w / w.sum() * num_labels
 
 
+def compute_three_class_weights(
+    train_ds: Dataset,
+    cfg_weights: list | None = None,
+    mode: str = "balanced",
+) -> torch.Tensor | None:
+    """
+    3-class weighting:
+    - manual list from config/env wins when provided
+    - otherwise derive balanced weights from observed class counts
+    """
+    if "labels" not in train_ds.column_names:
+        return None
+    if cfg_weights and isinstance(cfg_weights, list) and len(cfg_weights) == 3:
+        try:
+            w = [float(cfg_weights[0]), float(cfg_weights[1]), float(cfg_weights[2])]
+            return torch.tensor(w, dtype=torch.float32)
+        except Exception:
+            pass
+    from collections import Counter
+    counts = Counter(int(x) for x in train_ds["labels"])
+    total = float(sum(counts.get(i, 0) for i in (0, 1, 2)))
+    if total <= 0:
+        return torch.tensor([1.0, 1.0, 1.0], dtype=torch.float32)
+    m = str(mode or "balanced").strip().lower()
+    if m in ("uniform", "none", "off"):
+        return torch.tensor([1.0, 1.0, 1.0], dtype=torch.float32)
+    vals = []
+    for i in (0, 1, 2):
+        c = max(float(counts.get(i, 0)), 1.0)
+        base = total / (3.0 * c)
+        vals.append(np.sqrt(base) if m == "sqrt_balanced" else base)
+    w = torch.tensor(vals, dtype=torch.float32)
+    w = w / torch.mean(w)
+    return w
+
+
+def rebalance_three_class_train_dataset(
+    train_ds: Dataset,
+    mode: str = "min",
+    seed: int = 42,
+) -> Dataset:
+    """
+    Rebalance 3-class train split by sampling per class.
+    mode:
+      - min: downsample each class to minority count (no oversampling)
+      - max: oversample each class to majority count
+      - median: target median class count (downsample/oversample as needed)
+    """
+    if "labels" not in train_ds.column_names:
+        return train_ds
+    labels = [int(x) for x in train_ds["labels"]]
+    by_cls = {c: [] for c in (0, 1, 2)}
+    for idx, lb in enumerate(labels):
+        if lb in by_cls:
+            by_cls[lb].append(idx)
+    counts = {k: len(v) for k, v in by_cls.items()}
+    if any(v == 0 for v in counts.values()):
+        print("[train] rebalance skipped: one or more classes missing in train split.")
+        return train_ds
+    vals = sorted(counts.values())
+    m = str(mode or "min").strip().lower()
+    if m == "max":
+        target = vals[-1]
+    elif m == "median":
+        target = vals[1]
+    else:
+        target = vals[0]
+    rng = np.random.default_rng(int(seed))
+    selected = []
+    for c in (0, 1, 2):
+        idxs = np.asarray(by_cls[c], dtype=np.int64)
+        n = len(idxs)
+        if n > target:
+            picked = rng.choice(idxs, size=target, replace=False)
+        elif n < target:
+            picked = rng.choice(idxs, size=target, replace=True)
+        else:
+            picked = idxs
+        selected.extend(int(i) for i in picked.tolist())
+    rng.shuffle(selected)
+    out = train_ds.select(selected)
+    from collections import Counter
+    after = Counter(int(x) for x in out["labels"])
+    print(f"[train] 3-class rebalance mode={m} target={target} before={counts} after={dict(after)}")
+    return out
+
+
 class WeightedTrainer(Trainer):
     """Trainer with class-weighted cross-entropy for imbalanced PII classes."""
 
     def __init__(self, class_weights: torch.Tensor | None = None, **kwargs):
         super().__init__(**kwargs)
         self.class_weights = class_weights.to(kwargs["model"].device) if class_weights is not None else None
+        # Keep parity with TrainingArguments label_smoothing_factor even with custom weighted loss.
+        self.label_smoothing = float(getattr(self.args, "label_smoothing_factor", 0.0) or 0.0)
 
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
         labels = inputs.pop("labels", None)
         outputs = model(**inputs)
         logits = outputs.logits
         if self.class_weights is not None and labels is not None:
-            loss_fct = torch.nn.CrossEntropyLoss(weight=self.class_weights)
+            loss_fct = torch.nn.CrossEntropyLoss(
+                weight=self.class_weights,
+                label_smoothing=self.label_smoothing,
+            )
             loss = loss_fct(logits, labels)
         else:
             loss = outputs.loss
@@ -284,7 +419,15 @@ def main():
         import transformers.utils.import_utils as _iu
         _iu.check_torch_load_is_safe = lambda: None
 
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+    except RuntimeError as e:
+        err = str(e).lower()
+        if "client has been closed" in err or "winerror 10054" in err:
+            print("[train] warning: Hugging Face network hiccup; retrying tokenizer load from local cache.")
+            tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, local_files_only=True)
+        else:
+            raise
     try:
         warnings.filterwarnings(
             "ignore",
@@ -300,11 +443,24 @@ def main():
         prev_level = hf_logging.get_verbosity()
         hf_logging.set_verbosity_error()
         with redirect_stdout(io.StringIO()):
-            model = BertForSequenceClassification.from_pretrained(
-                MODEL_ID,
-                num_labels=num_labels,
-                ignore_mismatched_sizes=True,
-            )
+            try:
+                model = BertForSequenceClassification.from_pretrained(
+                    MODEL_ID,
+                    num_labels=num_labels,
+                    ignore_mismatched_sizes=True,
+                )
+            except RuntimeError as e:
+                err = str(e).lower()
+                if "client has been closed" in err or "winerror 10054" in err:
+                    print("[train] warning: Hugging Face network hiccup; retrying model load from local cache.")
+                    model = BertForSequenceClassification.from_pretrained(
+                        MODEL_ID,
+                        num_labels=num_labels,
+                        ignore_mismatched_sizes=True,
+                        local_files_only=True,
+                    )
+                else:
+                    raise
         hf_logging.set_verbosity(prev_level)
         print(
             "[TinyBERT] Loaded pretrained encoder. "
@@ -328,41 +484,51 @@ def main():
         print(f"Label mapping: {model.config.label2id}")
 
     train_cfg = load_train_config()
+    if num_labels == 3 and train_cfg.get("rebalance_train_3class", True):
+        train_ds = rebalance_three_class_train_dataset(
+            train_ds,
+            mode=str(train_cfg.get("rebalance_mode_3class", "min")),
+            seed=int(train_cfg.get("rebalance_seed", 42)),
+        )
     if getattr(model.config, "classifier_dropout", None) is not None:
         model.config.classifier_dropout = float(train_cfg.get("classifier_dropout", CLASSIFIER_DROPOUT))
 
     class_weights = None
-    # 3-class: label2id is {'low': 0, 'med': 1, 'high': 2} — weights [low, med, high].
-    if num_labels == 3:
-        class_weights = torch.tensor(
-            [
-                1.0,  # low  (index 0)
-                40.0,  # med  (index 1)
-                100.0,  # high (index 2)
-            ],
-            dtype=torch.float,
+    # 3-class: keep weights mild to improve high precision and reduce false alarms.
+    if num_labels == 3 and train_cfg.get("use_class_weights", True):
+        class_weights = compute_three_class_weights(
+            train_ds,
+            train_cfg.get("class_weights_3class"),
+            mode=str(train_cfg.get("class_weight_mode_3class", "balanced")),
         )
-        print("Using hardcoded class weights for imbalanced 3-class: [1.0, 40.0, 100.0]")
-        print("Class weights: low=1.0, med=40.0, high=100.0")
+        if class_weights is not None:
+            print(
+                "Using 3-class weights:",
+                [round(float(x), 4) for x in class_weights.tolist()],
+                f"(mode={str(train_cfg.get('class_weight_mode_3class', 'balanced'))})",
+            )
     elif train_cfg.get("use_class_weights") and num_labels == 9:
         class_weights = compute_class_weights(train_ds, num_labels)
         if class_weights is not None:
             print("Using class weights for imbalanced 9-class:", class_weights.tolist())
 
+    best_metric = str(train_cfg.get("metric_for_best_model", BEST_MODEL_METRIC) or BEST_MODEL_METRIC).strip()
     Path(SAVE_DIR).mkdir(parents=True, exist_ok=True)
     args = TrainingArguments(
         output_dir=SAVE_DIR,
-        num_train_epochs=3,
+        num_train_epochs=float(train_cfg.get("epochs", EPOCHS)),
         learning_rate=float(train_cfg.get("learning_rate", LR)),
         per_device_train_batch_size=train_cfg.get("batch_size", BATCH_SIZE),
         per_device_eval_batch_size=train_cfg.get("batch_size", BATCH_SIZE),
-        warmup_steps=500,
+        warmup_ratio=float(train_cfg.get("warmup_ratio", 0.08)),
         weight_decay=float(train_cfg.get("weight_decay", WEIGHT_DECAY)),
-        max_grad_norm=1.0,
+        max_grad_norm=float(train_cfg.get("max_grad_norm", MAX_GRAD_NORM)),
+        label_smoothing_factor=float(train_cfg.get("label_smoothing_factor", LABEL_SMOOTHING)),
         eval_strategy="epoch" if val_ds is not None else "no",
         save_strategy="epoch",
+        save_total_limit=2,
         load_best_model_at_end=True if val_ds is not None else False,
-        metric_for_best_model="eval_f1" if val_ds is not None else None,
+        metric_for_best_model=best_metric if val_ds is not None else None,
         greater_is_better=True,
         logging_steps=50,
         report_to="none",
@@ -379,11 +545,43 @@ def main():
     if class_weights is not None:
         trainer_kw["class_weights"] = class_weights
     trainer = trainer_cls(**trainer_kw)
+    if val_ds is not None:
+        trainer.add_callback(EarlyStoppingCallback(early_stopping_patience=int(train_cfg.get("early_stopping_patience", EARLY_STOPPING_PATIENCE))))
 
     trainer.train()
-    trainer.save_model(SAVE_DIR)
-    # Save as safetensors so inference works without torch>=2.6 (CVE-2025-32434)
-    trainer.model.save_pretrained(SAVE_DIR, safe_serialization=True)
+    saved_ok = False
+    try:
+        trainer.save_model(SAVE_DIR)
+        saved_ok = True
+    except Exception as e:
+        err = str(e).lower()
+        if "os error 1224" in err or "user-mapped section open" in err:
+            print("[train] warning: safetensors save lock on Windows; falling back to .bin serialization.")
+        else:
+            raise
+
+    if not saved_ok:
+        # Fallback path for Windows mmap lock edge cases.
+        try:
+            trainer.model.save_pretrained(SAVE_DIR, safe_serialization=False)
+            saved_ok = True
+        except Exception as e:
+            err = str(e).lower()
+            if "os error 1224" in err or "user-mapped section open" in err:
+                print("[train] warning: .bin fallback save also locked; keeping existing epoch checkpoints.")
+            else:
+                raise
+
+    if saved_ok:
+        # Best effort: also write safetensors for downstream compatibility.
+        try:
+            trainer.model.save_pretrained(SAVE_DIR, safe_serialization=True)
+        except Exception as e:
+            err = str(e).lower()
+            if "os error 1224" in err or "user-mapped section open" in err:
+                print("[train] warning: could not write safetensors due to active file mapping; .bin checkpoint kept.")
+            else:
+                raise
     tokenizer.save_pretrained(SAVE_DIR)
 
     # Reports dir (package dir, same as model)
@@ -396,7 +594,7 @@ def main():
         json.dump(log_history, f, indent=2)
 
     if val_ds is not None:
-        metric_for_best = getattr(args, "metric_for_best_model", None) or "eval_f1"
+        metric_for_best = getattr(args, "metric_for_best_model", None) or BEST_MODEL_METRIC
         best_entry, last_entry = get_best_and_last_eval(
             log_history,
             metric_for_best_model=metric_for_best,
@@ -419,7 +617,7 @@ def main():
             json.dump(summary, f, indent=2)
 
         print("\n" + "=" * 60)
-        print("Validation metrics (" + ("eval_f1 (9-class)" if num_labels != 3 else "P@high target > 90%") + ")")
+        print("Validation metrics (primary: macro-F1 + per-class recall)")
         print("=" * 60)
         _format_eval_section(best_entry, "Best validation metrics")
         _format_eval_section(last_entry, "Last validation metrics")
