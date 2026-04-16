@@ -271,7 +271,7 @@
         <span>Core Sentinel</span>
         <span class="crumb">/ Fleet Admin</span>
       </div>
-      <div class="org" id="orgName">Demo Organization</div>
+      <div class="org"><span id="orgName">Demo Organization</span><span class="crumb" id="liveDataMeta" style="display:block;margin-top:4px;font-size:11px"></span></div>
       <div class="nav-right">
         <span class="avatar" id="adminAvatar">A</span>
         <button class="btn" id="signOutBtn">Sign Out</button>
@@ -345,8 +345,8 @@
         </article>
 
         <article class="card">
-          <h3>Top confidential data categories (org-wide)</h3>
-          <p class="sub">Most commonly detected categories across fleet traffic.</p>
+          <h3>Top confidential data signals (org-wide)</h3>
+          <p class="sub">Counts use the raw <code style="font-size:11px">pii_classes</code> / <code style="font-size:11px">pii_class</code> values stored by the app (same strings as in Supabase).</p>
           <div class="h-bars" id="piiBars"></div>
         </article>
       </section>
@@ -567,24 +567,88 @@
 
     const _CLASS_NOISE = new Set(["low", "med", "high", "silent", "warn", "block", "none", "n/a", "na", "dedup_cached", "dedup", "0"]);
 
+    function tryParseJson(s) {
+      if (typeof s !== "string" || !s.trim()) return null;
+      try { return JSON.parse(s); } catch { return null; }
+    }
+
+    function pushSplitTokens(parts, s) {
+      if (s == null || s === "") return;
+      String(s)
+        .split(/[/;,|]/g)
+        .map((x) => x.trim())
+        .filter(Boolean)
+        .forEach((t) => parts.push(t));
+    }
+
+    /** Tokens from DB + optional context_json (matches infer._pii_class_for_log slash-joined labels). */
     function rawClassTokensFromRow(r) {
-      let parts = [];
+      const parts = [];
       if (Array.isArray(r.pii_classes)) {
-        parts = r.pii_classes.map((x) => String(x ?? "").trim()).filter(Boolean);
-      } else if (r.pii_classes != null && typeof r.pii_classes === "string") {
-        parts = r.pii_classes.split(/[;,|]/g).map((s) => s.trim()).filter(Boolean);
+        r.pii_classes.forEach((x) => pushSplitTokens(parts, x));
       } else if (r.pii_classes != null) {
-        parts = [String(r.pii_classes)];
+        const ps = String(r.pii_classes).trim();
+        if (ps.startsWith("[") || ps.startsWith("{")) {
+          const j = tryParseJson(ps);
+          if (Array.isArray(j)) j.forEach((x) => pushSplitTokens(parts, x));
+          else pushSplitTokens(parts, ps);
+        } else pushSplitTokens(parts, ps);
       }
-      if (!parts.length && r.pii_class != null && String(r.pii_class).trim() !== "") {
-        parts = String(r.pii_class).split(/[;,|]/g).map((s) => s.trim()).filter(Boolean);
+      if (r.pii_class != null && String(r.pii_class).trim() !== "") {
+        pushSplitTokens(parts, String(r.pii_class));
       }
-      if (!parts.length && Array.isArray(r.triggers)) {
-        parts = r.triggers.map((x) => String(x ?? "").trim()).filter(Boolean);
-      } else if (!parts.length && r.triggers) {
-        parts = String(r.triggers).split(/[;,|]/g).map((s) => s.trim()).filter(Boolean);
+      if (Array.isArray(r.triggers)) {
+        r.triggers.forEach((x) => pushSplitTokens(parts, x));
+      } else if (r.triggers) {
+        pushSplitTokens(parts, String(r.triggers));
       }
-      return parts;
+      let ctx = r.context_json;
+      if (typeof ctx === "string" && ctx.trim()) {
+        const o = tryParseJson(ctx);
+        ctx = o || null;
+      }
+      if (ctx && typeof ctx === "object") {
+        if (Array.isArray(ctx.pii_labels)) ctx.pii_labels.forEach((x) => pushSplitTokens(parts, x));
+        if (Array.isArray(ctx.labels)) ctx.labels.forEach((x) => pushSplitTokens(parts, x));
+        if (typeof ctx.pii_class === "string") pushSplitTokens(parts, ctx.pii_class);
+      }
+      return [...new Set(parts)];
+    }
+
+    /** Map TinyBERT / NER style labels (NAME, CONTACT, …) to dashboard columns. */
+    function mapEntityLabelToCat(tok) {
+      const u = String(tok || "")
+        .trim()
+        .toUpperCase()
+        .replace(/^B-|^I-|^O-/, "");
+      const map = {
+        NAME: "Email",
+        PERSON: "Email",
+        EMAIL: "Email",
+        LOCATION: "Address",
+        LOC: "Address",
+        ADDRESS: "Address",
+        CONTACT: "Phone",
+        PHONE: "Phone",
+        TEL: "Phone",
+        MOBILE: "Phone",
+        ID: "SSN",
+        SSN: "SSN",
+        NATIONAL_ID: "SSN",
+        FINANCIAL: "SSN",
+        CARD: "SSN",
+        HEALTH: "Medical",
+        MEDICAL: "Medical",
+        AUTH: "API Key",
+        SECRET: "API Key",
+        CREDENTIAL: "API Key",
+        PASSWORD: "API Key",
+        TOKEN: "API Key",
+        OTHER_PII: "Unclassified",
+        O: null,
+      };
+      if (Object.prototype.hasOwnProperty.call(map, u)) return map[u];
+      return undefined;
     }
 
     function isNoiseClassToken(t) {
@@ -623,12 +687,30 @@
       const semantic = tokens.filter((t) => !isNoiseClassToken(t));
       const cats = new Set();
       for (const tok of semantic) {
+        const mapped = mapEntityLabelToCat(tok);
+        if (mapped === null) continue;
+        if (mapped !== undefined) {
+          cats.add(mapped);
+          continue;
+        }
         const c = categorizePII(tok);
         if (c !== "Unclassified") cats.add(c);
       }
       if (cats.size) return Array.from(cats);
       const joined = semantic.join(" ");
-      return [categorizePII(joined)];
+      const c = categorizePII(joined);
+      return [c && c !== "Unclassified" ? c : "Unclassified"];
+    }
+
+    /** Exact stored strings for the bar chart (matches DB / Supabase). */
+    function topRawPiiHistogram(rows, limit = 12) {
+      const counts = new Map();
+      (rows || []).forEach((r) => {
+        const raw = String(r.pii_raw ?? r.pii_classes ?? r.pii_class ?? "").trim();
+        const key = raw ? truncateDisplay(raw, 56) : "(empty)";
+        counts.set(key, (counts.get(key) || 0) + 1);
+      });
+      return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, limit);
     }
 
     function inferOverrideFromRow(r) {
@@ -668,6 +750,9 @@
         let override = inferOverrideFromRow(r);
         if (!override && hashes && textHash && hashes.has(textHash)) override = true;
         const outcome = action === "block" ? "Blocked" : action === "warn" ? "Warned" : "Allowed";
+        const pii_raw = Array.isArray(r.pii_classes)
+          ? r.pii_classes.map((x) => String(x ?? "").trim()).filter(Boolean).join("/")
+          : String(r.pii_classes ?? r.pii_class ?? "").trim();
         return {
           timestamp: ts,
           user,
@@ -677,6 +762,7 @@
           piiClass,
           piiCategory,
           piiCategories,
+          pii_raw,
           riskScore: score,
           action,
           outcome,
@@ -732,20 +818,59 @@
       return out;
     }
 
-    async function loadData() {
-      setLoading(true);
+    let adminPollTimer = null;
+
+    function stopAdminPolling() {
+      if (adminPollTimer) {
+        clearInterval(adminPollTimer);
+        adminPollTimer = null;
+      }
+    }
+
+    function startAdminPolling() {
+      stopAdminPolling();
+      adminPollTimer = setInterval(() => {
+        const u = baseUrl();
+        const k = (localStorage.getItem("sb_key") || "").trim();
+        if (state.demoMode || !u || !k) return;
+        if (document.visibilityState === "hidden") return;
+        loadData({ silent: true });
+      }, 45000);
+    }
+
+    function updateLiveMeta() {
+      const el = document.getElementById("liveDataMeta");
+      if (!el) return;
+      const u = baseUrl();
+      const k = (localStorage.getItem("sb_key") || "").trim();
+      if (state.demoMode) {
+        el.textContent = "Demo sample data · not connected to Supabase";
+        return;
+      }
+      if (!u || !k) {
+        el.textContent = "Set sb_url + sb_key (Hub → settings) to load live guardrail_events";
+        return;
+      }
+      el.textContent = `Live · ${state.events.length} events loaded · Refreshed ${new Date().toLocaleString()}`;
+    }
+
+    async function loadData(options = {}) {
+      const silent = options.silent === true;
+      if (!silent) setLoading(true);
       const url = baseUrl();
       const key = (localStorage.getItem("sb_key") || "").trim();
+      if (state.demoMode) stopAdminPolling();
       if (!url || !key || state.demoMode) {
         state.events = generateDemoRows();
         state.feedback = [];
+        if (!silent) setLoading(false);
         renderAll();
-        setLoading(false);
+        stopAdminPolling();
         return;
       }
       try {
         const [resp, overrideHashes] = await Promise.all([
-          fetch(`${url}/rest/v1/guardrail_events?select=*&order=timestamp.desc.nullslast&limit=3500`, {
+          fetch(`${url}/rest/v1/guardrail_events?select=*&order=timestamp.desc.nullslast,id.desc&limit=4000`, {
             headers: authHeaders(), cache: "no-store"
           }),
           loadFeedbackOverrideHashes(url)
@@ -757,8 +882,10 @@
         state.events = generateDemoRows();
         state.demoMode = true;
       }
-      setLoading(false);
+      if (!silent) setLoading(false);
       renderAll();
+      if (!state.demoMode && url && key) startAdminPolling();
+      else stopAdminPolling();
     }
 
     function dateKey(ts) { return String(ts).slice(0, 10); }
@@ -824,15 +951,6 @@
         return { ...u, overrideRate, statusWeight, status };
       });
       return list.sort((a, b) => b.statusWeight - a.statusWeight).slice(0, 10);
-    }
-
-    function computeTopPII(rows) {
-      const counts = new Map();
-      rows.forEach((r) => {
-        const cats = r.piiCategories && r.piiCategories.length ? r.piiCategories : [r.piiCategory];
-        cats.forEach((c) => counts.set(c, (counts.get(c) || 0) + 1));
-      });
-      return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 10);
     }
 
     function severityFromScore(score) {
@@ -1054,14 +1172,18 @@
       if (!pii.length) { host.innerHTML = `<div class="sub">No category data.</div>`; return; }
       const max = pii[0][1] || 1;
       const severityColor = (cat) => {
+        const s = String(cat).toLowerCase();
         if (cat === "SSN" || cat === "API Key" || cat === "Medical") return "var(--danger)";
         if (cat === "Address" || cat === "Phone") return "var(--warn)";
         if (cat === "Unclassified") return "rgba(255,255,255,0.35)";
-        return "var(--accent)";
+        if (/ssn|secret|auth|password|token|key|high\b|finan|hipaa/.test(s)) return "var(--danger)";
+        if (/phone|contact|address|med|warn|tier|med\b/.test(s)) return "var(--warn)";
+        if (/email|name|mail|low\b|@/.test(s)) return "var(--accent)";
+        return "rgba(124,156,255,0.5)";
       };
       host.innerHTML = pii.map(([k, v]) => `
         <div class="h-row">
-          <span class="h-label">${k}</span>
+          <span class="h-label" title="${escapeHtml(k)}">${escapeHtml(truncateDisplay(k, 40))}</span>
           <div class="h-track"><div class="h-fill" style="width:${Math.round((v / max) * 100)}%;background:${severityColor(k)}"></div></div>
           <span class="h-val">${v}</span>
         </div>
@@ -1220,7 +1342,7 @@
       drawTimelineAndHeat();
       state.users = computeUsers(rows);
       renderUserTable(state.users);
-      state.piiTop = computeTopPII(rows);
+      state.piiTop = topRawPiiHistogram(rows);
       renderPIIBars(state.piiTop);
       renderCompliance(compliance(rows));
       state.audit = buildAuditRows(rows);
@@ -1230,16 +1352,23 @@
       if (hw && rows.length) {
         let minT = null;
         let maxT = null;
+        let tl = 0; let tm = 0; let th = 0;
         rows.forEach((r) => {
           const d = safeDate(r.timestamp);
           if (!d) return;
           if (!minT || d < minT) minT = d;
           if (!maxT || d > maxT) maxT = d;
+          const pr = String(r.pii_raw || "").trim().toLowerCase();
+          if (pr === "low") tl += 1;
+          else if (pr === "med") tm += 1;
+          else if (pr === "high") th += 1;
         });
+        const tierLine = tl + tm + th ? ` Model tier-only labels in pii_class: low ${tl}, med ${tm}, high ${th} (see bar chart for exact strings).` : "";
         hw.textContent = minT && maxT
-          ? `Event time range in current load: ${minT.toLocaleDateString()}–${maxT.toLocaleDateString()} · ${rows.length} events (${new Date().toLocaleString()} loaded).`
+          ? `Event time range in current load: ${minT.toLocaleDateString()}–${maxT.toLocaleDateString()} · ${rows.length} events.${tierLine}`
           : "No valid timestamps in the current event batch.";
       } else if (hw) hw.textContent = "";
+      updateLiveMeta();
     }
 
     function bindSorters() {
@@ -1286,6 +1415,7 @@
         state.demoMode = false;
         state.drill = null;
         document.getElementById("drillInfo").textContent = "";
+        stopAdminPolling();
         setGate(true);
       };
       document.getElementById("recipientInput").addEventListener("input", (e) => {
@@ -1334,6 +1464,17 @@
         applyAdminIdentity("admin@core-sentinel.local", "Demo Organization");
       }
     }
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible") return;
+      if (state.demoMode) return;
+      const u = baseUrl();
+      const k = (localStorage.getItem("sb_key") || "").trim();
+      if (!u || !k) return;
+      const gate = document.getElementById("loginWall");
+      if (gate && gate.style.display !== "none") return;
+      loadData({ silent: true });
+    });
 
     bindSorters();
     bindUI();
