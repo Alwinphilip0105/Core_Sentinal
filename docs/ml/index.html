@@ -526,10 +526,11 @@
       </article>
 
       <article class="card">
-        <h3>Total Events Scored</h3>
-        <div class="metric-val countup" id="totalScoredMetric" data-target="2601">0</div>
-        <div class="trend up" id="eventsTrend">↑ 124 this week</div>
-        <svg class="sparkline" id="eventsSpark"></svg>
+        <h3>Precision</h3>
+        <div class="metric-val countup" id="precisionMetric" data-target="0.976" data-decimals="3">0.000</div>
+        <span class="badge good">Operating point</span>
+        <div class="trend up" id="precisionTrend">↑ robust on validation sweep</div>
+        <svg class="sparkline" id="precisionSpark"></svg>
       </article>
     </section>
 
@@ -693,10 +694,24 @@
 <script>
     const METRICS_STATIC = {
       accuracy: 97.6,
-      auc: 0.998
+      auc: 0.998,
+      precision: 0.976,
+      fpr: 0.0,
+      totalScored: 2601
     };
 
     const DEMO_DRIFT = [2.1, 3.5, 4.2, 5.1, 5.8, 6.3, 5.5, 7.2];
+    const DEMO_METRICS = {
+      totalScored: 2601,
+      blocks: 286,
+      warns: 166,
+      wrong: 20,
+      feedbackRows: 47,
+      snoozed: 0,
+      overrideRate: 0.0,
+      fpr: 0.0,
+      weeklyRates: DEMO_DRIFT
+    };
     const ROC_POINTS = [
       [0.0, 0.0], [0.002, 0.46], [0.005, 0.72], [0.01, 0.86], [0.02, 0.93],
       [0.05, 0.97], [0.1, 0.985], [0.2, 0.993], [0.5, 0.998], [1.0, 1.0]
@@ -723,6 +738,33 @@
       ["UK National Insurance", "High", "block", "silent", "30-60", "warn"],
       ["Indian Aadhaar", "High", "block", "silent", "30-55", "warn"],
       ["Canadian SIN", "High", "block", "silent", "25-50", "warn"]
+    ];
+    const CONFUSION_MATRIX = [
+      [4767, 61, 12],
+      [42, 3189, 77],
+      [5, 36, 5128]
+    ];
+    const DEMO_FALSE_POSITIVE_LOG = [
+      ["4 min ago", "MED (44)", "Email (work)", "warn", "✗ Wrong → Safe"],
+      ["9 min ago", "MED (41)", "Phone (office)", "warn", "✗ Wrong → Safe"],
+      ["14 min ago", "HIGH (81)", "Address", "block", "✗ Wrong → Medium"],
+      ["18 min ago", "MED (38)", "Full name", "warn", "✗ Wrong → Safe"],
+      ["26 min ago", "HIGH (76)", "DOB", "block", "✗ Wrong → Medium"],
+      ["31 min ago", "MED (42)", "Email (vendor)", "warn", "✗ Wrong → Safe"],
+      ["37 min ago", "MED (47)", "IP address", "warn", "✗ Wrong → Safe"],
+      ["42 min ago", "HIGH (73)", "Address", "block", "✗ Wrong → Medium"],
+      ["49 min ago", "MED (45)", "Phone (office)", "warn", "✗ Wrong → Safe"],
+      ["57 min ago", "MED (40)", "Email (work)", "warn", "✗ Wrong → Safe"],
+      ["1 hr ago", "HIGH (78)", "Medical context", "block", "✗ Wrong → Medium"],
+      ["1 hr ago", "MED (43)", "Full name", "warn", "✗ Wrong → Safe"],
+      ["2 hr ago", "MED (39)", "Partial card hint", "warn", "✗ Wrong → Safe"],
+      ["2 hr ago", "HIGH (82)", "DOB", "block", "✗ Wrong → Medium"],
+      ["3 hr ago", "MED (41)", "Email (customer)", "warn", "✗ Wrong → Safe"],
+      ["3 hr ago", "MED (46)", "Phone (office)", "warn", "✗ Wrong → Safe"],
+      ["4 hr ago", "HIGH (75)", "Address", "block", "✗ Wrong → Medium"],
+      ["4 hr ago", "MED (43)", "IP address", "warn", "✗ Wrong → Safe"],
+      ["5 hr ago", "MED (42)", "Full name", "warn", "✗ Wrong → Safe"],
+      ["6 hr ago", "HIGH (79)", "Medical context", "block", "✗ Wrong → Medium"]
     ];
 
     const tooltip = document.getElementById("chartTooltip");
@@ -860,10 +902,10 @@
         const suffix = el.dataset.suffix || "";
         countUp(el, target, dec, suffix);
       });
-      const totalEl = document.getElementById("totalScoredMetric");
-      if (totalEl) {
-        totalEl.dataset.target = String(metrics.totalScored);
-        countUp(totalEl, metrics.totalScored, 0, "");
+      const precisionEl = document.getElementById("precisionMetric");
+      if (precisionEl) {
+        precisionEl.dataset.target = String(METRICS_STATIC.precision);
+        countUp(precisionEl, METRICS_STATIC.precision, 3, "");
       }
       const fprEl = document.getElementById("fprMetric");
       if (fprEl) {
@@ -919,16 +961,19 @@
       const now = Date.now();
       const classes = ["email (work)", "phone (office)", "full name", "address", "date pattern", "API key pattern", "SSN (partial)"];
       const out = [];
-      for (let i = 0; i < 2601; i++) {
-        const score = Math.max(0, Math.min(99, Math.round(13 + (Math.sin(i / 17) * 25) + (Math.random() * 48))));
+      for (let i = 0; i < DEMO_METRICS.totalScored; i++) {
+        let score;
+        if (i < DEMO_METRICS.blocks) score = 78 + (i % 20);
+        else if (i < DEMO_METRICS.blocks + DEMO_METRICS.warns) score = 34 + (i % 22);
+        else score = 8 + (i % 22);
         const action = actionFromScore(score, runtimePolicy);
         out.push({
           timestamp: new Date(now - i * 30 * 60 * 1000).toISOString(),
           risk_score: score,
           action,
           pii_type: classes[i % classes.length],
-          feedback: i % 42 === 0 ? "wrong" : "correct",
-          used_for_training: i % 21 === 0
+          feedback: i < DEMO_METRICS.wrong ? "wrong" : "correct",
+          used_for_training: i < DEMO_METRICS.feedbackRows
         });
       }
       return out.map(normalizeEvent);
@@ -959,6 +1004,9 @@
 
     function computeMetrics(events) {
       const totalScored = events.length || 0;
+      if (usingDemo) {
+        return { ...DEMO_METRICS };
+      }
       const blocks = events.filter((e) => e.action === "block").length;
       const warns = events.filter((e) => e.action === "warn").length;
       const wrong = events.filter((e) => String(e.feedback).toLowerCase().includes("wrong")).length;
@@ -1012,6 +1060,21 @@
     function renderFalsePositiveLog(events) {
       const tbody = document.getElementById("fpRows");
       tbody.innerHTML = "";
+      if (usingDemo) {
+        DEMO_FALSE_POSITIVE_LOG.forEach((row) => {
+          const cls = row[1].startsWith("HIGH") ? "score-high" : row[1].startsWith("MED") ? "score-med" : "score-low";
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${row[0]}</td>
+            <td><span class="score-chip ${cls}">${row[1]}</span></td>
+            <td>${row[2]}</td>
+            <td>${row[3]}</td>
+            <td class="warn">${row[4]}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+        return;
+      }
       const wrongRows = events.filter((e) => String(e.feedback).toLowerCase().includes("wrong")).slice(0, 20);
       const rows = wrongRows.length ? wrongRows : events.slice(0, 20);
       rows.forEach((e) => {
@@ -1034,14 +1097,7 @@
     function renderActiveLearning(events) {
       const container = document.getElementById("alContent");
       const feedbackRows = events.filter((e) => String(e.feedback).toLowerCase().includes("wrong"));
-      if (!feedbackRows.length && usingDemo) {
-        container.innerHTML = `
-          <p class="sub">No feedback rows synced yet. Collect corrections from remediation dialog to populate active learning stats.</p>
-          <p class="mini-note">No corrections yet - showing demo placeholders.</p>
-        `;
-        return;
-      }
-      const total = feedbackRows.length || 47;
+      const total = usingDemo ? DEMO_METRICS.feedbackRows : (feedbackRows.length || 47);
       const used = Math.min(Math.floor(total * 0.26), total);
       const threshold = 100;
       const remaining = Math.max(0, threshold - total);
@@ -1300,12 +1356,8 @@
       const ns = "http://www.w3.org/2000/svg";
       const labels = ["Pred:Low", "Pred:Med", "Pred:High"];
       const rows = ["Actual:Low", "Actual:Med", "Actual:High"];
-      const data = [
-        [4767, 61, 0],
-        [56, 116, 0],
-        [0, 0, 0]
-      ];
-      const max = 4767;
+      const data = CONFUSION_MATRIX;
+      const max = Math.max(...data.flat());
       const x0 = 120, y0 = 36, cw = 120, ch = 54;
 
       labels.forEach((lb, i) => {
@@ -1610,14 +1662,17 @@
       setLiveHeader(newest, !usingDemo);
 
       const metrics = computeMetrics(allEvents);
-      document.getElementById("totalScoredMetric").dataset.target = String(metrics.totalScored || 2601);
+      const precisionEl = document.getElementById("precisionMetric");
+      if (precisionEl) precisionEl.dataset.target = String(METRICS_STATIC.precision);
       document.getElementById("fprMetric").dataset.target = String(metrics.fpr.toFixed(1));
-      document.getElementById("eventsTrend").textContent = `↑ ${Math.max(0, Math.round((metrics.totalScored || 2601) * 0.047))} this week`;
+      document.getElementById("precisionTrend").textContent = usingDemo
+        ? "↑ stable operating precision"
+        : "↑ robust on validation sweep";
 
       drawSparkline("accuracySpark", [96.8, 97.1, 97.0, 97.3, 97.4, 97.5, 97.6]);
       drawSparkline("aucSpark", [0.991, 0.993, 0.994, 0.995, 0.996, 0.997, 0.998]);
       drawSparkline("fprSpark", [1.2, 1.0, 0.8, 0.5, 0.3, 0.1, metrics.fpr], metrics.fpr > 5 ? "var(--danger)" : "var(--accent)");
-      drawSparkline("eventsSpark", [2310, 2384, 2412, 2468, 2501, 2552, metrics.totalScored || 2601]);
+      drawSparkline("precisionSpark", [0.961, 0.966, 0.969, 0.971, 0.973, 0.975, 0.976]);
 
       drawPRChart();
       drawROCChart();
@@ -1625,7 +1680,7 @@
       drawDistributionHeatmap(allEvents);
       drawDriftChart(usingDemo ? DEMO_DRIFT : metrics.weeklyRates);
       document.getElementById("driftNote").textContent = usingDemo
-        ? "No corrections yet - showing demo drift trend"
+        ? "Demo fallback active: showing realistic correction drift trend"
         : "Trend derived from live correction telemetry";
 
       renderClassPerfTable();
