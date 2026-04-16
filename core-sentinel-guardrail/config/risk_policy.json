@@ -15,7 +15,7 @@
       "action_override": "warn_only",
       "note": "Medium risk shows badge/toast, never blocks",
       "derived_from": "pr_curve_precision_0.85",
-      "auprc": 0.4586
+      "auprc": 0.4588
     },
     "high": {
       "warn": 0.82,
@@ -73,6 +73,6 @@
   "critical_secret": {
     "min_token_entropy_bits": 4.2
   },
-  "_calibrated_at": "2026-04-16T14:25:48.081484+00:00",
+  "_calibrated_at": "2026-04-16T18:39:19.404388+00:00",
   "_calibration_source": "reports/pr_curve_summary.json"
 }

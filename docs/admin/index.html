@@ -128,8 +128,13 @@
 
     .heatmap-wrap{overflow:auto}
     .heatmap-grid{
-      display:grid;grid-template-columns:140px repeat(6,minmax(68px,1fr));gap:6px;min-width:620px;
+      display:grid;grid-template-columns:128px repeat(7,minmax(56px,1fr));gap:6px;min-width:680px;
     }
+    .hm-corner{font-size:10px;color:#7a8aa0;text-transform:uppercase;letter-spacing:.06em;padding:4px 2px}
+    .hm-axis-y{font-size:10px;color:#7a8aa0;writing-mode:vertical-rl;transform:rotate(180deg);justify-self:center;padding:4px 0}
+    .hm-legend{margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--muted)}
+    .hm-grad{flex:1;min-width:140px;height:10px;border-radius:6px;border:1px solid rgba(124,156,255,0.2);
+      background:linear-gradient(90deg,rgba(229,57,53,0.08),rgba(229,57,53,0.88))}
     .cell-h{font-size:11px;color:#99a4b3;padding:2px 4px}
     .row-l{font-size:12px;color:#d8deea;padding-top:8px}
     .hm-cell{
@@ -298,7 +303,7 @@
         <article class="card"><h3>Total Events (24h)</h3><div class="metric-val" id="mEvents24h">1,247</div><svg class="sparkline" id="evSpark"></svg></article>
         <article class="card"><h3>High Risk Events</h3><div class="metric-val" id="mHigh">23</div><span class="badge b-red" id="mHighTrend">↑ 5 from yesterday</span></article>
         <article class="card"><h3>Blocked Pastes</h3><div class="metric-val" id="mBlocked">89</div><div class="metric-sub" id="mBlockedPct">3.6% of total</div></article>
-        <article class="card"><h3>Override Rate</h3><div class="metric-val" id="mOverride">1.2%</div><span class="badge b-green" id="mOverrideBadge">Below 5% target</span></article>
+        <article class="card"><h3>Override Rate (24h)</h3><div class="metric-val" id="mOverride">1.2%</div><span class="badge b-green" id="mOverrideBadge">Below 5% target</span><div class="metric-sub" id="mOverrideNote" style="margin-top:6px"></div></article>
       </section>
 
       <section class="row row-2">
@@ -340,7 +345,7 @@
         </article>
 
         <article class="card">
-          <h3>Top PII Categories (Org-wide)</h3>
+          <h3>Top confidential data categories (org-wide)</h3>
           <p class="sub">Most commonly detected categories across fleet traffic.</p>
           <div class="h-bars" id="piiBars"></div>
         </article>
@@ -371,7 +376,7 @@
           <p class="sub">Route policy alerts to security operations recipients.</p>
           <div class="config-grid">
             <div class="toggle"><span>Alert when override rate exceeds 5%</span><span class="switch" data-key="ovr5"></span></div>
-            <div class="toggle"><span>Alert when critical PII detected</span><span class="switch" data-key="critPii"></span></div>
+            <div class="toggle"><span>Alert when critical confidential data is detected</span><span class="switch" data-key="critPii"></span></div>
             <div class="toggle"><span>Daily risk summary email</span><span class="switch" data-key="dailyMail"></span></div>
             <div class="toggle"><span>Weekly compliance report</span><span class="switch" data-key="weeklyReport"></span></div>
             <label class="sub" for="recipientInput" style="margin:2px 0 0">Alert recipients</label>
@@ -401,7 +406,7 @@
                   <th data-sort="timestamp">Timestamp</th>
                   <th data-sort="user">User</th>
                   <th data-sort="eventType">Event Type</th>
-                  <th data-sort="piiClass">PII Class</th>
+                  <th data-sort="piiClass">Confidential data</th>
                   <th data-sort="riskScore">Risk Score</th>
                   <th data-sort="action">Action</th>
                   <th data-sort="outcome">Outcome</th>
@@ -429,7 +434,7 @@
     const ADMIN_PASSWORD = localStorage.getItem("core_admin_password") || "sentinel2026";
     const ALERT_CFG_KEY = "fleet_alert_config";
     const DEPARTMENTS = ["Engineering", "HR", "Finance", "Legal", "Sales"];
-    const CAT_KEYS = ["SSN", "Email", "Phone", "API Key", "Address", "Medical"];
+    const CAT_KEYS = ["SSN", "Email", "Phone", "API Key", "Address", "Medical", "Unclassified"];
     const tip = document.getElementById("tip");
 
     let state = {
@@ -545,36 +550,133 @@
       return Number.isNaN(d.getTime()) ? null : d;
     }
 
-    function categorizePII(raw) {
-      const txt = String(raw || "").toLowerCase();
-      if (txt.includes("ssn") || txt.includes("aadhaar") || txt.includes("sin")) return "SSN";
-      if (txt.includes("email")) return "Email";
-      if (txt.includes("phone")) return "Phone";
-      if (txt.includes("api") || txt.includes("token") || txt.includes("secret") || txt.includes("key")) return "API Key";
-      if (txt.includes("address") || txt.includes("location")) return "Address";
-      if (txt.includes("medical") || txt.includes("diagnos") || txt.includes("patient")) return "Medical";
-      return "Email";
+    function escapeHtml(s) {
+      return String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
     }
 
-    function normalizeRows(rows) {
+    function truncateDisplay(s, max) {
+      const t = String(s ?? "");
+      if (t.length <= max) return t;
+      return `${t.slice(0, Math.max(0, max - 1))}…`;
+    }
+
+    const _CLASS_NOISE = new Set(["low", "med", "high", "silent", "warn", "block", "none", "n/a", "na", "dedup_cached", "dedup", "0"]);
+
+    function rawClassTokensFromRow(r) {
+      let parts = [];
+      if (Array.isArray(r.pii_classes)) {
+        parts = r.pii_classes.map((x) => String(x ?? "").trim()).filter(Boolean);
+      } else if (r.pii_classes != null && typeof r.pii_classes === "string") {
+        parts = r.pii_classes.split(/[;,|]/g).map((s) => s.trim()).filter(Boolean);
+      } else if (r.pii_classes != null) {
+        parts = [String(r.pii_classes)];
+      }
+      if (!parts.length && r.pii_class != null && String(r.pii_class).trim() !== "") {
+        parts = String(r.pii_class).split(/[;,|]/g).map((s) => s.trim()).filter(Boolean);
+      }
+      if (!parts.length && Array.isArray(r.triggers)) {
+        parts = r.triggers.map((x) => String(x ?? "").trim()).filter(Boolean);
+      } else if (!parts.length && r.triggers) {
+        parts = String(r.triggers).split(/[;,|]/g).map((s) => s.trim()).filter(Boolean);
+      }
+      return parts;
+    }
+
+    function isNoiseClassToken(t) {
+      const s = String(t || "").trim().toLowerCase();
+      if (!s) return true;
+      if (_CLASS_NOISE.has(s)) return true;
+      if (/^\d+$/.test(s)) return true;
+      return false;
+    }
+
+    function displayDataClassFromRow(r) {
+      const parts = rawClassTokensFromRow(r);
+      const semantic = parts.filter((t) => !isNoiseClassToken(t));
+      if (semantic.length) {
+        const joined = semantic.join(", ");
+        return truncateDisplay(joined, 80);
+      }
+      if (parts.some((p) => String(p).toLowerCase() === "dedup_cached")) return "Cached match";
+      return "—";
+    }
+
+    function categorizePII(raw) {
+      const txt = String(raw || "").toLowerCase();
+      if (!txt.trim()) return "Unclassified";
+      if (/\b(ssn|social security|aadhaar|sin)\b/.test(txt) || /\b\d{3}[-.\s]?\d{2}[-.\s]?\d{4}\b/.test(txt)) return "SSN";
+      if (/\b(phone|tel|mobile|whatsapp|sms)\b/.test(txt)) return "Phone";
+      if (/\b(api|bearer|ssh|credential|password|passwd|secret|token)\b|sk_live|akia|aiza|ghp_|ssh-rsa|eyj[0-9a-z]/i.test(txt)) return "API Key";
+      if (/\b(email|e-mail|@|mailto|outlook|gmail|yahoo|hotmail)\b/.test(txt)) return "Email";
+      if (/\b(address|street|zip|postal|location|city)\b/.test(txt)) return "Address";
+      if (/\b(medical|patient|diagnosis|health|hipaa|mrn|clinical)\b/.test(txt)) return "Medical";
+      return "Unclassified";
+    }
+
+    function categoriesFromRow(r) {
+      const tokens = rawClassTokensFromRow(r);
+      const semantic = tokens.filter((t) => !isNoiseClassToken(t));
+      const cats = new Set();
+      for (const tok of semantic) {
+        const c = categorizePII(tok);
+        if (c !== "Unclassified") cats.add(c);
+      }
+      if (cats.size) return Array.from(cats);
+      const joined = semantic.join(" ");
+      return [categorizePII(joined)];
+    }
+
+    function inferOverrideFromRow(r) {
+      if (r == null) return false;
+      const v = r.override;
+      if (v === true || v === 1 || v === "1" || String(v).toLowerCase() === "true") return true;
+      const ft = String(r.feedback_type || r.feedback || "").toLowerCase();
+      if (ft.includes("override")) return true;
+      const act = String(r.action || "").toLowerCase();
+      if (act === "override" || act === "allow_override" || act === "force_paste") return true;
+      let ctx = r.context_json;
+      if (typeof ctx === "string" && ctx.trim()) {
+        try { ctx = JSON.parse(ctx); } catch { ctx = null; }
+      }
+      if (ctx && typeof ctx === "object") {
+        if (ctx.override === true || ctx.user_override === true) return true;
+        const sc = String(ctx.score_context || ctx.action || ctx.reason || "").toLowerCase();
+        if (sc.includes("override")) return true;
+      }
+      return false;
+    }
+
+    function normalizeRows(rows, overrideHashes) {
+      const hashes = overrideHashes instanceof Set ? overrideHashes : null;
       const now = Date.now();
       return (rows || []).map((r, i) => {
         const score = Number(r.risk_score || r.score || r.confidence || 0);
         const ts = r.timestamp || r.created_at || r.recorded_at || new Date(now - i * 600000).toISOString();
         const user = String(r.user_id || r.user_email || r.text_hash || `user${(i % 18) + 1}`);
+        const textHash = String(r.text_hash || "");
         const dept = DEPARTMENTS[Math.abs(hash(user)) % DEPARTMENTS.length];
         const action = String(r.action || r.decision || (score >= 80 ? "block" : score > 30 ? "warn" : "silent")).toLowerCase();
-        const piiClass = String(r.pii_classes || r.pii_class || r.triggers || "Email");
+        const piiClass = displayDataClassFromRow(r);
+        const piiCategories = categoriesFromRow(r);
+        const piiCategory = piiCategories[0] || "Unclassified";
         const eventType = action === "block" ? "block_event" : action === "warn" ? "warn_event" : "safe_event";
-        const override = Boolean(r.override || r.feedback_type === "override");
+        let override = inferOverrideFromRow(r);
+        if (!override && hashes && textHash && hashes.has(textHash)) override = true;
         const outcome = action === "block" ? "Blocked" : action === "warn" ? "Warned" : "Allowed";
         return {
           timestamp: ts,
           user,
+          textHash,
           department: dept,
           eventType,
           piiClass,
-          piiCategory: categorizePII(piiClass),
+          piiCategory,
+          piiCategories,
           riskScore: score,
           action,
           outcome,
@@ -610,6 +712,26 @@
       return normalizeRows(out);
     }
 
+    async function loadFeedbackOverrideHashes(url) {
+      const out = new Set();
+      try {
+        const resp = await fetch(
+          `${url}/rest/v1/feedback_corrections?select=text_hash,feedback_type,timestamp,recorded_at&order=timestamp.desc.nullslast&limit=1500`,
+          { headers: authHeaders(), cache: "no-store" }
+        );
+        if (!resp.ok) return out;
+        const rows = await resp.json();
+        const now = Date.now();
+        (rows || []).forEach((row) => {
+          const ts = safeDate(row.timestamp || row.recorded_at);
+          if (!ts || now - ts.getTime() > 86400000) return;
+          const ft = String(row.feedback_type || "").toLowerCase();
+          if (ft.includes("override") && row.text_hash) out.add(String(row.text_hash));
+        });
+      } catch { /* table may not exist */ }
+      return out;
+    }
+
     async function loadData() {
       setLoading(true);
       const url = baseUrl();
@@ -619,15 +741,18 @@
         state.feedback = [];
         renderAll();
         setLoading(false);
-    return;
-  }
+        return;
+      }
       try {
-        const resp = await fetch(`${url}/rest/v1/guardrail_events?select=*&order=timestamp.desc.nullslast&limit=3500`, {
-          headers: authHeaders(), cache: "no-store"
-        });
+        const [resp, overrideHashes] = await Promise.all([
+          fetch(`${url}/rest/v1/guardrail_events?select=*&order=timestamp.desc.nullslast&limit=3500`, {
+            headers: authHeaders(), cache: "no-store"
+          }),
+          loadFeedbackOverrideHashes(url)
+        ]);
         if (!resp.ok) throw new Error("events endpoint unavailable");
         const rows = await resp.json();
-        state.events = normalizeRows(rows);
+        state.events = normalizeRows(rows, overrideHashes);
       } catch {
         state.events = generateDemoRows();
         state.demoMode = true;
@@ -652,7 +777,12 @@
         else if (r.action === "warn") map.get(k).warn += 1;
         else map.get(k).safe += 1;
       });
-      return Array.from(map.entries()).map(([d, v]) => ({ day: d.slice(5), ...v }));
+      return Array.from(map.entries()).map(([iso, v]) => {
+        const dt = new Date(`${iso}T12:00:00`);
+        const day = dt.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+        const total = v.safe + v.warn + v.block;
+        return { isoDate: iso, day, dayShort: `${iso.slice(5, 7)}/${iso.slice(8, 10)}`, total, ...v };
+      });
     }
 
     function deptHeatmap(rows) {
@@ -664,8 +794,11 @@
       rows.forEach((r) => {
         const dep = out.find((d) => d.department === r.department);
         if (!dep) return;
-        const key = CAT_KEYS.includes(r.piiCategory) ? r.piiCategory : "Email";
-        dep[key] += 1;
+        const cats = r.piiCategories && r.piiCategories.length ? r.piiCategories : [r.piiCategory];
+        cats.forEach((cat) => {
+          const key = CAT_KEYS.includes(cat) ? cat : "Unclassified";
+          dep[key] += 1;
+        });
       });
       return out;
     }
@@ -695,7 +828,10 @@
 
     function computeTopPII(rows) {
       const counts = new Map();
-      rows.forEach((r) => counts.set(r.piiCategory, (counts.get(r.piiCategory) || 0) + 1));
+      rows.forEach((r) => {
+        const cats = r.piiCategories && r.piiCategories.length ? r.piiCategories : [r.piiCategory];
+        cats.forEach((c) => counts.set(c, (counts.get(c) || 0) + 1));
+      });
       return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 10);
     }
 
@@ -746,7 +882,14 @@
       document.getElementById("mBlockedPct").textContent = `${in24.length ? ((blocked / in24.length) * 100).toFixed(1) : "0.0"}% of total`;
       animateNumber(document.getElementById("mOverride"), overRate, "%", 1);
       document.getElementById("mOverrideBadge").textContent = overRate <= 5 ? "Below 5% target" : "Above 5% target";
-      drawSparkline("evSpark", lastDaysSeries(rows, 7).map((d) => d.safe + d.warn + d.block));
+      const onote = document.getElementById("mOverrideNote");
+      if (onote) {
+        const flagged = in24.filter((r) => r.override).length;
+        onote.textContent = flagged
+          ? `${flagged} override-related event(s) in last 24h (from events + optional feedback join).`
+          : "No override flags in the last 24h. Ensure `guardrail_events` includes override/context, or `feedback_corrections.feedback_type` contains \"override\" for joined hashes.";
+      }
+      drawSparkline("evSpark", lastDaysSeries(rows, 7).map((d) => d.total ?? (d.safe + d.warn + d.block)));
     }
 
     function drawTimeline(series) {
@@ -756,7 +899,7 @@
       svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
       svg.innerHTML = "";
       const ns = "http://www.w3.org/2000/svg";
-      const pad = { l: 44, r: 12, t: 10, b: 34 };
+      const pad = { l: 46, r: 14, t: 14, b: 48 };
       const cw = w - pad.l - pad.r;
       const ch = h - pad.t - pad.b;
       const max = Math.max(...series.map((d) => d.safe + d.warn + d.block), 1);
@@ -772,6 +915,27 @@
         line.setAttribute("stroke", "var(--grid)");
         svg.appendChild(line);
       }
+      const yTicks = 4;
+      for (let i = 0; i <= yTicks; i++) {
+        const val = Math.round((max * i) / yTicks);
+        const y = mapY(val);
+        const t = document.createElementNS(ns, "text");
+        t.setAttribute("x", pad.l - 8);
+        t.setAttribute("y", y + 4);
+        t.setAttribute("text-anchor", "end");
+        t.setAttribute("fill", "#8b9bb6");
+        t.setAttribute("font-size", "10");
+        t.textContent = String(val);
+        svg.appendChild(t);
+      }
+      const yAxisLbl = document.createElementNS(ns, "text");
+      yAxisLbl.setAttribute("x", 6);
+      yAxisLbl.setAttribute("y", pad.t + 4);
+      yAxisLbl.setAttribute("fill", "#7a8aa0");
+      yAxisLbl.setAttribute("font-size", "10");
+      yAxisLbl.textContent = "Events / day";
+      svg.appendChild(yAxisLbl);
+
       const mkArea = (vals, color) => {
         const top = vals.map((v, i) => `${i ? "L" : "M"}${mapX(i).toFixed(2)} ${mapY(v).toFixed(2)}`).join(" ");
         const d = `${top} L ${mapX(series.length - 1)} ${mapY(0)} L ${mapX(0)} ${mapY(0)} Z`;
@@ -788,6 +952,27 @@
       mkArea(safeWarn, "rgba(255,179,0,0.30)");
       mkArea(safe, "rgba(46,184,114,0.35)");
 
+      const xLabelStep = Math.max(1, Math.floor(series.length / 8));
+      series.forEach((d, i) => {
+        if (i % xLabelStep !== 0 && i !== series.length - 1) return;
+        const lab = document.createElementNS(ns, "text");
+        lab.setAttribute("x", mapX(i));
+        lab.setAttribute("y", h - 12);
+        lab.setAttribute("text-anchor", "middle");
+        lab.setAttribute("fill", "#8b9bb6");
+        lab.setAttribute("font-size", "9");
+        lab.textContent = d.dayShort || d.day || "";
+        svg.appendChild(lab);
+      });
+      const xFoot = document.createElementNS(ns, "text");
+      xFoot.setAttribute("x", pad.l + cw / 2);
+      xFoot.setAttribute("y", h - 2);
+      xFoot.setAttribute("text-anchor", "middle");
+      xFoot.setAttribute("fill", "#6b7a90");
+      xFoot.setAttribute("font-size", "9");
+      xFoot.textContent = "Day (local browser date)";
+      svg.appendChild(xFoot);
+
       series.forEach((d, i) => {
         const c = document.createElementNS(ns, "circle");
         c.setAttribute("cx", mapX(i));
@@ -798,7 +983,7 @@
           tip.style.display = "block";
           tip.style.left = `${e.clientX}px`;
           tip.style.top = `${e.clientY}px`;
-          tip.textContent = `${d.day}  safe:${d.safe}  warn:${d.warn}  block:${d.block}`;
+          tip.textContent = `${d.isoDate || ""} · ${d.day || ""} — safe ${d.safe}, warn ${d.warn}, block ${d.block} (total ${d.total ?? d.safe + d.warn + d.block})`;
         });
         c.addEventListener("mouseleave", () => { tip.style.display = "none"; });
         svg.appendChild(c);
@@ -807,11 +992,15 @@
 
     function renderHeatmap(rows) {
       const host = document.getElementById("deptHeatmap");
+      const legend = document.getElementById("hmLegend");
       host.innerHTML = "";
-      host.innerHTML += `<div></div>${CAT_KEYS.map((k) => `<div class="cell-h">${k}</div>`).join("")}`;
+      host.innerHTML += `<div class="hm-corner">Dept \\ Type</div>${CAT_KEYS.map((k) => `<div class="cell-h">${k}</div>`).join("")}`;
       const flat = [];
       rows.forEach((r) => CAT_KEYS.forEach((k) => flat.push(r[k] || 0)));
       const max = Math.max(...flat, 1);
+      if (legend) {
+        legend.innerHTML = `<span>Intensity (count)</span><div class="hm-grad" title="0 → ${max} events"></div><span>0</span><span style="font-weight:700;color:#f2fbfa">${max}</span>`;
+      }
 
       rows.forEach((r) => {
         host.innerHTML += `<div class="row-l">${r.department}</div>`;
@@ -824,7 +1013,7 @@
           el.className = "hm-cell";
           el.style.background = bg;
           el.innerHTML = String(n);
-          el.title = `${r.department} · ${k} = ${n}`;
+          el.title = `${r.department} · ${k} = ${n} (rolling window matches timeline)`;
           el.onclick = () => {
             state.drill = { department: r.department, category: k };
             document.getElementById("drillInfo").textContent = `Drill down: ${r.department} · ${k}`;
@@ -849,7 +1038,7 @@
         const cls = u.status === "high" ? "st-high" : u.status === "elevated" ? "st-elev" : "st-normal";
         const label = u.status === "high" ? "High risk" : u.status === "elevated" ? "Elevated" : "Normal";
         return `<tr>
-          <td>${u.user}</td>
+          <td title="${escapeHtml(u.user)}">${escapeHtml(truncateDisplay(u.user, 28))}</td>
           <td>${u.department}</td>
           <td>${u.events24h}</td>
           <td>${u.highRisk}</td>
@@ -867,6 +1056,7 @@
       const severityColor = (cat) => {
         if (cat === "SSN" || cat === "API Key" || cat === "Medical") return "var(--danger)";
         if (cat === "Address" || cat === "Phone") return "var(--warn)";
+        if (cat === "Unclassified") return "rgba(255,255,255,0.35)";
         return "var(--accent)";
       };
       host.innerHTML = pii.map(([k, v]) => `
@@ -943,7 +1133,10 @@
         rows = rows.filter((r) => safeDate(r.timestamp) <= e);
       }
       if (state.drill) {
-        rows = rows.filter((r) => r.department === state.drill.department && r.piiCategory === state.drill.category);
+        rows = rows.filter((r) => {
+          const cats = r.piiCategories && r.piiCategories.length ? r.piiCategories : [r.piiCategory];
+          return r.department === state.drill.department && cats.includes(state.drill.category);
+        });
       }
       const { key, dir } = state.auditSort;
       rows.sort((a, b) => {
@@ -981,13 +1174,13 @@
       body.innerHTML = pageRows.map((r) => `
         <tr class="${rowSeverityCls(r.riskScore)}">
           <td>${new Date(r.timestamp).toLocaleString()}</td>
-          <td>${r.user}</td>
-          <td>${r.eventType}</td>
-          <td>${r.piiClass}</td>
+          <td title="${escapeHtml(r.user)}">${escapeHtml(truncateDisplay(r.user, 28))}</td>
+          <td>${escapeHtml(r.eventType)}</td>
+          <td>${escapeHtml(r.piiClass)}</td>
           <td>${r.riskScore}</td>
-          <td>${r.action}</td>
-          <td>${r.outcome}</td>
-          <td>${r.details}</td>
+          <td>${escapeHtml(r.action)}</td>
+          <td>${escapeHtml(r.outcome)}</td>
+          <td>${escapeHtml(truncateDisplay(r.details, 72))}</td>
         </tr>
       `).join("");
       const from = total ? start + 1 : 0;
@@ -999,9 +1192,12 @@
 
     function exportAuditCSV() {
       const rows = state.auditFiltered;
-      const header = ["timestamp","user","eventType","piiClass","riskScore","action","outcome","details"];
+      const header = ["timestamp","user","eventType","confidential_data","riskScore","action","outcome","details"];
       const lines = [header.join(",")].concat(rows.map((r) =>
-        header.map((k) => `"${String(r[k] ?? "").replaceAll('"', '""')}"`).join(",")
+        header.map((k) => {
+          const key = k === "confidential_data" ? "piiClass" : k;
+          return `"${String(r[key] ?? "").replaceAll('"', '""')}"`;
+        }).join(",")
       ));
       const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
       const a = document.createElement("a");
@@ -1030,6 +1226,20 @@
       state.audit = buildAuditRows(rows);
       renderAuditTypeOptions(state.audit);
       applyAuditFilters();
+      const hw = document.getElementById("heatmapWindowHint");
+      if (hw && rows.length) {
+        let minT = null;
+        let maxT = null;
+        rows.forEach((r) => {
+          const d = safeDate(r.timestamp);
+          if (!d) return;
+          if (!minT || d < minT) minT = d;
+          if (!maxT || d > maxT) maxT = d;
+        });
+        hw.textContent = minT && maxT
+          ? `Event time range in current load: ${minT.toLocaleDateString()}–${maxT.toLocaleDateString()} · ${rows.length} events (${new Date().toLocaleString()} loaded).`
+          : "No valid timestamps in the current event batch.";
+      } else if (hw) hw.textContent = "";
     }
 
     function bindSorters() {

@@ -1156,7 +1156,7 @@ for w in windows:
             <h3 style="margin-bottom: 8px;">Model Details</h3>
             <ul>
               <li>Base model: huawei-noah/TinyBERT_General_4L_312D (~14M params)</li>
-              <li>Training data: Synthetic PII corpus — 50K samples across 24 PII categories, generated with controlled templates + adversarial augmentation. Zero real user data.</li>
+              <li>Training data: Synthetic PII corpus — 6.5K samples across 24 PII categories, generated with controlled templates + adversarial augmentation. Zero real user data.</li>
               <li>Performance: Precision 0.976, Recall 0.987, AUC 0.998 (see ML dashboard)</li>
               <li>Active learning: User corrections feed back into weekly fine-tuning cycles</li>
             </ul>
@@ -1174,7 +1174,7 @@ for w in windows:
           <article class="paper-card fade-in">
             <h3>Dataset construction</h3>
             <ul>
-              <li>Synthetic PII corpus with 50K samples across 24 entity categories.</li>
+              <li>Synthetic PII corpus with 6.5K samples across 24 entity categories.</li>
               <li>Template generation for healthcare, finance, legal, HR, and engineering contexts.</li>
               <li>Adversarial perturbations: obfuscation, spacing/noise, casing shifts, mixed-language spans.</li>
               <li>Zero real user clipboard data used in base training.</li>
