@@ -1,14 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+<meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Core Sentinel - ML Health Dashboard</title>
+<title>Core Sentinel - ML Health Dashboard</title>
   <link rel="icon" type="image/svg+xml" href="../favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <style>
+<style>
     :root {
       --bg: #080810;
       --card: #111118;
@@ -464,7 +464,7 @@
       .row { break-inside: avoid; }
       .sub, .mini-note, .legend, td, th { color: #333 !important; }
     }
-  </style>
+</style>
 </head>
 <body>
   <div class="tooltip" id="chartTooltip"></div>
@@ -474,20 +474,20 @@
         <span class="brand-mark">🛡</span>
         <span>Core Sentinel</span>
         <span class="crumb">/ ML Health Dashboard</span>
-      </div>
+  </div>
       <div class="status">
         <span class="pulse"></span>
         <span id="liveState">Live</span>
         <span id="lastUpdated">Updated --</span>
         <span id="policySourceChip" class="policy-chip source-default">Policy: Fallback defaults</span>
-      </div>
+  </div>
       <div class="actions">
         <a class="btn" href="../hub.html">← Back to Hub</a>
         <button class="btn" id="densityBtn">Compact</button>
         <button class="btn" id="exportPdfBtn">Export PDF</button>
         <button class="btn btn-accent" id="refreshBtn">Refresh</button>
-      </div>
-    </div>
+</div>
+  </div>
   </header>
 
   <main class="container">
@@ -498,14 +498,14 @@
           <div>
             <div class="metric-val countup" data-target="97.6" data-decimals="1" data-suffix="%">0.0%</div>
             <div class="trend up">↑ stable this week</div>
-          </div>
+    </div>
           <div class="gauge-wrap">
             <svg viewBox="0 0 84 84" aria-label="accuracy gauge">
               <circle cx="42" cy="42" r="30" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="8"></circle>
               <circle id="accGaugeArc" cx="42" cy="42" r="30" fill="none" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-dasharray="188.5" stroke-dashoffset="188.5" transform="rotate(-90 42 42)"></circle>
             </svg>
-          </div>
-        </div>
+    </div>
+  </div>
         <svg class="sparkline" id="accuracySpark"></svg>
       </article>
 
@@ -539,7 +539,7 @@
         <p class="sub">Operating point: R=0.987, P=0.976</p>
         <div class="chart-box" id="prChartCard">
           <svg class="chart-svg" id="prChart"></svg>
-        </div>
+    </div>
         <div class="legend">
           <span class="l-pr">PR curve</span>
           <span class="l-op">Operating point</span>
@@ -552,12 +552,12 @@
         <p class="sub">AUC: <span class="badge good">0.998</span></p>
         <div class="chart-box" id="rocChartCard">
           <svg class="chart-svg" id="rocChart"></svg>
-        </div>
+      </div>
         <div class="legend">
           <span class="l-pr">ROC</span>
           <span class="l-random">Random classifier</span>
           <span class="l-op">Operating point</span>
-        </div>
+    </div>
       </article>
     </section>
 
@@ -566,7 +566,7 @@
         <h3>Confusion Matrix (Predicted vs Actual)</h3>
         <div class="chart-box">
           <svg class="heatmap-svg" id="cmChart"></svg>
-        </div>
+  </div>
         <p class="mini-note">Overall accuracy: 97.6% | Cohen's kappa: 0.89</p>
       </article>
 
@@ -587,7 +587,7 @@
             </thead>
             <tbody></tbody>
           </table>
-        </div>
+    </div>
       </article>
     </section>
 
@@ -596,14 +596,14 @@
         <h3>Score Distribution Heatmap (Current vs Previous Week)</h3>
         <div class="chart-box">
           <svg class="heatmap-svg" id="distHeatmap"></svg>
-        </div>
+  </div>
       </article>
 
       <article class="card chart-card">
         <h3>Drift Detection (Weekly Correction Rate)</h3>
         <div class="chart-box" id="driftChartCard">
           <svg class="chart-svg" id="driftChart"></svg>
-        </div>
+    </div>
         <div class="legend">
           <span class="l-pr">Correction rate %</span>
           <span class="l-target">Warning threshold: 8%</span>
@@ -618,16 +618,16 @@
         <h3>Threshold Simulator</h3>
         <p class="sub">Adjust warn/block cutoffs and preview policy impact.</p>
         <div class="sim-grid">
-          <div class="sim-row">
+      <div class="sim-row">
             <label for="warnSlider">Warn threshold (<span id="warnVal">40</span>)</label>
             <span class="badge warn">20-60</span>
-          </div>
+      </div>
           <input id="warnSlider" type="range" min="20" max="60" value="40">
 
-          <div class="sim-row">
+      <div class="sim-row">
             <label for="blockSlider">Block threshold (<span id="blockVal">70</span>)</label>
             <span class="badge bad">50-95</span>
-          </div>
+      </div>
           <input id="blockSlider" type="range" min="50" max="95" value="70">
 
           <div class="sim-values">
@@ -635,11 +635,11 @@
             <div id="simWarn">Simulated warn: <strong>34 (-132 vs current)</strong></div>
             <div id="simSafe">Simulated safe: <strong>557 (+9 vs current)</strong></div>
             <div id="simFpr">Estimated FPR proxy: <strong>~0.0%</strong></div>
-          </div>
+    </div>
 
           <button class="btn btn-accent" id="applyConfigBtn">Apply to config</button>
           <p class="mini-note">Copies suggested values for <code>risk_policy.json</code>.</p>
-        </div>
+  </div>
       </article>
 
       <article class="card">
@@ -657,8 +657,8 @@
             <div>Total snoozed: <strong id="fprSnoozed">0</strong></div>
             <div>Override rate: <strong id="fprOverride">0.0%</strong></div>
             <div class="mini-note">Target &lt; 5%, alert &gt; 10%</div>
-          </div>
-        </div>
+    </div>
+    </div>
       </article>
     </section>
 
@@ -667,7 +667,7 @@
         <h3>Active Learning Status</h3>
         <div id="alContent">
           <p class="sub">No feedback rows synced yet. Collect corrections from remediation dialog to populate active learning stats.</p>
-        </div>
+  </div>
       </article>
 
       <article class="card">
@@ -685,12 +685,12 @@
             </thead>
             <tbody id="fpRows"></tbody>
           </table>
-        </div>
+</div>
       </article>
     </section>
   </main>
 
-  <script>
+<script>
     const METRICS_STATIC = {
       accuracy: 97.6,
       auc: 0.998
@@ -796,7 +796,7 @@
           // keep trying candidates
         }
       }
-      return {
+    return {
         policy: { ...DEFAULT_POLICY },
         source: {
           kind: "default",
@@ -1651,6 +1651,6 @@
       initChartAnimationObserver();
       startAutoRefresh();
     })();
-  </script>
+</script>
 </body>
 </html>

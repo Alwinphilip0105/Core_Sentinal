@@ -4,21 +4,36 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>My Privacy Dashboard — Core Sentinel</title>
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
+:root{
+  --bg:#0a0c18;
+  --bg-soft:#0f1326;
+  --card:#121a31;
+  --line:rgba(255,255,255,.09);
+  --muted:rgba(224,231,255,.62);
+  --text:#e6ecff;
+  --accent:#02C39A;
+  --warn:#FFB300;
+  --danger:#E53935;
+}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
-     sans-serif;background:#0d0d1a;color:#e0e0e0;min-height:100vh}
-.hdr{background:#12122a;padding:16px 28px;display:flex;
+     sans-serif;background:
+     radial-gradient(900px 380px at 78% -12%, rgba(2,195,154,.18), transparent 56%),
+     var(--bg);
+     color:var(--text);min-height:100vh}
+.hdr{background:var(--bg-soft);padding:16px 28px;display:flex;
       align-items:center;justify-content:space-between;
-      border-bottom:1px solid rgba(255,255,255,0.07)}
+      border-bottom:1px solid var(--line)}
 .hdr-title{font-size:17px;font-weight:700;color:#fff}
-.hdr-sub{font-size:11px;color:rgba(255,255,255,0.35);margin-top:1px}
+.hdr-sub{font-size:11px;color:var(--muted);margin-top:1px}
 .top-row{display:flex;align-items:center;gap:12px}
 .btn{background:#02C39A;color:#fff;border:none;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer}
 .btn:hover{background:#019B7A}
 .demo-strip{max-width:1100px;margin:14px auto 0;padding:0 24px}
-.demo-box{background:#12122a;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:10px;display:grid;gap:8px}
+.demo-box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;display:grid;gap:8px;box-shadow:0 12px 30px rgba(0,0,0,.28)}
 .demo-top{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
 .demo-top strong{font-size:12px;color:#dce7ff}
 .demo-status{font-size:11px;color:#9eddd2;border:1px solid rgba(2,195,154,.4);background:rgba(2,195,154,.12);border-radius:999px;padding:3px 8px}
@@ -31,22 +46,31 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
 .mini-btn.rec{border-color:rgba(2,195,154,.55)}
 .mini-btn.walk{border-color:rgba(66,165,245,.55);background:rgba(66,165,245,.14)}
 .wrap{max-width:1100px;margin:0 auto;padding:20px 24px}
+.howto{background:rgba(2,195,154,.08);border:1px solid rgba(2,195,154,.24);border-radius:10px;padding:10px 12px;margin-bottom:14px}
+.howto strong{display:block;font-size:12px;color:#c7fff4;margin-bottom:5px}
+.howto ul{padding-left:18px;color:var(--muted);font-size:11px;display:grid;gap:4px}
 .stats-row{display:grid;grid-template-columns:repeat(5,1fr);
             gap:12px;margin-bottom:20px}
-.stat{background:#12122a;border-radius:10px;padding:14px;
-       border:1px solid rgba(255,255,255,0.06);text-align:center}
+.stat{background:var(--card);border-radius:10px;padding:14px;
+       border:1px solid var(--line);text-align:center}
 .stat-num{font-size:26px;font-weight:700;line-height:1;margin-bottom:3px}
-.stat-lbl{font-size:10px;color:rgba(255,255,255,0.35);
+.stat-lbl{font-size:10px;color:var(--muted);
            text-transform:uppercase;letter-spacing:.06em}
 .grid2{display:grid;grid-template-columns:1fr 1fr;
         gap:16px;margin-bottom:16px}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;
         gap:14px;margin-bottom:16px}
-.card{background:#12122a;border-radius:12px;padding:18px;
-       border:1px solid rgba(255,255,255,0.06)}
+.card{background:var(--card);border-radius:12px;padding:18px;
+       border:1px solid var(--line);box-shadow:0 10px 24px rgba(0,0,0,.2)}
 .card-title{font-size:12px;font-weight:600;
-             color:rgba(255,255,255,0.5);
+             color:var(--muted);
              margin-bottom:14px}
+.insight-val{font-size:24px;font-weight:800;line-height:1;margin-bottom:6px}
+.insight-sub{font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:8px}
+.meter{height:8px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}
+.meter span{display:block;height:100%;width:0;background:linear-gradient(90deg,#FFB300,#E53935);transition:width .4s}
+.mini-list{display:grid;gap:6px}
+.mini-row{font-size:11px;color:var(--muted);padding:6px 8px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.02);border-radius:8px}
 canvas{max-height:200px}
 .persona{display:flex;gap:16px;align-items:flex-start}
 .persona-face{font-size:56px;line-height:1;flex-shrink:0}
@@ -92,6 +116,11 @@ td{padding:7px 8px;border-bottom:1px solid
               background:#FFB300;transition:width .5s}
 .footer{text-align:center;color:rgba(255,255,255,0.2);
           font-size:11px;padding:20px 0;margin-top:8px}
+@media (max-width:980px){
+  .stats-row{grid-template-columns:repeat(2,1fr)}
+  .grid3{grid-template-columns:1fr}
+  .grid2{grid-template-columns:1fr}
+}
 </style>
 </head>
 <body>
@@ -125,6 +154,14 @@ td{padding:7px 8px;border-bottom:1px solid
 </div>
 
 <div class="wrap">
+  <div class="howto">
+    <strong>How to read this dashboard</strong>
+    <ul>
+      <li>Use scenario buttons to simulate user behavior over time.</li>
+      <li>Focus on leak ratio + top PII trend to prioritize habit changes.</li>
+      <li>Use recommended action and policy snapshot to reduce block rate quickly.</li>
+    </ul>
+  </div>
 
   <!-- STATS ROW -->
   <div class="stats-row">
@@ -152,6 +189,32 @@ td{padding:7px 8px;border-bottom:1px solid
       <div class="stat-num" id="statBest" style="color:#43A047">
         4</div>
       <div class="stat-lbl">Best streak ever</div>
+    </div>
+  </div>
+
+  <div class="grid3">
+    <div class="card">
+      <div class="card-title">📉 Exposure ratio</div>
+      <div class="insight-val" id="insightLeakRate" style="color:#FFB300">31.8%</div>
+      <div class="insight-sub" id="insightLeakCopy">Blocked pastes vs total pastes this week.</div>
+      <div class="meter"><span id="insightLeakBar" style="width:31.8%"></span></div>
+    </div>
+    <div class="card">
+      <div class="card-title">🧭 Dominant risk trend</div>
+      <div class="insight-val" id="insightTopPII" style="color:#E57373">API key</div>
+      <div class="insight-sub" id="insightTopPIICopy">Most frequently detected sensitive class this period.</div>
+      <div class="mini-list">
+        <div class="mini-row" id="insightWindow">Riskiest window: 9pm</div>
+        <div class="mini-row" id="insightChannel">Top channel: LLM prompt paste</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">✅ Recommended next action</div>
+      <div class="insight-val" id="insightAction" style="font-size:16px;color:#8DE5D1">Enable auto-redact before external prompts</div>
+      <div class="insight-sub" id="insightActionCopy">This action has the biggest expected reduction in warns/blocks.</div>
+      <div class="mini-list">
+        <div class="mini-row" id="insightImpact">Expected impact: -18% block rate</div>
+      </div>
     </div>
   </div>
 
@@ -199,6 +262,26 @@ td{padding:7px 8px;border-bottom:1px solid
           <span>0</span>
           <span>5</span>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">🛠 Guardrail policy snapshot</div>
+      <div class="mini-list">
+        <div class="mini-row">Silent max score: <strong id="policySilent">30</strong></div>
+        <div class="mini-row">Warn range: <strong id="policyWarn">31-79</strong></div>
+        <div class="mini-row">Block threshold: <strong id="policyBlock">80+</strong></div>
+        <div class="mini-row">Model mode: <strong>TinyBERT + regex + NER</strong></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">🚨 Recent critical moments</div>
+      <div class="mini-list" id="incidentList">
+        <div class="mini-row">09:12 PM · API key blocked before paste</div>
+        <div class="mini-row">08:48 PM · Password pattern flagged and fixed</div>
+        <div class="mini-row">07:31 PM · SSN pattern blocked in prompt draft</div>
       </div>
     </div>
   </div>
@@ -405,6 +488,17 @@ const SCENARIOS = {
   safe: {
     status: "Safe day loaded: mostly clean pastes",
     stats: { privacy: 94, pastes: 122, blocked: 2, streak: 12, best: 16 },
+    policy: { silent: 30, warn: "31-79", block: "80+" },
+    insights: {
+      channel: "Top channel: internal documentation prompts",
+      action: "Keep pre-paste scan enabled for imported notes",
+      impact: "Expected impact: sustain <2% block rate"
+    },
+    incidents: [
+      "10:22 AM · Email address auto-masked before send",
+      "11:41 AM · Phone snippet warned and corrected",
+      "02:18 PM · Safe streak preserved after redaction"
+    ],
     persona: {
       face: "😎",
       name: "Careful Casey",
@@ -425,6 +519,17 @@ const SCENARIOS = {
   mixed: {
     status: "Mixed day loaded: warnings increase and streak drops",
     stats: { privacy: 78, pastes: 376, blocked: 44, streak: 3, best: 9 },
+    policy: { silent: 30, warn: "31-79", block: "80+" },
+    insights: {
+      channel: "Top channel: external client prompt drafts",
+      action: "Default to mask mode before client-facing prompts",
+      impact: "Expected impact: -9% block rate"
+    },
+    incidents: [
+      "08:09 PM · Address + phone combo triggered warning",
+      "08:22 PM · Email dump blocked then fixed",
+      "08:57 PM · Prompt override avoided after rephrase"
+    ],
     persona: {
       face: "😬",
       name: "Rushed Riley",
@@ -445,6 +550,17 @@ const SCENARIOS = {
   critical: {
     status: "Critical day loaded: block-heavy behavior and urgent remediation",
     stats: { privacy: 61, pastes: 493, blocked: 157, streak: 0, best: 4 },
+    policy: { silent: 30, warn: "31-79", block: "80+" },
+    insights: {
+      channel: "Top channel: credential troubleshooting prompts",
+      action: "Enable forced redact + block override confirmation",
+      impact: "Expected impact: -18% block rate"
+    },
+    incidents: [
+      "09:12 PM · API key blocked before paste",
+      "08:48 PM · Password pattern flagged and fixed",
+      "07:31 PM · SSN pattern blocked in prompt draft"
+    ],
     persona: {
       face: "😱",
       name: "Danger Dave",
@@ -465,6 +581,17 @@ const SCENARIOS = {
   recovery: {
     status: "Recovery week loaded: hygiene improves and blocks fall",
     stats: { privacy: 88, pastes: 350, blocked: 24, streak: 8, best: 12 },
+    policy: { silent: 30, warn: "31-79", block: "80+" },
+    insights: {
+      channel: "Top channel: knowledge-base-assisted prompts",
+      action: "Keep redact-by-default and monitor evening sessions",
+      impact: "Expected impact: sustain >85 privacy score"
+    },
+    incidents: [
+      "07:10 PM · Token-like text masked automatically",
+      "06:42 PM · Warning resolved with one-click rephrase",
+      "05:56 PM · No critical blocks in last 24h"
+    ],
     persona: {
       face: "🙂",
       name: "Reforming Robin",
@@ -601,6 +728,21 @@ function applyScenario(name){
   document.getElementById("personaMsg").innerHTML = cfg.persona.msg;
   renderTips(cfg.persona.tips);
   document.getElementById("riskyHourTxt").textContent = cfg.riskyHour;
+  const leakRate = cfg.stats.pastes > 0 ? (cfg.stats.blocked / cfg.stats.pastes) * 100 : 0;
+  document.getElementById("insightLeakRate").textContent = `${leakRate.toFixed(1)}%`;
+  document.getElementById("insightLeakBar").style.width = `${Math.min(100, leakRate)}%`;
+  document.getElementById("insightLeakCopy").textContent = `Blocked ${cfg.stats.blocked} out of ${cfg.stats.pastes} pastes this week.`;
+  const topPII = cfg.pii.labels[0] || "low";
+  document.getElementById("insightTopPII").textContent = String(topPII).toUpperCase();
+  document.getElementById("insightTopPIICopy").textContent = `Most frequent sensitive class in this scenario: ${topPII}.`;
+  document.getElementById("insightWindow").textContent = `Riskiest window: ${cfg.riskyHour}`;
+  document.getElementById("insightChannel").textContent = cfg.insights.channel;
+  document.getElementById("insightAction").textContent = cfg.insights.action;
+  document.getElementById("insightImpact").textContent = cfg.insights.impact;
+  document.getElementById("policySilent").textContent = String(cfg.policy.silent);
+  document.getElementById("policyWarn").textContent = cfg.policy.warn;
+  document.getElementById("policyBlock").textContent = cfg.policy.block;
+  document.getElementById("incidentList").innerHTML = cfg.incidents.map((row) => `<div class=\"mini-row\">${row}</div>`).join("");
   setDemoStatus(cfg.status);
   if (trendChart) {
     trendChart.data.datasets[0].data = cfg.trend.block;

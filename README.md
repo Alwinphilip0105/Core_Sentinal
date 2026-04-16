@@ -87,18 +87,14 @@ If you're new to Core Sentinel, use this order:
 | Privacy policy | No real user clipboard data required for base training |
 | Deployment target | Local desktop inference |
 
-### Current benchmark snapshot
+### Metrics and benchmarks
 
-| Metric | Value |
-|---|---|
-| High-class Precision | 0.976 |
-| High-class Recall | 0.987 |
-| High-class F1 | 0.982 |
-| Overall Accuracy | 97.0% |
-| Macro F1 | 0.790 |
-| ROC-AUC (dashboard target) | up to 0.998 |
+Numbers change with each train/eval run. After `python evaluate_test.py`, open:
 
-For full metrics and evaluation scripts, see `core-sentinel-guardrail/evaluate_test.py` and generated reports under `core-sentinel-guardrail/reports/`.
+- `core-sentinel-guardrail/reports/train_eval_summary.json` — validation **best** checkpoint (macro-F1, per-class recall).
+- `core-sentinel-guardrail/reports/pr_curve_summary.json` — test PR/AUPRC plus **`safety_profile`** (counts where true **high** is predicted as **low** vs **med**, and benign rows flagged as high).
+
+**Product priority:** a guardrail should not optimize headline accuracy at the expense of letting **high/critical** content look “safe” while **low-risk** text is over-penalized. Evaluation and threshold calibration treat **high recall** and **missed-high-as-low** errors as first-class; macro-F1 remains a summary, not the sole objective.
 
 ## Dashboards
 
@@ -120,13 +116,13 @@ Core Sentinel ships with multiple dashboards for users, operators, and admins.
 
 ![ML Dashboard Preview](docs/ml-health-preview-final.png)
 
-### Fleet Admin Dashboard
+### Admin Dashboard
 
 - Organization-level monitoring
 - Alert and policy controls
 - Risk category rollups
 
-![Fleet Dashboard Preview](docs/admin-preview-redesign-demo.png)
+![Admin Dashboard Preview](docs/admin-preview-redesign-demo.png)
 
 Additional UI previews:
 
@@ -233,6 +229,14 @@ Core_Sentinal/
 For a detailed folder map, see [REPO_LAYOUT.md](REPO_LAYOUT.md).
 
 ## Training and Evaluation
+
+### Safety-first metrics (evaluation + calibration)
+
+- **`evaluate_test.py`** prints a **Safety-oriented profile** and writes `safety_profile` into `reports/pr_curve_summary.json`: worst cases are **true high → predicted low**; secondary noise is **true low/med → predicted high**.
+- **`calibrate_thresholds.py --validation-sweep`** only recommends `(prob_threshold_high, prob_threshold_med)` pairs that satisfy **min high recall** (`GUARDRAIL_CALIB_MIN_HIGH_RECALL`, default `0.85`), **max FPR** (`GUARDRAIL_CALIB_MAX_FPR`), and **min med recall** (`GUARDRAIL_CALIB_MIN_MED_RECALL`), unless no feasible pair exists (then it falls back to best unconstrained recall and prints a warning).
+- Runtime policy still combines the classifier with **regex / critical-secret** paths so “critical” is not only softmax accuracy.
+- Optional **curated pools**: add `data/extra_pools/*.jsonl` (high lines + hard-negative low/med); see `core-sentinel-guardrail/data/extra_pools/README.txt` and `FEEDBACK_TRAINING_LOOP.md` §B2.
+- **Production-quality real data:** place corpora under `data/patronus`, `data/enron_real`, `data/kaggle_sensitive`, `data/business_real`, enable BigCode via HF login—see **`core-sentinel-guardrail/data/PRODUCTION_DATA.md`**. Run **`python check_training_data.py`** in `core-sentinel-guardrail/` to see what is present locally (no downloads).
 
 ### Typical workflow
 

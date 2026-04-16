@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+<meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Core Sentinel — AI Clipboard Guardian | Protect PII from LLM Leaks</title>
   <meta name="description" content="Real-time clipboard monitoring that detects and remediates PII before it reaches ChatGPT, Claude, or any AI. Open-source, privacy-first.">
@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <style>
+<style>
     :root {
       --bg: #0a0a0f;
       --card-bg: #1C1C1E;
@@ -596,7 +596,7 @@
       .stats-grid { grid-template-columns: 1fr; }
       .quick-actions { grid-template-columns: 1fr; }
     }
-  </style>
+</style>
 </head>
 <body>
   <header class="topnav">
@@ -613,13 +613,13 @@
         <div id="connStatus" class="mini-note" style="display:none;">
           <span id="connDot" class="live-dot" style="background:#555;animation:none;"></span>
           <span id="connText">Not connected</span>
-        </div>
-        <div id="hdrAdminSlot">
+    </div>
+    <div id="hdrAdminSlot">
           <button type="button" id="adminBtn" class="btn btn-outline" onclick="showAdminLogin()">🔒 Admin</button>
         </div>
-      </div>
     </div>
-  </header>
+  </div>
+</header>
 
   <main class="wrap">
     <section class="welcome">
@@ -632,12 +632,12 @@
         <p style="margin-top:8px;font-size:12px;color:rgba(245,247,255,0.64);">
           Current production support: Windows 10/11. Linux and iOS support are planned for a future version.
         </p>
-      </div>
+    </div>
       <div class="pill-demo" aria-label="Sentinel pill widget preview">
         <span class="traffic"></span>
         <span class="pill-core"><img src="favicon.svg" alt="Core Sentinel logo" style="width:22px;height:22px;border-radius:6px;"></span>
         <div class="pill-text">Clipboard monitored · Risk engine active</div>
-      </div>
+    </div>
     </section>
 
     <section class="onboard">
@@ -675,17 +675,18 @@
         <div class="stat-sub" id="msLiveSub"><span class="live-dot"></span>Live</div>
       </article>
       <article class="stat-card">
-        <div class="stat-lbl">Model Accuracy</div>
+        <div class="stat-lbl">Model Quality</div>
         <div class="accuracy-wrap">
           <svg viewBox="0 0 84 84" role="img" aria-label="Model accuracy gauge">
             <circle cx="42" cy="42" r="30" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="8"></circle>
             <circle id="accArc" cx="42" cy="42" r="30" fill="none" stroke="#02C39A" stroke-width="8" stroke-linecap="round" stroke-dasharray="188.5" stroke-dashoffset="188.5" transform="rotate(-90 42 42)"></circle>
           </svg>
           <div>
-            <div class="stat-val" style="font-size:1.35rem;margin-top:0;">97.6%</div>
-            <div class="accuracy-mini">Production eval benchmark</div>
-          </div>
-        </div>
+            <div id="modelKpiPrimary" class="stat-val" style="font-size:1.35rem;margin-top:0;">F1 0.826</div>
+            <div id="modelKpiSub" class="accuracy-mini">Recall (L/M/H): 1.00 / 0.41 / 0.99</div>
+            <div id="modelKpiSafety" class="accuracy-mini" style="margin-top:6px;opacity:0.88;font-size:0.78rem;line-height:1.35;">Safety first: catching high/critical risk matters more than a single headline score—see repo README (Training and Evaluation).</div>
+    </div>
+  </div>
       </article>
     </section>
 
@@ -694,7 +695,7 @@
         <div class="card-head">
           <span class="card-ic">🛡️</span>
           <h2 class="card-title">Privacy Dashboard</h2>
-        </div>
+      </div>
         <p class="card-sub">Charts, streaks, paste history, risk timeline from local data</p>
         <ul class="card-list">
           <li>Risk trend over time + high-risk windows</li>
@@ -712,7 +713,7 @@
               </linearGradient>
             </defs>
           </svg>
-        </div>
+      </div>
         <p class="card-note">Why click: understand personal exposure patterns and where leaks are happening.</p>
       </a>
 
@@ -720,7 +721,7 @@
         <div class="card-head">
           <span class="card-ic">🧠</span>
           <h2 class="card-title">ML Health Dashboard</h2>
-        </div>
+      </div>
         <p class="card-sub">Precision-Recall curves, confusion matrix, drift detection, threshold simulator</p>
         <ul class="card-list">
           <li>Class-level precision/recall and confusion matrix</li>
@@ -781,7 +782,7 @@
         <div class="card-head">
           <span class="card-ic">📜</span>
           <h2 class="card-title">Recent Activity</h2>
-        </div>
+    </div>
         <p class="card-sub">Last 20 paste events with risk scores and actions taken</p>
         <div class="table-wrap">
           <table>
@@ -803,7 +804,7 @@
         <div class="card-head">
           <span class="card-ic">🧪</span>
           <h2 class="card-title">Feedback & Active Learning</h2>
-        </div>
+      </div>
         <p class="card-sub">Your corrections improve the model. See training progress and impact.</p>
         <ul class="card-list">
           <li>Correction volume by class and direction</li>
@@ -814,12 +815,12 @@
           <span class="chip" id="fbCollected">47 corrections collected</span>
           <span class="chip" id="fbUsed">12 used for training</span>
           <span class="chip" id="fbNext">Next retrain: 53 more needed</span>
-        </div>
+      </div>
         <div class="chips" id="fbPatternChips">
           <span class="chip" id="fbPattern1">Pattern: high→med (12)</span>
           <span class="chip" id="fbPattern2">Pattern: med→low (9)</span>
           <span class="chip" id="fbPattern3">Pattern: high→low (6)</span>
-        </div>
+    </div>
         <div class="progress" aria-label="retrain progress">
           <span id="fbProgress"></span>
         </div>
@@ -846,7 +847,7 @@
             ondragleave="this.style.borderColor='rgba(255,255,255,0.15)'"
             ondrop="handleKBDrop(event)">
             Drop files here or click to upload
-          </div>
+  </div>
           <input type="file" id="kbFile" accept=".pdf,.docx,.txt,.yaml,.yml" multiple style="display:none" onchange="handleKBFiles(this.files)">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
             <select id="kbCategory" class="inp" style="font-size:12px;">
@@ -863,7 +864,7 @@
               <option value="warn" selected>Warn</option>
               <option value="silent">Silent</option>
             </select>
-          </div>
+</div>
           <button type="button" class="btn-panel" style="margin-top:8px;" onclick="uploadKB()">Upload to Knowledge Base</button>
           <div id="kbStatus" class="mini-note" style="margin-top:8px;min-height:16px;color:#9de7d0;"></div>
         </div>
@@ -875,20 +876,20 @@
     </section>
   </main>
 
-  <div id="toast"></div>
+<div id="toast"></div>
   <div id="adminPanelBg" onclick="closeAdminPanel()"></div>
 
   <aside id="adminPanel">
-    <button type="button" id="adminPanelClose" onclick="closeAdminPanel()" aria-label="Close">×</button>
+  <button type="button" id="adminPanelClose" onclick="closeAdminPanel()" aria-label="Close">×</button>
     <div id="adminLoginBlock" style="display:flex;flex-direction:column;gap:10px;">
       <div style="font-size:16px;font-weight:700;">🔒 Admin access</div>
       <div class="mini-note">Enter credentials to unlock admin and configuration controls.</div>
-      <input type="email" id="admEmail" class="inp" placeholder="Email" autocomplete="username">
-      <input type="password" id="admPass" class="inp" placeholder="Password" autocomplete="current-password">
-      <input type="password" id="admKey" class="inp" placeholder="Access key" autocomplete="off">
-      <div class="err" id="admErr"></div>
+    <input type="email" id="admEmail" class="inp" placeholder="Email" autocomplete="username">
+    <input type="password" id="admPass" class="inp" placeholder="Password" autocomplete="current-password">
+    <input type="password" id="admKey" class="inp" placeholder="Access key" autocomplete="off">
+    <div class="err" id="admErr"></div>
       <button type="button" class="btn-panel" onclick="submitAdminLogin()">Sign in</button>
-    </div>
+  </div>
 
     <div id="adminSettings" style="display:none;gap:10px;">
       <div style="font-size:13px;font-weight:700;margin-top:8px;">⚙ System Configuration</div>
@@ -929,7 +930,12 @@
     const ADMIN_KEY = "sentinel2026";
     const SESSION_KEY = "hub_admin_session";
     const SESSION_MS = 8 * 60 * 60 * 1000;
-    const ACCURACY = 97.6;
+    const MODEL_KPI_DEFAULT = {
+      macroF1: 0.826,
+      recallLow: 1.0,
+      recallMed: 0.413,
+      recallHigh: 0.989
+    };
     let _lastActivityRows = [];
 
     function showToast(msg, color) {
@@ -1006,15 +1012,15 @@
     }
 
     function syncAdminPanelContent() {
-      const loggedIn = !!getAdminSession();
+  const loggedIn = !!getAdminSession();
       const loginBlock = document.getElementById("adminLoginBlock");
       const settings = document.getElementById("adminSettings");
       if (!loginBlock || !settings) return;
       if (loggedIn) {
         loginBlock.style.display = "none";
         settings.style.display = "grid";
-        loadSavedConfig();
-      } else {
+    loadSavedConfig();
+  } else {
         loginBlock.style.display = "flex";
         settings.style.display = "none";
       }
@@ -1058,8 +1064,8 @@
         if (fleetLockExplain) fleetLockExplain.style.display = "block";
         if (fleetWhyOpen) fleetWhyOpen.style.display = "none";
       }
-      syncAdminPanelContent();
-    }
+  syncAdminPanelContent();
+}
 
     function saveConfig() {
       const url = (document.getElementById("cfgUrl").value || "").trim();
@@ -1131,6 +1137,66 @@
       arc.style.strokeDashoffset = String(circumference * (1 - pct / 100));
     }
 
+    function _deriveLocalMiniStatsFromRows(rows) {
+      const arr = Array.isArray(rows) ? rows : [];
+      const total = arr.length;
+      let streak = 0;
+      for (const raw of arr) {
+        const ev = normalizeEvent(raw);
+        const a = String(ev.action || "").toLowerCase();
+        if (a === "warn" || a === "block") break;
+        streak += 1;
+      }
+      return { streak, total };
+    }
+
+    async function loadModelKpis() {
+      const primary = document.getElementById("modelKpiPrimary");
+      const sub = document.getElementById("modelKpiSub");
+      if (!primary || !sub) return;
+
+      let kpi = { ...MODEL_KPI_DEFAULT };
+      try {
+        const raw = localStorage.getItem("sentinel_model_kpis");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object") kpi = { ...kpi, ...parsed };
+        }
+      } catch {
+        // ignore malformed cache
+      }
+
+      const candidates = [
+        "../core-sentinel-guardrail/reports/train_eval_summary.json",
+        "../../core-sentinel-guardrail/reports/train_eval_summary.json",
+        "/core-sentinel-guardrail/reports/train_eval_summary.json"
+      ];
+      for (const url of candidates) {
+        try {
+          const r = await fetch(url, { cache: "no-store" });
+          if (!r.ok) continue;
+          const j = await r.json();
+          const best = j && j.best ? j.best : null;
+          if (!best) continue;
+          kpi = {
+            macroF1: Number(best.eval_f1 || kpi.macroF1 || 0),
+            recallLow: Number(best.eval_recall_low || kpi.recallLow || 0),
+            recallMed: Number(best.eval_recall_med || kpi.recallMed || 0),
+            recallHigh: Number(best.eval_recall_high || kpi.recallHigh || 0)
+          };
+          localStorage.setItem("sentinel_model_kpis", JSON.stringify(kpi));
+          break;
+        } catch {
+          // continue
+        }
+      }
+
+      const qualityPct = Math.max(0, Math.min(100, (Number(kpi.macroF1) || 0) * 100));
+      applyAccuracyGauge(qualityPct);
+      primary.textContent = `F1 ${Number(kpi.macroF1 || 0).toFixed(3)}`;
+      sub.textContent = `Recall (L/M/H): ${Number(kpi.recallLow || 0).toFixed(2)} / ${Number(kpi.recallMed || 0).toFixed(2)} / ${Number(kpi.recallHigh || 0).toFixed(2)}`;
+    }
+
     async function loadMiniStats() {
       let streak = Number(localStorage.getItem("sentinel_streak") || 0);
       let total = Number(localStorage.getItem("sentinel_total") || 0);
@@ -1146,10 +1212,25 @@
       const url = localStorage.getItem("sb_url");
       const key = localStorage.getItem("sb_key");
       if (!url || !key) {
+        try {
+          const localRows = JSON.parse(localStorage.getItem("sentinel_recent_events") || "[]");
+          if (Array.isArray(localRows) && localRows.length) {
+            const fallback = _deriveLocalMiniStatsFromRows(localRows);
+            streak = fallback.streak;
+            total = fallback.total;
+            localStorage.setItem("sentinel_streak", String(streak));
+            localStorage.setItem("sentinel_total", String(total));
+            if (streakEl) streakEl.textContent = String(streak);
+            if (totalEl) totalEl.textContent = String(total);
+            if (streakSub) streakSub.textContent = streak > 10 ? "🔥 streak on fire" : "sentinel_streak";
+          }
+        } catch {
+          // ignore local fallback parse issues
+        }
         if (liveEl) liveEl.textContent = "—";
         if (liveSub) liveSub.innerHTML = "<span class='live-dot' style='background:#555;animation:none;'></span>Not configured";
-        return;
-      }
+    return;
+  }
       if (liveEl) liveEl.textContent = "...";
       if (liveSub) liveSub.innerHTML = "<span class='live-dot' style='background:#FFB300;animation:none;'></span>Loading";
       try {
@@ -1194,6 +1275,21 @@
         if (liveEl) liveEl.textContent = String(count);
         if (liveSub) liveSub.innerHTML = "<span class='live-dot'></span>Live";
       } catch {
+        try {
+          const localRows = JSON.parse(localStorage.getItem("sentinel_recent_events") || "[]");
+          if (Array.isArray(localRows) && localRows.length) {
+            const fallback = _deriveLocalMiniStatsFromRows(localRows);
+            streak = fallback.streak;
+            total = fallback.total;
+            localStorage.setItem("sentinel_streak", String(streak));
+            localStorage.setItem("sentinel_total", String(total));
+            if (streakEl) streakEl.textContent = String(streak);
+            if (totalEl) totalEl.textContent = String(total);
+            if (streakSub) streakSub.textContent = streak > 10 ? "🔥 streak on fire" : "sentinel_streak";
+          }
+        } catch {
+          // ignore local fallback parse issues
+        }
         if (liveEl) liveEl.textContent = "—";
         if (liveSub) liveSub.innerHTML = "<span class='live-dot' style='background:#E53935;animation:none;'></span>Unavailable";
       }
@@ -1236,7 +1332,7 @@
       const key = localStorage.getItem("sb_key");
       if (url && key) {
         try {
-          const r = await fetch(
+    const r = await fetch(
             url.replace(/\/$/, "") + "/rest/v1/guardrail_events?select=timestamp,risk_score,action,pii_classes,llm_name,text_hash&order=timestamp.desc.nullslast&limit=20",
             { headers: { apikey: key, Authorization: "Bearer " + key } }
           );
@@ -1435,7 +1531,7 @@
         });
         if (hits > 0) {
           showToast(`Scan complete: ${hits} potential PII pattern(s) found`, "#FFB300");
-        } else {
+  } else {
           showToast("Scan complete: no obvious PII patterns found", "#02C39A");
         }
       };
@@ -1466,6 +1562,7 @@
     async function refreshHubData() {
       await testConnection();
       await loadMiniStats();
+      await loadModelKpis();
       const events = await fetchActivity();
       _lastActivityRows = events;
       renderActivity(events);
@@ -1478,17 +1575,17 @@
     }
 
     function handleKBDrop(e) {
-      e.preventDefault();
+  e.preventDefault();
       document.getElementById("dropZone").style.borderColor = "rgba(255,255,255,0.15)";
-      handleKBFiles(e.dataTransfer.files);
-    }
+  handleKBFiles(e.dataTransfer.files);
+}
 
     function handleKBFiles(files) {
       if (!files.length) return;
       const names = Array.from(files).map((f) => f.name).join(", ");
       document.getElementById("kbStatus").textContent = "Ready to upload: " + names;
-      window._kbPendingFiles = files;
-    }
+  window._kbPendingFiles = files;
+}
 
     function readFileText(file) {
       return new Promise((res, rej) => {
@@ -1529,43 +1626,43 @@
         statusEl.textContent = "Please select files first.";
         return;
       }
-      const SB_URL = sbBase();
+  const SB_URL = sbBase();
       const SB_KEY = localStorage.getItem("sb_key");
       if (!SB_URL || !SB_KEY) {
         statusEl.textContent = "Configure Supabase first in Admin settings.";
-        return;
-      }
+    return;
+  }
       statusEl.textContent = "Processing files...";
       try {
         for (const file of files) {
-          const text = await readFileText(file);
-          const patterns = extractPatterns(text, category);
+      const text = await readFileText(file);
+      const patterns = extractPatterns(text, category);
           const res = await fetch(SB_URL + "/rest/v1/kb_entries", {
             method: "POST",
-            headers: {
+        headers: {
               apikey: SB_KEY,
               Authorization: "Bearer " + SB_KEY,
               "Content-Type": "application/json",
               Prefer: "return=minimal"
-            },
-            body: JSON.stringify({
-              filename: file.name,
+        },
+        body: JSON.stringify({
+          filename: file.name,
               category,
-              risk_level: risk,
+          risk_level: risk,
               patterns,
-              raw_length: text.length,
-              uploaded_at: new Date().toISOString(),
-              active: true
-            })
-          });
+          raw_length: text.length,
+          uploaded_at: new Date().toISOString(),
+          active: true
+        })
+      });
           if (!res.ok) {
-            const t = await res.text();
+        const t = await res.text();
             throw new Error(t.slice(0, 140) || res.statusText);
-          }
-        }
+      }
+    }
         statusEl.textContent = "Uploaded successfully.";
-        window._kbPendingFiles = null;
-        loadKBEntries();
+    window._kbPendingFiles = null;
+    loadKBEntries();
         showToast("Knowledge base updated", "#02C39A");
       } catch (err) {
         statusEl.textContent = "Upload failed: " + (err.message || String(err));
@@ -1591,34 +1688,34 @@
     async function loadKBEntries() {
       const listEl = document.getElementById("kbList");
       if (!listEl) return;
-      const SB_URL = sbBase();
+  const SB_URL = sbBase();
       const SB_KEY = localStorage.getItem("sb_key");
       if (!SB_URL || !SB_KEY) {
         listEl.innerHTML = "<div class='mini-note'>Configure Supabase to view KB entries.</div>";
-        return;
-      }
+    return;
+  }
       try {
         const r = await fetch(SB_URL + "/rest/v1/kb_entries?select=*&order=uploaded_at.desc", {
           headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
         });
         if (!r.ok) throw new Error(await r.text());
-        const entries = await r.json();
+    const entries = await r.json();
         if (!entries.length) {
           listEl.innerHTML = "<div class='mini-note'>No KB entries yet.</div>";
-          return;
-        }
+      return;
+    }
         listEl.innerHTML = entries.map((e) => {
-          const id = encodeURIComponent(String(e.id));
+      const id = encodeURIComponent(String(e.id));
           const c = escapeHtml(String(e.category || "").toUpperCase());
           const f = escapeHtml(e.filename || "file");
           const p = patternCountSafe(e.patterns);
           return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.08)">
-            <div style="flex:1">
+        <div style="flex:1">
               <div style="font-size:12px;font-weight:600">${f}</div>
               <div class="mini-note">${c} · ${p} patterns</div>
-            </div>
+          </div>
             <button type="button" class="qa-btn kb-del" data-kb-id="${id}" style="padding:6px 8px;font-size:11px;">Remove</button>
-          </div>`;
+      </div>`;
         }).join("");
       } catch {
         listEl.innerHTML = "<div class='mini-note' style='color:#ffb3b1;'>Could not load KB entries.</div>";
@@ -1626,7 +1723,7 @@
     }
 
     async function deleteKB(id) {
-      const SB_URL = sbBase();
+  const SB_URL = sbBase();
       const SB_KEY = localStorage.getItem("sb_key");
       if (!SB_URL || !SB_KEY) return;
       try {
@@ -1635,7 +1732,7 @@
           headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
         });
         if (!r.ok) throw new Error(await r.text());
-        loadKBEntries();
+    loadKBEntries();
         showToast("KB entry removed", "#E53935");
       } catch {
         showToast("Remove failed", "#E53935");
@@ -1660,10 +1757,10 @@
     });
 
     (async function init() {
-      applyAccuracyGauge(ACCURACY);
-      applyAdminState(!!getAdminSession());
+      await loadModelKpis();
+  applyAdminState(!!getAdminSession());
       await refreshHubData();
-    })();
-  </script>
+})();
+</script>
 </body>
 </html>

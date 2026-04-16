@@ -1,14 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+<meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Core Sentinel - Fleet Admin Dashboard</title>
   <link rel="icon" type="image/svg+xml" href="../favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <style>
+<style>
     :root{
       --bg:#080810;
       --card:#111118;
@@ -25,7 +25,7 @@
       --maxw:1380px;
     }
 
-    *{box-sizing:border-box;margin:0;padding:0}
+*{box-sizing:border-box;margin:0;padding:0}
     body{
       font-family:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
       background:radial-gradient(1200px 420px at 80% -8%, rgba(0,191,165,0.12), transparent 55%),var(--bg);
@@ -249,8 +249,8 @@
         <button class="link-btn" id="demoModeBtn">View Demo Mode</button>
       </div>
       <p class="hint">Configure Supabase credentials in Settings to enable fleet features.</p>
+      </div>
     </div>
-  </div>
 
   <header class="topbar">
     <div class="container topbar-inner">
@@ -264,7 +264,7 @@
         <span class="avatar" id="adminAvatar">A</span>
         <button class="btn" id="signOutBtn">Sign Out</button>
         <a class="btn" href="../hub.html">← Back to Hub</a>
-      </div>
+    </div>
     </div>
   </header>
 
@@ -272,18 +272,18 @@
     <div id="skeletonRows">
       <div class="skeleton-row skeleton-5">
         <div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div>
-      </div>
+    </div>
       <div class="skeleton-row skeleton-2">
         <div class="sk" style="min-height:260px"></div><div class="sk" style="min-height:260px"></div>
-      </div>
+  </div>
       <div class="skeleton-row skeleton-2">
         <div class="sk" style="min-height:260px"></div><div class="sk" style="min-height:260px"></div>
-      </div>
+    </div>
       <div class="skeleton-row skeleton-2">
         <div class="sk" style="min-height:220px"></div><div class="sk" style="min-height:220px"></div>
-      </div>
-      <div class="skeleton-row"><div class="sk" style="min-height:360px"></div></div>
     </div>
+      <div class="skeleton-row"><div class="sk" style="min-height:360px"></div></div>
+  </div>
 
     <div id="dashboardRows">
       <section class="row row-5">
@@ -329,7 +329,7 @@
               </thead>
               <tbody id="userRows"></tbody>
             </table>
-          </div>
+  </div>
         </article>
 
         <article class="card">
@@ -355,8 +355,8 @@
               <div>Critical items remediated: <strong id="cCritical">100%</strong></div>
               <div>Average response time: <strong id="cLatency">2.3s</strong></div>
               <button class="btn" id="exportComplianceBtn">Export Compliance Report (PDF)</button>
-            </div>
-          </div>
+    </div>
+    </div>
         </article>
 
         <article class="card">
@@ -371,7 +371,7 @@
             <input class="input" id="recipientInput" placeholder="security@org.com, soc@org.com">
             <div class="recipient-wrap" id="recipientChips"></div>
             <button class="btn btn-accent" id="saveAlertCfgBtn">Save Configuration</button>
-          </div>
+  </div>
         </article>
       </section>
 
@@ -402,21 +402,21 @@
                 </tr>
               </thead>
               <tbody id="auditRows"></tbody>
-            </table>
-          </div>
+    </table>
+  </div>
           <div class="pager">
             <span id="pageInfo">Showing 1-25 of 100</span>
             <div style="display:flex;gap:8px">
               <button class="btn" id="prevPageBtn">Prev</button>
               <button class="btn" id="nextPageBtn">Next</button>
-            </div>
-          </div>
+</div>
+</div>
         </article>
       </section>
-    </div>
+</div>
   </main>
 
-  <script>
+<script>
     const SESSION_KEY = "hub_admin_session";
     const SESSION_MS = 8 * 60 * 60 * 1000;
     const ADMIN_PASSWORD = localStorage.getItem("core_admin_password") || "sentinel2026";
@@ -612,8 +612,8 @@
         state.feedback = [];
         renderAll();
         setLoading(false);
-        return;
-      }
+    return;
+  }
       try {
         const resp = await fetch(`${url}/rest/v1/guardrail_events?select=*&order=timestamp.desc.nullslast&limit=3500`, {
           headers: authHeaders(), cache: "no-store"
@@ -1104,7 +1104,7 @@
         state.demoMode = true;
         setGate(false);
         applyAdminIdentity("demo@core-sentinel.local", "Demo Organization");
-        loadData();
+    loadData();
         return;
       }
       const s = getSession();
@@ -1112,7 +1112,7 @@
         setGate(false);
         applyAdminIdentity();
         loadData();
-      } else {
+  } else {
         setGate(true);
         applyAdminIdentity("admin@core-sentinel.local", "Demo Organization");
       }
@@ -1122,6 +1122,6 @@
     bindUI();
     initAlertConfig();
     initGate();
-  </script>
+</script>
 </body>
 </html>

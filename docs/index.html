@@ -54,6 +54,18 @@
       opacity: 0.08;
       z-index: 0;
     }
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image: url("favicon.svg");
+      background-repeat: no-repeat;
+      background-position: center 56%;
+      background-size: min(42vw, 420px);
+      opacity: 0.045;
+      z-index: 0;
+    }
 
     a { color: inherit; text-decoration: none; }
     .container { width: min(var(--maxw), calc(100% - 44px)); margin: 0 auto; position: relative; z-index: 1; }
@@ -90,12 +102,18 @@
       width: 28px;
       height: 28px;
       border-radius: 8px;
-      background: linear-gradient(140deg, #0dc9a3, #078f74);
-      display: grid;
-      place-items: center;
-      color: #05241d;
-      font-size: 14px;
-      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12) inset;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: #0a0a0f;
+    }
+    .brand-mark img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      border-radius: 8px;
     }
     .nav-links {
       display: flex;
@@ -143,6 +161,7 @@
     }
 
     section { padding: 94px 0; position: relative; }
+    section[id], [id] { scroll-margin-top: 80px; }
     section:not(.hero)::before {
       content: "";
       position: absolute;
@@ -184,12 +203,29 @@
       display: grid;
       align-items: center;
       padding: 56px 0 42px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background-image: url("favicon.svg");
+      background-repeat: no-repeat;
+      background-position: 68% 46%;
+      background-size: min(52vw, 560px);
+      opacity: 0.06;
+      filter: saturate(0.85);
+      z-index: 0;
     }
     .hero-grid {
       display: grid;
       grid-template-columns: 1.05fr 0.95fr;
       gap: 34px;
       align-items: center;
+      position: relative;
+      z-index: 1;
     }
     .hero h1 {
       font-size: clamp(2.2rem, 5.3vw, 4rem);
@@ -662,23 +698,27 @@
     .use-grid {
       margin-top: 24px;
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 14px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      align-items: stretch;
     }
     .persona {
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(2, 195, 154, 0.05));
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 18px;
+      min-height: 220px;
+      height: 100%;
+      background: #1C1C1E;
+      border: 1px solid rgba(2, 195, 154, 0.1);
+      border-radius: 12px;
+      padding: 24px;
       display: grid;
       grid-template-columns: 56px 1fr;
       gap: 14px;
       align-items: start;
-      transition: transform 0.22s ease, border-color 0.22s ease;
+      transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
     }
     .persona:hover {
       transform: translateY(-4px);
       border-color: rgba(2, 195, 154, 0.35);
+      box-shadow: 0 10px 28px rgba(2, 195, 154, 0.18);
     }
     .avatar {
       width: 56px;
@@ -688,10 +728,15 @@
       border: 1px solid rgba(2, 195, 154, 0.4);
       display: grid;
       place-items: center;
-      font-size: 24px;
+      font-size: 36px;
     }
-    .persona h3 { font-size: 1.02rem; margin-bottom: 7px; }
-    .persona p { color: var(--muted); font-size: 14px; }
+    .persona h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 7px;
+    }
+    .persona p { color: #9ca3af; font-size: 14px; }
 
     .feature-list {
       margin-top: 18px;
@@ -825,15 +870,14 @@
   <header class="topnav">
     <div class="container topnav-inner">
       <a href="#hero" class="brand">
-        <span class="brand-mark">🛡</span>
+        <span class="brand-mark"><img src="favicon.svg" alt="Core Sentinel logo"></span>
         <span>Core Sentinel</span>
       </a>
       <nav class="nav-links">
-        <a class="nav-link" href="#features">Features</a>
+        <a class="nav-link" href="#use-cases">Use Cases</a>
+        <a class="nav-link" href="#live-demo">Live Demo</a>
         <a class="nav-link" href="#how-it-works">How It Works</a>
         <a class="nav-link" href="#architecture">Architecture</a>
-        <a class="nav-link" href="#live-demo">Live Demo</a>
-        <a class="nav-link" href="#use-cases">Use Cases</a>
         <a href="hub.html">Hub</a>
         <a href="https://github.com/Alwinphilip0105/Core_Sentinal" target="_blank" rel="noopener">GitHub</a>
         <a class="nav-cta" href="hub.html">Try It</a>
@@ -887,6 +931,43 @@
       </div>
     </section>
 
+    <section id="use-cases">
+      <div class="container">
+        <span class="eyebrow fade-in">Who Is This For</span>
+        <h2 class="section-title fade-in">Use cases across high-trust industries</h2>
+        <div class="use-grid">
+          <article class="persona fade-in">
+            <div class="avatar">👨‍💻</div>
+            <div>
+              <h3>Developers</h3>
+              <p>Stop pasting stack traces with API keys, database URIs, and internal IPs into ChatGPT. Sentinel catches credentials even when they're embedded in code.</p>
+            </div>
+          </article>
+          <article class="persona fade-in">
+            <div class="avatar">🏥</div>
+            <div>
+              <h3>Healthcare / HIPAA</h3>
+              <p>Patient names, DOBs, diagnoses, and medication lists get flagged before they reach any AI. Maintain HIPAA compliance effortlessly.</p>
+            </div>
+          </article>
+          <article class="persona fade-in">
+            <div class="avatar">💼</div>
+            <div>
+              <h3>Finance / SOX</h3>
+              <p>Account numbers, transaction details, SSNs in financial documents — Sentinel blocks them from reaching uncontrolled AI endpoints.</p>
+            </div>
+          </article>
+          <article class="persona fade-in">
+            <div class="avatar">⚖️</div>
+            <div>
+              <h3>Enterprise / Legal</h3>
+              <p>Contracts with party names, case numbers, privileged communications — keep attorney-client privilege intact when using AI assistants.</p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
     <section id="live-demo">
       <div class="container">
         <span class="eyebrow fade-in">Try It Live</span>
@@ -898,7 +979,7 @@
           <strong>New here? Start in 3 steps</strong>
           <ol>
             <li>Run the live widget walkthrough in this section.</li>
-            <li>Open the Dashboard Hub to compare Privacy, ML, and Fleet views.</li>
+            <li>Open the Dashboard Hub to compare Privacy, ML, and Admin views.</li>
             <li>Review the architecture section below to understand detection + remediation flow.</li>
           </ol>
         </div>
@@ -912,7 +993,7 @@
       </div>
     </section>
 
-    <section id="features">
+    <section id="problem">
       <div class="container">
         <span class="eyebrow fade-in">The Problem</span>
         <h2 class="section-title fade-in">Every paste is a potential data leak</h2>
@@ -1136,7 +1217,7 @@ for w in windows:
       </div>
     </section>
 
-    <section id="detections">
+    <section id="detection">
       <div class="container">
         <span class="eyebrow fade-in">Detection Coverage</span>
         <h2 class="section-title fade-in">What It Detects</h2>
@@ -1151,7 +1232,7 @@ for w in windows:
           <div class="pii-item medium fade-in">Physical Addresses <span class="level">🟡 Medium</span></div>
           <div class="pii-item medium fade-in">Dates of Birth <span class="level">🟡 Medium</span></div>
           <div class="pii-item medium fade-in">Medical Records / Diagnoses <span class="level">🟡 Medium</span></div>
-          <div class="pii-item low fade-in">IP Addresses <span class="level">🟢 Low</span></div>
+          <div class="pii-item critical fade-in">IP Addresses <span class="level">🔴 Critical</span></div>
           <div class="pii-item critical fade-in">Bank Account / Routing Numbers <span class="level">🔴 Critical</span></div>
           <div class="pii-item critical fade-in">Passport / Driver's License <span class="level">🔴 Critical</span></div>
           <div class="pii-item critical fade-in">Biometric Identifiers <span class="level">🔴 Critical</span></div>
@@ -1161,49 +1242,12 @@ for w in windows:
       </div>
     </section>
 
-    <section id="use-cases">
-      <div class="container">
-        <span class="eyebrow fade-in">Who Is This For</span>
-        <h2 class="section-title fade-in">Use cases across high-trust industries</h2>
-        <div class="use-grid">
-          <article class="persona fade-in">
-            <div class="avatar">👨‍💻</div>
-            <div>
-              <h3>Developers</h3>
-              <p>Stop pasting stack traces with API keys, database URIs, and internal IPs into ChatGPT. Sentinel catches credentials even when they're embedded in code.</p>
-            </div>
-          </article>
-          <article class="persona fade-in">
-            <div class="avatar">🏥</div>
-            <div>
-              <h3>Healthcare / HIPAA</h3>
-              <p>Patient names, DOBs, diagnoses, and medication lists get flagged before they reach any AI. Maintain HIPAA compliance effortlessly.</p>
-            </div>
-          </article>
-          <article class="persona fade-in">
-            <div class="avatar">💼</div>
-            <div>
-              <h3>Finance / SOX</h3>
-              <p>Account numbers, transaction details, SSNs in financial documents — Sentinel blocks them from reaching uncontrolled AI endpoints.</p>
-            </div>
-          </article>
-          <article class="persona fade-in">
-            <div class="avatar">⚖️</div>
-            <div>
-              <h3>Enterprise / Legal</h3>
-              <p>Contracts with party names, case numbers, privileged communications — keep attorney-client privilege intact when using AI assistants.</p>
-            </div>
-          </article>
-        </div>
-      </div>
-    </section>
-
     <section id="enterprise">
       <div class="container">
         <span class="eyebrow fade-in">Enterprise Features</span>
         <h2 class="section-title fade-in">Security controls your team can operationalize</h2>
         <div class="feature-list">
-          <div class="fade-in"><strong>Fleet management dashboard</strong><br>Manage all employees from one panel.</div>
+          <div class="fade-in"><strong>Admin dashboard</strong><br>Manage all employees from one panel.</div>
           <div class="fade-in"><strong>Supabase-powered telemetry</strong><br>Real-time risk events across the org.</div>
           <div class="fade-in"><strong>Custom sensitivity thresholds</strong><br>Set department-specific controls.</div>
           <div class="fade-in"><strong>Override audit trail</strong><br>Track every override and remediation action.</div>
@@ -1232,12 +1276,11 @@ for w in windows:
     <div class="container">
       <div class="footer-top">
         <nav class="footer-nav">
-          <a href="#features">Features</a>
+          <a href="#use-cases">Use Cases</a>
+          <a href="#live-demo">Live Demo</a>
           <a href="#how-it-works">How It Works</a>
           <a href="#architecture">Architecture</a>
-          <a href="#live-demo">Live Demo</a>
-          <a href="#use-cases">Use Cases</a>
-          <a href="hub.html">Dashboard</a>
+          <a href="hub.html">Hub</a>
           <a href="https://github.com/Alwinphilip0105/Core_Sentinal" target="_blank" rel="noopener">GitHub</a>
         </nav>
         <div>Built with Python, PyQt6, TinyBERT, spaCy, and Supabase</div>
@@ -1272,7 +1315,7 @@ for w in windows:
     });
 
     const topNav = document.querySelector(".topnav");
-    const sectionIds = ["features", "how-it-works", "architecture", "live-demo", "use-cases"];
+    const sectionIds = ["use-cases", "live-demo", "how-it-works", "architecture"];
     const navAnchors = Array.from(document.querySelectorAll(".nav-link"));
 
     const updateNavState = () => {
