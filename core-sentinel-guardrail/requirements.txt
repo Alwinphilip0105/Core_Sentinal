@@ -24,4 +24,5 @@ cryptography
 # Note: tkinter is part of the Python standard library and is not installed via pip.
 # On Windows/macOS it is usually included with Python. On Linux you may need: sudo apt install python3-tk
 supabase
+python-dotenv>=1.0.0
 google-genai

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import sqlite3
 import threading
 import time
@@ -18,9 +19,77 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent
+
+
+def _load_env_files() -> None:
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    for path in (_ROOT.parent / ".env", _ROOT / ".env"):
+        if path.is_file():
+            load_dotenv(path, override=False)
+
+
+_load_env_files()
+
 SYNC_INTERVAL = 60  # seconds
 DB_PATH = _ROOT / "logs" / "guardrail.db"
 STATE_FILE = _ROOT / "logs" / "supabase_sync_state.json"
+
+# Throttle repeated "offline / bad URL" logs (seconds between messages).
+_NETWORK_WARN_INTERVAL_SEC = 300.0
+_last_network_warn_ts = 0.0
+
+
+def _is_dns_or_network_error(exc: BaseException) -> bool:
+    """True when the host cannot be reached (DNS, offline, bad SUPABASE_URL)."""
+    chain: list[BaseException] = []
+    e: BaseException | None = exc
+    seen: set[int] = set()
+    while e is not None and id(e) not in seen:
+        seen.add(id(e))
+        chain.append(e)
+        e = e.__cause__ or e.__context__
+
+    for err in chain:
+        if isinstance(err, socket.gaierror):
+            return True
+        if isinstance(err, (TimeoutError, ConnectionError, OSError)):
+            errno = getattr(err, "errno", None)
+            if errno in (11001, 11002, 101, 113, -2, -3):
+                return True
+            if errno is not None and "getaddrinfo" in str(err).lower():
+                return True
+        msg = str(err).lower()
+        if "getaddrinfo" in msg or "name or service not known" in msg or "nodename nor servname" in msg:
+            return True
+    return False
+
+
+def _maybe_log_network_hint(exc: BaseException) -> None:
+    global _last_network_warn_ts
+    now = time.time()
+    if now - _last_network_warn_ts < _NETWORK_WARN_INTERVAL_SEC:
+        return
+    _last_network_warn_ts = now
+    url = os.environ.get("SUPABASE_URL", "").strip()
+    host = ""
+    if url:
+        try:
+            from urllib.parse import urlparse
+
+            host = urlparse(url).netloc or ""
+        except Exception:
+            pass
+    print(
+        "[sync] Cannot reach Supabase (DNS/network). "
+        f"Error: {exc}\n"
+        "      Fix: set SUPABASE_URL to https://<project-ref>.supabase.co, "
+        "check internet/VPN/DNS, then restart the app.\n"
+        f"      Current host from env: {host or '(parse failed)'}",
+        flush=True,
+    )
 
 
 def get_last_synced_id() -> int:
@@ -53,6 +122,15 @@ def get_supabase_client():
     key = os.environ.get("SUPABASE_ANON_KEY", "").strip()
     if not url or not key:
         return None
+    try:
+        from urllib.parse import urlparse
+
+        host = (urlparse(url).hostname or "").strip()
+        if not host or "." not in host:
+            print(f"[sync] SUPABASE_URL must be like https://xxxx.supabase.co (bad host in URL).", flush=True)
+            return None
+    except Exception:
+        pass
     try:
         from supabase import create_client
 
@@ -170,6 +248,9 @@ def sync_once() -> None:
             synced += 1
             new_last_id = max(new_last_id, row_id)
         except Exception as e:
+            if _is_dns_or_network_error(e):
+                _maybe_log_network_hint(e)
+                break
             err = str(e).lower()
             if (
                 "duplicate" in err
@@ -179,7 +260,7 @@ def sync_once() -> None:
             ):
                 new_last_id = max(new_last_id, row_id)
             else:
-                print(f"[sync] insert error: {e}")
+                print(f"[sync] insert error: {e}", flush=True)
 
     if synced > 0:
         save_last_synced_id(new_last_id)

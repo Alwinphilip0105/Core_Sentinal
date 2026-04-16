@@ -45,12 +45,18 @@ PANEL_W = 408
 _PANEL_MAX_H = 900  # cap; also limited to ~85% of available screen height
 
 
-def _remediation_dialog_height_px(screen: QtGui.QScreen | None) -> int:
-    """Fit the remediation drawer: at most 900px tall and at most ~85% of the work area."""
+def _panel_target_height_px(screen: QtGui.QScreen | None) -> int:
+    """Drawer height: cap at _PANEL_MAX_H, ~85% of work area, and never exceed work area minus margin."""
     if screen is None:
-        return _PANEL_MAX_H
-    screen_h = screen.availableGeometry().height()
-    return min(_PANEL_MAX_H, int(screen_h * 0.85))
+        return max(400, min(_PANEL_MAX_H, 900))
+    g = screen.availableGeometry()
+    h = g.height()
+    return max(400, min(_PANEL_MAX_H, int(h * 0.85), h - 2))
+
+
+def _remediation_dialog_height_px(screen: QtGui.QScreen | None) -> int:
+    """Backward-compatible name; same as _panel_target_height_px."""
+    return _panel_target_height_px(screen)
 
 
 HEADER_H = 52
@@ -498,10 +504,8 @@ class RemediationDialog(QtWidgets.QDialog):
         critical_hold: bool = False,
     ):
         super().__init__(parent)
-        _app = QtWidgets.QApplication.instance()
-        _screen = _app.primaryScreen() if _app else None
-        dialog_h = _remediation_dialog_height_px(_screen)
-        self.setFixedSize(PANEL_W, dialog_h)
+        # Sizing is applied in _apply_panel_height() after the layout exists (see end of __init__
+        # and showEvent). Avoid setFixedSize here — it fights max-height clamps and WM min-track.
 
         self._hold_mode = bool(hold_mode)
         self._critical_hold = bool(critical_hold)
@@ -947,6 +951,18 @@ class RemediationDialog(QtWidgets.QDialog):
 
         cv.addStretch(1)
         scroll.setWidget(content_host)
+        # Let the viewport dictate height; do not propagate the full content minimum height
+        # (many issue cards) up to the window — that caused Qt/Win32 setGeometry warnings when
+        # max height was clamped to the work area.
+        scroll.setMinimumHeight(0)
+        scroll.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
+        content_host.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Ignored,
+        )
         self._issues_scroll_area = scroll
         root.addWidget(scroll, 1)
 
@@ -1988,13 +2004,7 @@ class RemediationDialog(QtWidgets.QDialog):
         screen = QtGui.QGuiApplication.screenAt(QtGui.QCursor.pos())
         if screen is None:
             screen = QtGui.QGuiApplication.primaryScreen()
-        if screen is None:
-            g = QtCore.QRect(0, 0, 1080, 1920)
-        else:
-            g = screen.availableGeometry()
-
-        # Leave a tiny safety margin for DWM/WM size negotiations.
-        target_h = max(400, g.height() - 2)
+        target_h = _panel_target_height_px(screen)
         self.setMinimumWidth(PANEL_W)
         self.setMaximumWidth(PANEL_W)
         self.setMinimumHeight(min(target_h, 600))
@@ -2821,10 +2831,16 @@ class RemediationDialog(QtWidgets.QDialog):
     def minimumSizeHint(self) -> QtCore.QSize:
         """Force stable window-manager min-track values for the fixed-width drawer."""
         min_h = int(self.minimumHeight() or 600)
+        cap = int(self.maximumHeight())
+        if cap > 0:
+            min_h = min(min_h, cap)
         return QtCore.QSize(PANEL_W, min_h)
 
     def sizeHint(self) -> QtCore.QSize:
         """Report a fixed drawer width so Qt/Win32 geometry negotiation stays consistent."""
         h = int(self.height() or self.maximumHeight() or self.minimumHeight() or 900)
+        cap = int(self.maximumHeight())
+        if cap > 0:
+            h = min(h, cap)
         return QtCore.QSize(PANEL_W, max(400, h))
 

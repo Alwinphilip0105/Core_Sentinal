@@ -50,6 +50,20 @@ _guardrail_dir = Path(__file__).resolve().parent
 if str(_guardrail_dir) not in sys.path:
     sys.path.insert(0, str(_guardrail_dir))
 
+
+def _load_env_files() -> None:
+    """Load .env from core-sentinel-guardrail/ or repo root so SUPABASE_* apply when not set in the shell."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    for path in (_guardrail_dir.parent / ".env", _guardrail_dir / ".env"):
+        if path.is_file():
+            load_dotenv(path, override=False)
+
+
+_load_env_files()
+
 from PyQt6.QtCore import QObject, QRect, QThread, Qt, QTimer, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QColor, QCursor, QFont, QIcon, QKeySequence, QPainter, QPen, QPixmap, QShortcut
 from PyQt6.QtWidgets import (
@@ -68,7 +82,12 @@ from guardrail_runtime import (
     record_scored_clipboard_risk_score,
     set_monitoring_paused,
 )
-from feedback_store import get_feedback_stats, should_trigger_retrain
+from feedback_store import (
+    export_feedback_to_training_jsonl,
+    get_feedback_stats,
+    mark_feedback_used,
+    should_trigger_retrain,
+)
 from font_clamp import install_qt_message_filter, normalize_application_font
 import user_settings
 from guardrail_logs import export_scoring_events_csv, log_clipboard_event
@@ -233,6 +252,17 @@ def auto_retrain() -> None:
                 [python, str(calibrate), "--apply"],
                 timeout=300,
             )
+
+            # merge_feedback_to_training.py only sets used_for_training when run with --mark-used.
+            # Without this, pending correction counts never drop after a successful retrain.
+            stats_fb = export_feedback_to_training_jsonl()
+            fb_hashes = stats_fb.get("hashes") or []
+            if fb_hashes:
+                mark_feedback_used(list(fb_hashes))
+                print(
+                    f"[retrain] marked {len(fb_hashes)} feedback hash(es) as used_for_training",
+                    flush=True,
+                )
 
             summary = build_retrain_dashboard_summary(
                 stage_results=stage_results,
