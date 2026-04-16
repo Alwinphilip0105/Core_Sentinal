@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent
@@ -257,6 +258,7 @@ def run_validation_threshold_sweep() -> None:
         print(f"\n  Recommended (feasible) true_high->pred_low={opt_high_as_low}  true_high->pred_med={opt_high_as_med}")
 
     summary = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "max_fpr": max_fpr,
         "min_med_recall": min_med_recall,
         "min_high_recall": min_high_recall,

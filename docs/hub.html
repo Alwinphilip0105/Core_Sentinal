@@ -684,6 +684,7 @@
           <div>
             <div id="modelKpiPrimary" class="stat-val" style="font-size:1.35rem;margin-top:0;">F1 0.826</div>
             <div id="modelKpiSub" class="accuracy-mini">Recall (L/M/H): 1.00 / 0.41 / 0.99</div>
+            <div id="modelKpiMeta" class="accuracy-mini" style="margin-top:6px;opacity:0.88;font-size:0.78rem;line-height:1.35;">Last retrain: --</div>
             <div id="modelKpiSafety" class="accuracy-mini" style="margin-top:6px;opacity:0.88;font-size:0.78rem;line-height:1.35;">Safety first: catching high/critical risk matters more than a single headline score—see repo README (Training and Evaluation).</div>
     </div>
   </div>
@@ -1137,6 +1138,67 @@
       arc.style.strokeDashoffset = String(circumference * (1 - pct / 100));
     }
 
+    function formatRetrainTime(ts) {
+      if (!ts) return "Last retrain: --";
+      const d = new Date(ts);
+      if (Number.isNaN(d.getTime())) return "Last retrain: --";
+      return `Last retrain: ${d.toLocaleString()}`;
+    }
+
+    async function loadRetrainSummary() {
+      const sbUrl = (localStorage.getItem("sb_url") || "").trim().replace(/\/$/, "");
+      const sbKey = (localStorage.getItem("sb_key") || "").trim();
+      const configuredTable = (localStorage.getItem("retrain_runs_table") || "").trim();
+      const tables = Array.from(new Set([configuredTable, "retrain_runs"].filter(Boolean)));
+      if (sbUrl && sbKey) {
+        for (const table of tables) {
+          try {
+            const r = await fetch(
+              `${sbUrl}/rest/v1/${encodeURIComponent(table)}?select=run_at,accuracy,precision,recall,f1,recall_high,recall_med,model_version_tag,summary_json&order=run_at.desc.nullslast&limit=1`,
+              { headers: { apikey: sbKey, Authorization: "Bearer " + sbKey }, cache: "no-store" }
+            );
+            if (!r.ok) continue;
+            const rows = await r.json();
+            const row = Array.isArray(rows) ? rows[0] : null;
+            if (row) {
+              return row.summary_json && typeof row.summary_json === "object"
+                ? row.summary_json
+                : {
+                    generated_at: row.run_at,
+                    model: { version_tag: row.model_version_tag },
+                    metrics: {
+                      precision: row.precision,
+                      recall: row.recall,
+                      f1: row.f1,
+                      recall_high: row.recall_high,
+                      recall_med: row.recall_med
+                    }
+                  };
+            }
+          } catch {
+            // keep trying candidate tables
+          }
+        }
+      }
+
+      const candidates = [
+        "../core-sentinel-guardrail/reports/retrain_dashboard_summary.json",
+        "../../core-sentinel-guardrail/reports/retrain_dashboard_summary.json",
+        "/core-sentinel-guardrail/reports/retrain_dashboard_summary.json"
+      ];
+      for (const url of candidates) {
+        try {
+          const r = await fetch(url, { cache: "no-store" });
+          if (!r.ok) continue;
+          const j = await r.json();
+          if (j && typeof j === "object") return j;
+        } catch {
+          // continue
+        }
+      }
+      return null;
+    }
+
     function _deriveLocalMiniStatsFromRows(rows) {
       const arr = Array.isArray(rows) ? rows : [];
       const total = arr.length;
@@ -1153,14 +1215,20 @@
     async function loadModelKpis() {
       const primary = document.getElementById("modelKpiPrimary");
       const sub = document.getElementById("modelKpiSub");
+      const meta = document.getElementById("modelKpiMeta");
       if (!primary || !sub) return;
 
       let kpi = { ...MODEL_KPI_DEFAULT };
+      let retrainMeta = null;
+      let kpiSource = "default";
       try {
         const raw = localStorage.getItem("sentinel_model_kpis");
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (parsed && typeof parsed === "object") kpi = { ...kpi, ...parsed };
+          if (parsed && typeof parsed === "object") {
+            kpi = { ...kpi, ...parsed };
+            kpiSource = "cache";
+          }
         }
       } catch {
         // ignore malformed cache
@@ -1184,6 +1252,7 @@
             recallMed: Number(best.eval_recall_med || kpi.recallMed || 0),
             recallHigh: Number(best.eval_recall_high || kpi.recallHigh || 0)
           };
+          kpiSource = "train_eval";
           localStorage.setItem("sentinel_model_kpis", JSON.stringify(kpi));
           break;
         } catch {
@@ -1191,10 +1260,28 @@
         }
       }
 
+      retrainMeta = await loadRetrainSummary();
+      if (retrainMeta && typeof retrainMeta === "object") {
+        const metrics = retrainMeta.metrics || {};
+        kpi = {
+          macroF1: Number(metrics.f1 ?? kpi.macroF1 ?? 0),
+          recallLow: Number(metrics.recall_low ?? kpi.recallLow ?? 0),
+          recallMed: Number(metrics.recall_med ?? kpi.recallMed ?? 0),
+          recallHigh: Number(metrics.recall_high ?? kpi.recallHigh ?? 0)
+        };
+        kpiSource = "retrain_summary";
+        localStorage.setItem("sentinel_model_kpis", JSON.stringify(kpi));
+      }
+
       const qualityPct = Math.max(0, Math.min(100, (Number(kpi.macroF1) || 0) * 100));
       applyAccuracyGauge(qualityPct);
       primary.textContent = `F1 ${Number(kpi.macroF1 || 0).toFixed(3)}`;
       sub.textContent = `Recall (L/M/H): ${Number(kpi.recallLow || 0).toFixed(2)} / ${Number(kpi.recallMed || 0).toFixed(2)} / ${Number(kpi.recallHigh || 0).toFixed(2)}`;
+      if (meta) {
+        const versionTag = retrainMeta?.model?.version_tag ? ` • ${retrainMeta.model.version_tag}` : "";
+        const sourceHint = retrainMeta ? "" : ` • source=${kpiSource}`;
+        meta.textContent = `${formatRetrainTime(retrainMeta?.generated_at)}${versionTag}${sourceHint}`;
+      }
     }
 
     async function loadMiniStats() {

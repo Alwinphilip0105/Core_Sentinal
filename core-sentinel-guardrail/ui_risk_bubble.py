@@ -9,6 +9,7 @@ import datetime
 import importlib.util
 import os
 import sys
+import time
 import webbrowser
 from pathlib import Path
 from typing import Optional
@@ -294,13 +295,13 @@ class RiskBubble(QtWidgets.QWidget):
         self._current_width = float(COLLAPSED_W)
         self._target_width = COLLAPSED_W
         self._expand_timer = QtCore.QTimer(self)
-        self._expand_timer.setInterval(12)
+        self._expand_timer.setInterval(16)
         self._expand_timer.timeout.connect(self._tick_expand)
 
         self._displayed_score = 0.0
         self._target_score = 0
         self._ring_timer = QtCore.QTimer(self)
-        self._ring_timer.setInterval(16)
+        self._ring_timer.setInterval(33)
         self._ring_timer.timeout.connect(self._tick_ring)
 
         self._hold_locked = False
@@ -309,7 +310,7 @@ class RiskBubble(QtWidgets.QWidget):
         self._hold_timer: Optional[QtCore.QTimer] = None
 
         self._spinner_timer = QtCore.QTimer(self)
-        self._spinner_timer.setInterval(100)
+        self._spinner_timer.setInterval(120)
         self._spinner_timer.timeout.connect(self._tick_spinner)
 
         self._all_clear_timer = QtCore.QTimer(self)
@@ -343,8 +344,11 @@ class RiskBubble(QtWidgets.QWidget):
         self._is_hovered = False
         self._target_opacity = 0.72
         self._opacity_timer = QtCore.QTimer(self)
-        self._opacity_timer.setInterval(16)
+        self._opacity_timer.setInterval(40)
         self._opacity_timer.timeout.connect(self._tick_opacity)
+        self._last_monitor_state: tuple[bool, bool, str, bool] | None = None
+        self._last_monitor_refresh_mono = 0.0
+        self._cached_idle_badge: QtGui.QPixmap | None = None
 
         self.setWindowFlags(
             QtCore.Qt.WindowType.FramelessWindowHint
@@ -381,7 +385,7 @@ class RiskBubble(QtWidgets.QWidget):
 
         self._monitor_timer = QtCore.QTimer(self)
         self._monitor_timer.timeout.connect(self._refresh_monitoring)
-        self._monitor_timer.setInterval(3000)
+        self._monitor_timer.setInterval(3500)
         self._monitor_timer.start()
 
         self._refresh_monitoring()
@@ -1675,24 +1679,37 @@ class RiskBubble(QtWidgets.QWidget):
 
     def _refresh_monitoring(self) -> None:
         was = self._in_llm
+        now = time.monotonic()
         # Match paste hook: same title keyword fallback; if "monitor all windows" is off in settings,
         # treat as in-context when not LLM-only so the pill does not stay stuck on "not monitoring".
         if get_monitor_llm_only():
-            self._in_llm = bool(detect_llm_window()[0])
+            if self._analysing and (now - self._last_monitor_refresh_mono) < 2.5:
+                self._in_llm = was
+            else:
+                self._in_llm = bool(detect_llm_window()[0])
         else:
             self._in_llm = True
-        want_ms = 800 if self._in_llm else 3000
+        self._last_monitor_refresh_mono = now
+        want_ms = 1500 if self._in_llm else 3500
         if self._monitor_timer.interval() != want_ms:
             self._monitor_timer.setInterval(want_ms)
+        paused = is_monitoring_paused()
+        target_state = "idle"
         if was != self._in_llm:
             if not self._in_llm:
                 self.set_idle()
-            elif not is_monitoring_paused():
+            elif not paused:
                 self._traffic_indicator.set_state("idle")
-        if not self._in_llm or is_monitoring_paused():
-            self._traffic_indicator.set_state("not_monitoring")
+        if not self._in_llm or paused:
+            target_state = "not_monitoring"
+            self._traffic_indicator.set_state(target_state)
             self._reapply_clipboard_preview_tl()
-        self.update()
+        elif not self._analysing:
+            target_state = "idle"
+        new_state = (self._in_llm, paused, target_state, bool(self._hover_tooltip_visible))
+        if new_state != self._last_monitor_state:
+            self._last_monitor_state = new_state
+            self.update()
         if self._hover_tooltip_visible and self._tooltip_win is not None:
             self._tooltip_win.setText(self._tooltip_status_text())
             self._tooltip_win.adjustSize()

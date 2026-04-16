@@ -127,7 +127,7 @@ td{padding:7px 8px;border-bottom:1px solid
 <div class="hdr">
   <div>
     <div class="hdr-title">🛡 My Privacy Dashboard</div>
-    <div class="hdr-sub">Core Sentinel · Generated 2026-04-13 08:12</div>
+    <div class="hdr-sub" id="generatedAt">Core Sentinel · Generated --</div>
   </div>
   <div class="top-row">
     <button class="btn" onclick="goBackToHub()">← Back</button>
@@ -322,7 +322,7 @@ td{padding:7px 8px;border-bottom:1px solid
           <th>PII detected</th><th>LLM</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody id="recentEventsBody">
         <tr>
           <td style="color:#888;font-size:11px">2026-04-12 21:17</td>
           <td><span class="pill" style="background:#E8F5E9;color:#1B5E20">silent</span></td>
@@ -474,7 +474,44 @@ td{padding:7px 8px;border-bottom:1px solid
 </div>
 
 <script>
-const TREND_LABELS = ["04-07", "04-08", "04-09", "04-10", "04-11", "04-12", "04-13"];
+function _pad2(n){
+  return String(n).padStart(2, "0");
+}
+
+function _lastNDaysLabels(days){
+  const out = [];
+  const now = new Date();
+  for (let i = days - 1; i >= 0; i -= 1) {
+    const d = new Date(now);
+    d.setDate(now.getDate() - i);
+    out.push(`${_pad2(d.getMonth() + 1)}-${_pad2(d.getDate())}`);
+  }
+  return out;
+}
+
+function _refreshGeneratedTimestamp(){
+  const el = document.getElementById("generatedAt");
+  if (!el) return;
+  const now = new Date();
+  el.textContent = `Core Sentinel · Generated ${now.getFullYear()}-${_pad2(now.getMonth() + 1)}-${_pad2(now.getDate())} ${_pad2(now.getHours())}:${_pad2(now.getMinutes())}`;
+}
+
+function _refreshRecentEventTimes(){
+  const body = document.getElementById("recentEventsBody");
+  if (!body) return;
+  const rows = Array.from(body.querySelectorAll("tr"));
+  const now = new Date();
+  rows.forEach((row, idx) => {
+    const td = row.querySelector("td");
+    if (!td) return;
+    const d = new Date(now);
+    // Keep the demo table fresh-looking without changing scenario content.
+    d.setMinutes(now.getMinutes() - (idx * 3));
+    td.textContent = `${d.getFullYear()}-${_pad2(d.getMonth() + 1)}-${_pad2(d.getDate())} ${_pad2(d.getHours())}:${_pad2(d.getMinutes())}`;
+  });
+}
+
+const TREND_LABELS = _lastNDaysLabels(7);
 const TREND_BLOCK  = [0, 0, 0, 0, 0, 157, 0];
 const TREND_WARN   = [0, 0, 0, 0, 0, 192, 0];
 const TREND_SAFE   = [0, 0, 0, 0, 0, 144, 0];
@@ -757,6 +794,224 @@ function applyScenario(name){
   }
 }
 
+function _fmtHour(hour){
+  const h = Number(hour) || 0;
+  if (h === 0) return "12am";
+  if (h < 12) return `${h}am`;
+  if (h === 12) return "12pm";
+  return `${h - 12}pm`;
+}
+
+function _toEvent(raw){
+  const ts = raw.timestamp || raw.created_at || raw.scanned_at || new Date().toISOString();
+  const score = Number(raw.risk_score || raw.score || 0);
+  const actionRaw = String(raw.action || raw.decision || "").toLowerCase();
+  const action = actionRaw || (score >= 80 ? "block" : score > 30 ? "warn" : "silent");
+  const pii = Array.isArray(raw.pii_classes)
+    ? raw.pii_classes
+    : (typeof raw.pii_classes === "string" ? raw.pii_classes.split(/[;,|]/g) : []);
+  const piiClass = (pii[0] || raw.triggers || "low").toString().trim().toLowerCase();
+  return {
+    ts,
+    score,
+    action,
+    pii: piiClass || "low",
+    llm: String(raw.llm_name || "clipboard")
+  };
+}
+
+function _renderHeatmap(events){
+  const cells = Array.from(document.querySelectorAll(".hm-cell"));
+  if (cells.length < 24) return;
+  const byHour = Array.from({ length: 24 }, () => ({ sum: 0, n: 0 }));
+  events.forEach((e) => {
+    const d = new Date(e.ts);
+    if (Number.isNaN(d.getTime())) return;
+    const h = d.getHours();
+    byHour[h].sum += Number(e.score) || 0;
+    byHour[h].n += 1;
+  });
+  const avgs = byHour.map((x) => (x.n ? x.sum / x.n : 0));
+  const peak = avgs.reduce((best, v, i) => (v > best.v ? { i, v } : best), { i: 0, v: -1 });
+  avgs.forEach((avg, i) => {
+    const cell = cells[i];
+    if (!cell) return;
+    const alpha = Math.max(0.06, Math.min(0.85, avg / 70));
+    const color = avg >= 70
+      ? `rgba(229,57,53,${alpha})`
+      : avg >= 30
+        ? `rgba(255,179,0,${alpha})`
+        : "rgba(255,255,255,0.06)";
+    cell.style.background = color;
+    cell.style.border = i === peak.i && avg > 0 ? "2px solid #E53935" : "none";
+    cell.title = `${_fmtHour(i)}: avg risk ${Math.round(avg)}`;
+  });
+  const risky = document.getElementById("riskyHourTxt");
+  if (risky) risky.textContent = _fmtHour(peak.i);
+}
+
+function _renderRecentRows(events){
+  const body = document.getElementById("recentEventsBody");
+  if (!body) return;
+  const rows = events.slice(0, 20);
+  if (!rows.length) return;
+  body.innerHTML = rows.map((e) => {
+    const d = new Date(e.ts);
+    const ts = Number.isNaN(d.getTime())
+      ? e.ts
+      : `${d.getFullYear()}-${_pad2(d.getMonth() + 1)}-${_pad2(d.getDate())} ${_pad2(d.getHours())}:${_pad2(d.getMinutes())}`;
+    const pill = e.action === "block"
+      ? `<span class="pill" style="background:#FBE9E7;color:#B71C1C">block</span>`
+      : e.action === "warn"
+        ? `<span class="pill" style="background:#FFF8E1;color:#E65100">warn</span>`
+        : `<span class="pill" style="background:#E8F5E9;color:#1B5E20">silent</span>`;
+    const scoreColor = e.score >= 80 ? "#C62828" : e.score > 30 ? "#E65100" : "#2E7D32";
+    return `
+      <tr>
+        <td style="color:#888;font-size:11px">${ts}</td>
+        <td>${pill}</td>
+        <td style="font-weight:600;color:${scoreColor}">${Math.round(e.score)}</td>
+        <td style="font-size:11px">${e.pii}</td>
+        <td style="font-size:11px;color:#888">${e.llm}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function _applyLiveDashboard(events){
+  const now = Date.now();
+  const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+  const weekEvents = events.filter((e) => {
+    const t = new Date(e.ts).getTime();
+    return Number.isFinite(t) && t >= sevenDaysAgo;
+  });
+  if (!weekEvents.length) return false;
+
+  const labels = _lastNDaysLabels(7);
+  const trend = {
+    block: Array(7).fill(0),
+    warn: Array(7).fill(0),
+    safe: Array(7).fill(0)
+  };
+  const labelToIdx = new Map(labels.map((l, i) => [l, i]));
+  weekEvents.forEach((e) => {
+    const d = new Date(e.ts);
+    const key = `${_pad2(d.getMonth() + 1)}-${_pad2(d.getDate())}`;
+    const idx = labelToIdx.get(key);
+    if (idx == null) return;
+    if (e.action === "block") trend.block[idx] += 1;
+    else if (e.action === "warn") trend.warn[idx] += 1;
+    else trend.safe[idx] += 1;
+  });
+
+  const piiMap = new Map();
+  weekEvents.forEach((e) => {
+    piiMap.set(e.pii, (piiMap.get(e.pii) || 0) + 1);
+  });
+  const piiSorted = Array.from(piiMap.entries()).sort((a, b) => b[1] - a[1]);
+  const piiLabels = (piiSorted.slice(0, 3).map((x) => x[0]) || ["low"]);
+  const piiValues = (piiSorted.slice(0, 3).map((x) => x[1]) || [0]);
+
+  const pastes = weekEvents.length;
+  const blocked = weekEvents.filter((e) => e.action === "block").length;
+  const leakRate = pastes > 0 ? (blocked / pastes) * 100 : 0;
+  const privacy = Math.max(40, Math.min(99, Math.round(100 - (leakRate * 1.1))));
+
+  let streak = 0;
+  for (const e of events) {
+    if (e.action === "warn" || e.action === "block") break;
+    streak += 1;
+  }
+  let best = 0;
+  let run = 0;
+  [...weekEvents].reverse().forEach((e) => {
+    if (e.action === "warn" || e.action === "block") run = 0;
+    else {
+      run += 1;
+      best = Math.max(best, run);
+    }
+  });
+
+  const topPII = piiLabels[0] || "low";
+  const channelMap = new Map();
+  weekEvents.forEach((e) => channelMap.set(e.llm, (channelMap.get(e.llm) || 0) + 1));
+  const topChannel = Array.from(channelMap.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "clipboard";
+  const actionText = leakRate > 20
+    ? "Enable auto-redact before external prompts"
+    : leakRate > 8
+      ? "Turn on scan-first mode for high-risk apps"
+      : "Keep current policy and monitor trend";
+  const impactText = leakRate > 20
+    ? "Expected impact: -15% block rate"
+    : leakRate > 8
+      ? "Expected impact: -8% block rate"
+      : "Expected impact: maintain low-risk baseline";
+
+  document.getElementById("statPrivacy").textContent = String(privacy);
+  document.getElementById("statPastes").textContent = String(pastes);
+  document.getElementById("statBlocked").textContent = String(blocked);
+  document.getElementById("statStreak").textContent = String(streak);
+  document.getElementById("statBest").textContent = String(Math.max(best, streak));
+  document.getElementById("streakCircleNum").textContent = String(streak);
+  document.getElementById("bestStreakTxt").innerHTML = `Best ever: <strong style="color:#FFB300">${Math.max(best, streak)}</strong> safe pastes in a row`;
+  document.getElementById("nextMilestoneTxt").textContent = `Next milestone: ${Math.max(streak + 2, 5)} pastes`;
+  document.getElementById("streakFill").style.width = `${Math.min(100, (streak / 10) * 100)}%`;
+  document.getElementById("insightLeakRate").textContent = `${leakRate.toFixed(1)}%`;
+  document.getElementById("insightLeakBar").style.width = `${Math.min(100, leakRate)}%`;
+  document.getElementById("insightLeakCopy").textContent = `Blocked ${blocked} out of ${pastes} pastes this week.`;
+  document.getElementById("insightTopPII").textContent = String(topPII).toUpperCase();
+  document.getElementById("insightTopPIICopy").textContent = `Most frequent sensitive class in live telemetry: ${topPII}.`;
+  document.getElementById("insightChannel").textContent = `Top channel: ${topChannel}`;
+  document.getElementById("insightAction").textContent = actionText;
+  document.getElementById("insightImpact").textContent = impactText;
+  document.getElementById("incidentList").innerHTML = events.slice(0, 3).map((e) => {
+    const d = new Date(e.ts);
+    const t = Number.isNaN(d.getTime()) ? "recent" : `${_fmtHour(d.getHours())}`;
+    return `<div class="mini-row">${t} · ${String(e.pii).toUpperCase()} ${e.action} (score ${Math.round(e.score)})</div>`;
+  }).join("");
+
+  _renderHeatmap(weekEvents);
+  _renderRecentRows(events);
+
+  if (trendChart) {
+    trendChart.data.labels = labels;
+    trendChart.data.datasets[0].data = trend.block;
+    trendChart.data.datasets[1].data = trend.warn;
+    trendChart.data.datasets[2].data = trend.safe;
+    trendChart.update();
+  }
+  if (piiChart) {
+    piiChart.data.labels = piiLabels;
+    piiChart.data.datasets[0].data = piiValues;
+    piiChart.update();
+  }
+  setDemoStatus(`Live mode: synced ${events.length} events from Supabase`);
+  return true;
+}
+
+async function _loadLiveDashboard(){
+  const url = (localStorage.getItem("sb_url") || "").trim().replace(/\/$/, "");
+  const key = (localStorage.getItem("sb_key") || "").trim();
+  if (!url || !key) {
+    setDemoStatus("Demo mode: configure sb_url/sb_key in Hub for live dashboard");
+    return false;
+  }
+  try {
+    const r = await fetch(
+      `${url}/rest/v1/guardrail_events?select=timestamp,risk_score,action,pii_classes,llm_name,triggers&order=timestamp.desc.nullslast&limit=1200`,
+      { headers: { apikey: key, Authorization: `Bearer ${key}` }, cache: "no-store" }
+    );
+    if (!r.ok) throw new Error(`Supabase fetch failed: ${r.status}`);
+    const rows = await r.json();
+    if (!Array.isArray(rows) || rows.length === 0) throw new Error("No guardrail_events rows");
+    return _applyLiveDashboard(rows.map(_toEvent));
+  } catch (err) {
+    console.warn("[privacy-dashboard] live fetch failed:", err);
+    setDemoStatus("Demo mode: live sync failed, showing scenario data");
+    return false;
+  }
+}
+
 async function runDashboardWalkthrough(){
   if (walkthroughRunning) return;
   walkthroughRunning = true;
@@ -777,6 +1032,13 @@ document.getElementById("demoMixed").addEventListener("click", () => applyScenar
 document.getElementById("demoCritical").addEventListener("click", () => applyScenario("critical"));
 document.getElementById("demoRecovery").addEventListener("click", () => applyScenario("recovery"));
 document.getElementById("demoWalk").addEventListener("click", runDashboardWalkthrough);
+_refreshGeneratedTimestamp();
+_refreshRecentEventTimes();
+_loadLiveDashboard();
+window.setInterval(() => {
+  _refreshGeneratedTimestamp();
+  _loadLiveDashboard();
+}, 120000);
 </script>
 </body>
 </html>

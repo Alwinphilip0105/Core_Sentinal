@@ -187,7 +187,18 @@ Copy `.env.example` to `.env` at repo root and set values as needed:
 GEMINI_API_KEY=your-key
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+GUARDRAIL_RETRAIN_SUPABASE_TABLE=retrain_runs
 ```
+
+For retrain metadata publishing, create the table in Supabase SQL Editor:
+
+```sql
+-- Paste and run:
+-- core-sentinel-guardrail/supabase/retrain_runs.sql
+```
+
+Paste the contents of `core-sentinel-guardrail/supabase/retrain_runs.sql` directly.
 
 ### Run
 

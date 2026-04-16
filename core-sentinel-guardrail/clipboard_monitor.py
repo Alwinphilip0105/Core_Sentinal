@@ -11,6 +11,8 @@ import time
 import pyperclip
 from PyQt6.QtCore import QObject, pyqtSignal
 
+from guardrail_runtime import is_monitoring_paused
+
 
 class ClipboardMonitor(QObject):
     """Signals (text, result) to main thread — use QueuedConnection from worker thread."""
@@ -45,6 +47,21 @@ class ClipboardMonitor(QObject):
     def _loop(self) -> None:
         while self._running:
             try:
+                if is_monitoring_paused():
+                    time.sleep(self._interval)
+                    continue
+                if self._bubble is not None and bool(getattr(self._bubble, "_analysing", False)):
+                    time.sleep(self._interval)
+                    continue
+                try:
+                    from active_window_llm import is_llm_window
+
+                    if bool(is_llm_window()):
+                        time.sleep(self._interval)
+                        continue
+                except Exception:
+                    pass
+
                 text = pyperclip.paste()
                 if not text or len(text.strip()) < 3:
                     time.sleep(self._interval)
@@ -60,12 +77,14 @@ class ClipboardMonitor(QObject):
 
                 from infer import score_clipboard_with_pii
 
+                started = time.perf_counter()
                 result = score_clipboard_with_pii(text)
                 score = int(result.get("risk_score", 0) or 0)
                 action = str(result.get("action", "silent"))
+                elapsed_ms = (time.perf_counter() - started) * 1000.0
 
                 print(
-                    f"[monitor] Clipboard changed score={score} action={action}",
+                    f"[monitor] Clipboard changed score={score} action={action} dt_ms={elapsed_ms:.1f}",
                     flush=True,
                 )
 

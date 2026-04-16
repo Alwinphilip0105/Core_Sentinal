@@ -496,8 +496,9 @@
         <h3>Model Accuracy</h3>
         <div class="metric-row">
           <div>
-            <div class="metric-val countup" data-target="97.6" data-decimals="1" data-suffix="%">0.0%</div>
+            <div class="metric-val countup" id="accuracyMetric" data-target="97.6" data-decimals="1" data-suffix="%">0.0%</div>
             <div class="trend up">↑ stable this week</div>
+            <div class="mini-note" id="accuracySource">Source: demo baseline</div>
     </div>
           <div class="gauge-wrap">
             <svg viewBox="0 0 84 84" aria-label="accuracy gauge">
@@ -511,17 +512,19 @@
 
       <article class="card">
         <h3>AUC Score</h3>
-        <div class="metric-val countup" data-target="0.998" data-decimals="3">0.000</div>
+        <div class="metric-val countup" id="aucMetric" data-target="0.998" data-decimals="3">0.000</div>
         <span class="badge good">Excellent</span>
         <div class="trend up">↑ +0.002 vs previous run</div>
+        <div class="mini-note" id="aucSource">Source: demo baseline</div>
         <svg class="sparkline" id="aucSpark"></svg>
       </article>
 
       <article class="card">
-        <h3>False Positive Rate</h3>
+        <h3>False Positive Rate (Label-based)</h3>
         <div class="metric-val countup" id="fprMetric" data-target="0.0" data-decimals="1" data-suffix="%">0.0%</div>
-        <span class="badge good">Target &lt; 5%</span>
+        <span class="badge good" id="fprBadge">Target &lt; 5%</span>
         <div class="trend up" id="fprTrend">↑ within safe band</div>
+        <div class="mini-note" id="fprSource">Source: demo events</div>
         <svg class="sparkline" id="fprSpark"></svg>
       </article>
 
@@ -530,6 +533,7 @@
         <div class="metric-val countup" id="precisionMetric" data-target="0.976" data-decimals="3">0.000</div>
         <span class="badge good">Operating point</span>
         <div class="trend up" id="precisionTrend">↑ robust on validation sweep</div>
+        <div class="mini-note" id="precisionSource">Source: demo baseline</div>
         <svg class="sparkline" id="precisionSpark"></svg>
       </article>
     </section>
@@ -537,7 +541,7 @@
     <section class="row row-2">
       <article class="card chart-card">
         <h3>Precision-Recall Curve</h3>
-        <p class="sub">Operating point: R=0.987, P=0.976</p>
+        <p class="sub" id="prSub">Live PR data unavailable</p>
         <div class="chart-box" id="prChartCard">
           <svg class="chart-svg" id="prChart"></svg>
     </div>
@@ -550,7 +554,7 @@
 
       <article class="card chart-card">
         <h3>ROC Curve</h3>
-        <p class="sub">AUC: <span class="badge good">0.998</span></p>
+        <p class="sub">AUC: <span class="badge" id="rocAucBadge">N/A</span></p>
         <div class="chart-box" id="rocChartCard">
           <svg class="chart-svg" id="rocChart"></svg>
       </div>
@@ -568,12 +572,12 @@
         <div class="chart-box">
           <svg class="heatmap-svg" id="cmChart"></svg>
   </div>
-        <p class="mini-note">Overall accuracy: 97.6% | Cohen's kappa: 0.89</p>
+        <p class="mini-note" id="cmNote">Reference matrix shown (live confusion export unavailable).</p>
       </article>
 
       <article class="card">
         <h3>Performance by PII Class</h3>
-        <p class="sub">Sortable diagnostics for expected vs actual safety behavior.</p>
+        <p class="sub" id="classPerfSub">Reference diagnostics table (policy expectations vs baseline behavior).</p>
         <div class="table-wrap">
           <table id="classPerfTable">
             <thead>
@@ -692,16 +696,16 @@
   </main>
 
 <script>
-    const METRICS_STATIC = {
-      accuracy: 97.6,
-      auc: 0.998,
-      precision: 0.976,
+    let METRICS_STATIC = {
+      accuracy: Number.NaN,
+      auc: Number.NaN,
+      precision: Number.NaN,
       fpr: 0.0,
       totalScored: 2601
     };
 
     const DEMO_DRIFT = [2.1, 3.5, 4.2, 5.1, 5.8, 6.3, 5.5, 7.2];
-    const DEMO_METRICS = {
+    let DEMO_METRICS = {
       totalScored: 2601,
       blocks: 286,
       warns: 166,
@@ -778,6 +782,7 @@
     let runtimePolicy = { ...DEFAULT_POLICY };
     let runtimePolicySource = { kind: "default", label: "Fallback defaults" };
     let refreshTimer = null;
+    let retrainSummary = null;
 
     function actionFromScore(score, policy) {
       const blockThr = Number(policy.block_threshold || DEFAULT_POLICY.block_threshold);
@@ -785,6 +790,124 @@
       if (score >= blockThr) return "block";
       if (score > silentMax) return "warn";
       return "silent";
+    }
+
+    function pctFromUnit(value, fallback) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return fallback;
+      return n <= 1 ? n * 100 : n;
+    }
+
+    async function loadRetrainSummary() {
+      const sbUrl = (localStorage.getItem("sb_url") || "").trim().replace(/\/$/, "");
+      const sbKey = (localStorage.getItem("sb_key") || "").trim();
+      const configuredTable = (localStorage.getItem("retrain_runs_table") || "").trim();
+      const tables = Array.from(new Set([configuredTable, "retrain_runs"].filter(Boolean)));
+      if (sbUrl && sbKey) {
+        for (const table of tables) {
+          try {
+            const resp = await fetch(
+              `${sbUrl}/rest/v1/${encodeURIComponent(table)}?select=run_at,accuracy,precision,recall,f1,recall_high,recall_med,feedback_rows,fpr_non_high_as_high,model_version_tag,summary_json&order=run_at.desc.nullslast&limit=1`,
+              { headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` }, cache: "no-store" }
+            );
+            if (!resp.ok) continue;
+            const rows = await resp.json();
+            const row = Array.isArray(rows) ? rows[0] : null;
+            if (row) {
+              return row.summary_json && typeof row.summary_json === "object"
+                ? row.summary_json
+                : {
+                    generated_at: row.run_at,
+                    model: { version_tag: row.model_version_tag },
+                    metrics: {
+                      accuracy: row.accuracy,
+                      precision: row.precision,
+                      recall: row.recall,
+                      f1: row.f1,
+                      recall_high: row.recall_high,
+                      recall_med: row.recall_med,
+                      fpr_non_high_as_high: row.fpr_non_high_as_high
+                    },
+                    feedback: { rows_used_for_retrain: row.feedback_rows }
+                  };
+            }
+          } catch {
+            // try next table candidate
+          }
+        }
+      }
+
+      const candidates = [
+        "../../core-sentinel-guardrail/reports/retrain_dashboard_summary.json",
+        "../core-sentinel-guardrail/reports/retrain_dashboard_summary.json",
+        "/core-sentinel-guardrail/reports/retrain_dashboard_summary.json"
+      ];
+      for (const url of candidates) {
+        try {
+          const resp = await fetch(url, { cache: "no-store" });
+          if (!resp.ok) continue;
+          const data = await resp.json();
+          if (data && typeof data === "object") return data;
+        } catch {
+          // try next candidate
+        }
+      }
+      return null;
+    }
+
+    function applyRetrainSummary(summary) {
+      if (!summary || typeof summary !== "object") return;
+      retrainSummary = summary;
+      const metrics = summary.metrics || {};
+      const feedback = summary.feedback || {};
+      const toPctOrNaN = (v) => {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return Number.NaN;
+        return n <= 1 ? n * 100 : n;
+      };
+      const toUnitOrNaN = (v) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : Number.NaN;
+      };
+      METRICS_STATIC = {
+        ...METRICS_STATIC,
+        accuracy: toPctOrNaN(metrics.accuracy),
+        auc: toUnitOrNaN(metrics.auc),
+        precision: toUnitOrNaN(metrics.precision),
+        fpr: pctFromUnit(metrics.fpr_non_high_as_high, METRICS_STATIC.fpr)
+      };
+      DEMO_METRICS = {
+        ...DEMO_METRICS,
+        feedbackRows: Number(feedback.rows_used_for_retrain ?? DEMO_METRICS.feedbackRows) || DEMO_METRICS.feedbackRows
+      };
+      if (summary.generated_at && usingDemo) {
+        setLiveHeader(summary.generated_at, false);
+      }
+      const policyChip = document.getElementById("policySourceChip");
+      if (policyChip && summary.model?.version_tag) {
+        const existing = policyChip.title ? `${policyChip.title}\n` : "";
+        policyChip.title = `${existing}Model version: ${summary.model.version_tag}`;
+      }
+    }
+
+    function updateKpiSources(metrics) {
+      const modelSource = retrainSummary ? "live retrain metadata" : "unavailable";
+      const hasFeedbackLabels = Boolean(metrics && metrics.hasFeedbackLabels);
+      const eventsSource = usingDemo
+        ? "demo events"
+        : hasFeedbackLabels
+          ? "live feedback labels"
+          : "live events (no feedback labels)";
+      const acc = document.getElementById("accuracySource");
+      const auc = document.getElementById("aucSource");
+      const prec = document.getElementById("precisionSource");
+      const fpr = document.getElementById("fprSource");
+      if (acc) acc.textContent = `Source: ${modelSource}`;
+      if (prec) prec.textContent = `Source: ${modelSource}`;
+      if (auc) auc.textContent = retrainSummary && Number.isFinite(Number((retrainSummary.metrics || {}).auc))
+        ? "Source: live retrain metadata"
+        : "Source: unavailable";
+      if (fpr) fpr.textContent = `Source: ${eventsSource}`;
     }
 
     async function loadPolicyThresholds() {
@@ -881,6 +1004,10 @@
     }
 
     function countUp(el, target, decimals, suffix) {
+      if (!Number.isFinite(target)) {
+        el.textContent = "—";
+        return;
+      }
       const start = 0;
       const dur = 900;
       const t0 = performance.now();
@@ -953,7 +1080,8 @@
       const action = String(raw.action || raw.decision || actionFromScore(score, runtimePolicy));
       const pii = raw.pii_classes || raw.triggers || raw.pii_type || [];
       const piiText = Array.isArray(pii) ? (pii[0] || "low") : String(pii || "low");
-      const feedback = raw.feedback || raw.feedback_type || (Math.random() > 0.7 ? "wrong" : "correct");
+      // Do not synthesize feedback on live events; drift should reflect real corrections only.
+      const feedback = raw.feedback || raw.feedback_type || "";
       return { ts, score, risk, action, pii: piiText, feedback };
     }
 
@@ -988,7 +1116,7 @@
       }
       try {
         const r = await fetch(
-          `${url}/rest/v1/guardrail_events?select=timestamp,risk_score,action,pii_classes,llm_name,text_hash&order=timestamp.desc.nullslast&limit=4000`,
+          `${url}/rest/v1/guardrail_events?select=id,timestamp,risk_score,action,pii_classes,llm_name,text_hash&order=timestamp.desc.nullslast,id.desc&limit=4000`,
           { headers: { apikey: key, Authorization: `Bearer ${key}` } }
         );
         if (!r.ok) throw new Error("Supabase fetch failed");
@@ -1005,29 +1133,38 @@
     function computeMetrics(events) {
       const totalScored = events.length || 0;
       if (usingDemo) {
-        return { ...DEMO_METRICS };
+        return { ...DEMO_METRICS, hasFeedbackLabels: true };
       }
       const blocks = events.filter((e) => e.action === "block").length;
       const warns = events.filter((e) => e.action === "warn").length;
+      const feedbackRows = events.filter((e) => String(e.feedback).trim().length > 0);
+      const hasFeedbackLabels = feedbackRows.length >= 20;
       const wrong = events.filter((e) => String(e.feedback).toLowerCase().includes("wrong")).length;
       const wrongInterventions = events.filter(
         (e) => String(e.feedback).toLowerCase().includes("wrong") && (e.action === "warn" || e.action === "block")
       ).length;
       const snoozed = events.filter((e) => e.action === "snooze").length;
       const overrides = events.filter((e) => e.action === "override").length;
-      const fpr = blocks + warns > 0 ? (wrongInterventions / (blocks + warns)) * 100 : 0;
+      const fpr = hasFeedbackLabels && (blocks + warns > 0)
+        ? (wrongInterventions / (blocks + warns)) * 100
+        : Number.NaN;
       const overrideRate = totalScored > 0 ? (overrides / totalScored) * 100 : 0;
 
+      const weekMs = 7 * 24 * 60 * 60 * 1000;
       const byWeek = new Map();
       events.forEach((e) => {
         const d = new Date(e.ts);
-        const wk = `${d.getUTCFullYear()}-W${Math.floor((d.getUTCDate() - 1) / 7) + 1}`;
+        if (Number.isNaN(d.getTime())) return;
+        const wk = Math.floor(d.getTime() / weekMs) * weekMs;
         if (!byWeek.has(wk)) byWeek.set(wk, { total: 0, wrong: 0 });
         const cur = byWeek.get(wk);
         cur.total += 1;
         if (String(e.feedback).toLowerCase().includes("wrong")) cur.wrong += 1;
       });
-      const weeklyRates = Array.from(byWeek.values()).slice(-8).map((v) => v.total ? (v.wrong / v.total) * 100 : 0);
+      const weeklyRates = Array.from(byWeek.entries())
+        .sort((a, b) => a[0] - b[0])
+        .slice(-8)
+        .map(([, v]) => (v.total ? (v.wrong / v.total) * 100 : 0));
       while (weeklyRates.length < 8) weeklyRates.unshift(0);
 
       return {
@@ -1038,6 +1175,7 @@
         snoozed,
         overrideRate,
         fpr,
+        hasFeedbackLabels,
         weeklyRates
       };
     }
@@ -1262,7 +1400,7 @@
 
       const mapX = (r) => cx + r * cw;
       const mapY = (p) => cy + (1 - p) * ch;
-      const prPath = PR_POINTS.map((d, i) => `${i ? "L" : "M"}${mapX(d[0]).toFixed(2)} ${mapY(d[1]).toFixed(2)}`).join(" ");
+      const prSub = document.getElementById("prSub");
 
       const ns = "http://www.w3.org/2000/svg";
       const targetLine = document.createElementNS(ns, "line");
@@ -1275,20 +1413,36 @@
       targetLine.setAttribute("stroke-dasharray", "5 5");
       svg.appendChild(targetLine);
 
-      const path = document.createElementNS(ns, "path");
-      path.setAttribute("d", prPath);
-      path.setAttribute("fill", "none");
-      path.setAttribute("stroke", "var(--accent)");
-      path.setAttribute("stroke-width", "2.5");
-      path.classList.add("animate-path");
-      svg.appendChild(path);
+      const liveHigh = retrainSummary?.evaluation?.pr_curve_summary?.classes?.high;
+      const liveRecall = Number(liveHigh?.recall_at_threshold);
+      if (Number.isFinite(liveRecall)) {
+        if (prSub) prSub.textContent = `Live point (high class): P=0.850 at R=${liveRecall.toFixed(3)}`;
+        addHoverablePoint(
+          svg,
+          mapX(Math.max(0, Math.min(1, liveRecall))),
+          mapY(0.85),
+          "var(--danger)",
+          `Live operating point (high): P=0.850 R=${liveRecall.toFixed(3)}`
+        );
+        return;
+      }
 
-      PR_POINTS.forEach((p) => {
-        addHoverablePoint(svg, mapX(p[0]), mapY(p[1]), "var(--accent)", `Threshold point  P=${p[1].toFixed(3)}  R=${p[0].toFixed(3)}`);
-      });
-
-      const op = [0.987, 0.976];
-      addHoverablePoint(svg, mapX(op[0]), mapY(op[1]), "var(--danger)", `Operating point  P=${op[1].toFixed(3)}  R=${op[0].toFixed(3)}`);
+      if (usingDemo) {
+        if (prSub) prSub.textContent = "Demo PR curve (illustrative)";
+        const prPath = PR_POINTS.map((d, i) => `${i ? "L" : "M"}${mapX(d[0]).toFixed(2)} ${mapY(d[1]).toFixed(2)}`).join(" ");
+        const path = document.createElementNS(ns, "path");
+        path.setAttribute("d", prPath);
+        path.setAttribute("fill", "none");
+        path.setAttribute("stroke", "var(--accent)");
+        path.setAttribute("stroke-width", "2.5");
+        path.classList.add("animate-path");
+        svg.appendChild(path);
+        PR_POINTS.forEach((p) => {
+          addHoverablePoint(svg, mapX(p[0]), mapY(p[1]), "var(--accent)", `Demo point  P=${p[1].toFixed(3)}  R=${p[0].toFixed(3)}`);
+        });
+      } else if (prSub) {
+        prSub.textContent = "Live PR curve unavailable from current artifacts";
+      }
     }
 
     function drawROCChart() {
@@ -1304,6 +1458,7 @@
       const ns = "http://www.w3.org/2000/svg";
 
       const tickVals = [0,0.002,0.005,0.01,0.02,0.05,0.1,0.2,0.5,1];
+      const rocAucBadge = document.getElementById("rocAucBadge");
       const mapX = (x) => {
         const idx = tickVals.indexOf(x);
         if (idx >= 0) return cx + (idx / (tickVals.length - 1)) * cw;
@@ -1332,19 +1487,44 @@
       diag.setAttribute("stroke-dasharray", "6 5");
       svg.appendChild(diag);
 
-      const pathD = ROC_POINTS.map((d, i) => `${i ? "L" : "M"}${mapX(d[0]).toFixed(2)} ${mapY(d[1]).toFixed(2)}`).join(" ");
-      const path = document.createElementNS(ns, "path");
-      path.setAttribute("d", pathD);
-      path.setAttribute("fill", "none");
-      path.setAttribute("stroke", "var(--accent)");
-      path.setAttribute("stroke-width", "2.5");
-      path.classList.add("animate-path");
-      svg.appendChild(path);
+      const liveRec = retrainSummary?.evaluation?.threshold_calibration?.recommended || {};
+      const liveFpr = Number(liveRec.fpr_non_high_as_high);
+      const liveTpr = Number(liveRec.recall_high);
+      const liveAuc = Number(retrainSummary?.metrics?.auc);
+      if (rocAucBadge) {
+        if (Number.isFinite(liveAuc)) {
+          rocAucBadge.textContent = liveAuc.toFixed(3);
+          rocAucBadge.className = "badge good";
+        } else {
+          rocAucBadge.textContent = "N/A";
+          rocAucBadge.className = "badge";
+        }
+      }
 
-      ROC_POINTS.forEach((p) => {
-        addHoverablePoint(svg, mapX(p[0]), mapY(p[1]), "var(--accent)", `ROC point  FPR=${p[0]}  TPR=${p[1].toFixed(3)}`);
-      });
-      addHoverablePoint(svg, mapX(0.01), mapY(0.86), "var(--danger)", "Operating point");
+      if (Number.isFinite(liveFpr) && Number.isFinite(liveTpr)) {
+        addHoverablePoint(
+          svg,
+          mapX(Math.max(0, Math.min(1, liveFpr))),
+          mapY(Math.max(0, Math.min(1, liveTpr))),
+          "var(--danger)",
+          `Live operating point  FPR=${liveFpr.toFixed(3)}  TPR=${liveTpr.toFixed(3)}`
+        );
+        return;
+      }
+
+      if (usingDemo) {
+        const pathD = ROC_POINTS.map((d, i) => `${i ? "L" : "M"}${mapX(d[0]).toFixed(2)} ${mapY(d[1]).toFixed(2)}`).join(" ");
+        const path = document.createElementNS(ns, "path");
+        path.setAttribute("d", pathD);
+        path.setAttribute("fill", "none");
+        path.setAttribute("stroke", "var(--accent)");
+        path.setAttribute("stroke-width", "2.5");
+        path.classList.add("animate-path");
+        svg.appendChild(path);
+        ROC_POINTS.forEach((p) => {
+          addHoverablePoint(svg, mapX(p[0]), mapY(p[1]), "var(--accent)", `Demo ROC point  FPR=${p[0]}  TPR=${p[1].toFixed(3)}`);
+        });
+      }
     }
 
     function drawConfusionMatrix() {
@@ -1498,9 +1678,22 @@
       addGrid(svg, cx, cy, cw, ch, 7, 6);
       drawAxes(svg, cx, cy, cw, ch, "Week", "Correction %");
       const ns = "http://www.w3.org/2000/svg";
-      const maxY = 20;
+      const safeRatesRaw = Array.isArray(rates) ? rates : [];
+      const safeRates = safeRatesRaw
+        .map((v) => {
+          const n = Number(v);
+          if (!Number.isFinite(n)) return 0;
+          return Math.max(0, Math.min(100, n));
+        })
+        .slice(-8);
+      while (safeRates.length < 8) safeRates.unshift(0);
+      const peak = Math.max(...safeRates, 0);
+      const maxY = Math.max(20, Math.ceil((peak + 2) / 5) * 5);
       const mapX = (i) => cx + (i / 7) * cw;
-      const mapY = (v) => cy + (1 - (v / maxY)) * ch;
+      const mapY = (v) => {
+        const vv = Math.max(0, Math.min(maxY, Number(v) || 0));
+        return cy + (1 - (vv / maxY)) * ch;
+      };
 
       for (let i = 0; i < 8; i++) {
         const tx = document.createElementNS(ns, "text");
@@ -1530,7 +1723,7 @@
       rLine.setAttribute("stroke-dasharray", "6 5");
       svg.appendChild(rLine);
 
-      const d = rates.map((v, i) => `${i ? "L" : "M"}${mapX(i).toFixed(2)} ${mapY(v).toFixed(2)}`).join(" ");
+      const d = safeRates.map((v, i) => `${i ? "L" : "M"}${mapX(i).toFixed(2)} ${mapY(v).toFixed(2)}`).join(" ");
       const p = document.createElementNS(ns, "path");
       p.setAttribute("d", d);
       p.setAttribute("fill", "none");
@@ -1538,7 +1731,7 @@
       p.setAttribute("stroke-width", "2.5");
       p.classList.add("animate-path");
       svg.appendChild(p);
-      rates.forEach((v, i) => {
+      safeRates.forEach((v, i) => {
         addHoverablePoint(svg, mapX(i), mapY(v), "var(--accent)", `Week ${i + 1}: ${v.toFixed(2)}% corrections`);
       });
     }
@@ -1594,18 +1787,34 @@
     }
 
     function renderFprDonut(metrics) {
-      const fpr = Math.max(0, Math.min(100, metrics.fpr));
+      const fpr = Number(metrics.fpr);
       const arc = document.getElementById("fprDonutArc");
       const circum = 389.6;
-      setGauge(arc, 100 - fpr, circum);
-      document.getElementById("fprDonutText").textContent = `${fpr.toFixed(1)}%`;
-      document.getElementById("fprStatVal").textContent = `${fpr.toFixed(1)}%`;
+      const hasFpr = Number.isFinite(fpr);
+      setGauge(arc, hasFpr ? (100 - Math.max(0, Math.min(100, fpr))) : 0, circum);
+      document.getElementById("fprDonutText").textContent = hasFpr ? `${fpr.toFixed(1)}%` : "N/A";
+      document.getElementById("fprStatVal").textContent = hasFpr ? `${fpr.toFixed(1)}%` : "N/A";
       document.getElementById("fprBlocks").textContent = String(metrics.blocks);
       document.getElementById("fprSnoozed").textContent = String(metrics.snoozed);
       document.getElementById("fprOverride").textContent = `${metrics.overrideRate.toFixed(1)}%`;
-      document.getElementById("fprStatVal").className = fpr > 10 ? "warn" : "ok";
-      document.getElementById("fprTrend").textContent = fpr > 10 ? "↓ elevated - investigate" : "↑ within safe band";
-      document.getElementById("fprTrend").className = fpr > 10 ? "trend down" : "trend up";
+      const fprBadge = document.getElementById("fprBadge");
+      if (!hasFpr) {
+        document.getElementById("fprStatVal").className = "warn";
+        document.getElementById("fprTrend").textContent = "labels unavailable - cannot compute true FPR";
+        document.getElementById("fprTrend").className = "trend down";
+        if (fprBadge) {
+          fprBadge.textContent = "Needs feedback labels";
+          fprBadge.className = "badge";
+        }
+      } else {
+        document.getElementById("fprStatVal").className = fpr > 10 ? "warn" : "ok";
+        document.getElementById("fprTrend").textContent = fpr > 10 ? "↓ elevated - investigate" : "↑ within safe band";
+        document.getElementById("fprTrend").className = fpr > 10 ? "trend down" : "trend up";
+        if (fprBadge) {
+          fprBadge.textContent = "Target < 5%";
+          fprBadge.className = "badge good";
+        }
+      }
     }
 
     function initChartAnimationObserver() {
@@ -1657,26 +1866,42 @@
     }
 
     async function loadDashboard() {
+      applyRetrainSummary(await loadRetrainSummary());
       allEvents = await fetchEvents();
       const newest = allEvents[0]?.ts;
-      setLiveHeader(newest, !usingDemo);
+      setLiveHeader(newest || retrainSummary?.generated_at, !usingDemo);
 
       const metrics = computeMetrics(allEvents);
+      const accuracyEl = document.getElementById("accuracyMetric");
+      if (accuracyEl) accuracyEl.dataset.target = String(Number.isFinite(METRICS_STATIC.accuracy) ? METRICS_STATIC.accuracy : Number.NaN);
+      const aucEl = document.getElementById("aucMetric");
+      if (aucEl) aucEl.dataset.target = String(Number.isFinite(METRICS_STATIC.auc) ? METRICS_STATIC.auc : Number.NaN);
       const precisionEl = document.getElementById("precisionMetric");
-      if (precisionEl) precisionEl.dataset.target = String(METRICS_STATIC.precision);
-      document.getElementById("fprMetric").dataset.target = String(metrics.fpr.toFixed(1));
+      if (precisionEl) precisionEl.dataset.target = String(Number.isFinite(METRICS_STATIC.precision) ? METRICS_STATIC.precision : Number.NaN);
+      document.getElementById("fprMetric").dataset.target = String(Number.isFinite(metrics.fpr) ? metrics.fpr.toFixed(1) : Number.NaN);
       document.getElementById("precisionTrend").textContent = usingDemo
         ? "↑ stable operating precision"
         : "↑ robust on validation sweep";
+      updateKpiSources(metrics);
 
       drawSparkline("accuracySpark", [96.8, 97.1, 97.0, 97.3, 97.4, 97.5, 97.6]);
       drawSparkline("aucSpark", [0.991, 0.993, 0.994, 0.995, 0.996, 0.997, 0.998]);
-      drawSparkline("fprSpark", [1.2, 1.0, 0.8, 0.5, 0.3, 0.1, metrics.fpr], metrics.fpr > 5 ? "var(--danger)" : "var(--accent)");
+      drawSparkline(
+        "fprSpark",
+        Number.isFinite(metrics.fpr) ? [1.2, 1.0, 0.8, 0.5, 0.3, 0.1, metrics.fpr] : [0, 0, 0, 0, 0, 0, 0],
+        Number.isFinite(metrics.fpr) && metrics.fpr > 5 ? "var(--danger)" : "var(--accent)"
+      );
       drawSparkline("precisionSpark", [0.961, 0.966, 0.969, 0.971, 0.973, 0.975, 0.976]);
 
       drawPRChart();
       drawROCChart();
       drawConfusionMatrix();
+      const cmNote = document.getElementById("cmNote");
+      if (cmNote) {
+        cmNote.textContent = Number.isFinite(METRICS_STATIC.accuracy)
+          ? `Reference matrix shown. Live eval accuracy: ${METRICS_STATIC.accuracy.toFixed(1)}%`
+          : "Reference matrix shown (live confusion export unavailable).";
+      }
       drawDistributionHeatmap(allEvents);
       drawDriftChart(usingDemo ? DEMO_DRIFT : metrics.weeklyRates);
       document.getElementById("driftNote").textContent = usingDemo

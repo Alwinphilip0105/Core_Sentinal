@@ -40,6 +40,7 @@ import random
 import subprocess
 import sys
 import threading
+import time
 import webbrowser
 from collections import deque
 from datetime import datetime, timezone
@@ -76,6 +77,11 @@ from infer import (
     score_clipboard_with_pii,
     should_bypass_duplicate_skip_for_text,
 )
+from retrain_publish import (
+    SUMMARY_PATH as RETRAIN_SUMMARY_PATH,
+    build_retrain_dashboard_summary,
+    publish_retrain_summary_to_supabase,
+)
 from ui_remediation_dialog import RemediationDialog
 from ui_risk_bubble import RiskBubble
 
@@ -105,7 +111,8 @@ _RETRAIN_TRIGGER_MIN = max(
 class _RetrainNotifier(QObject):
     """Marshals retrain completion toasts from a worker thread to the GUI thread."""
 
-    show_success = pyqtSignal()
+    show_success = pyqtSignal(str)
+    show_partial_success = pyqtSignal(str)
     show_failure = pyqtSignal(str)
 
 
@@ -125,29 +132,78 @@ def _train_subprocess_timeout() -> float | None:
 
 
 def auto_retrain() -> None:
-    """Run merge_feedback_to_training.py then train.py in a background thread."""
+    """Run the full retrain pipeline and publish dashboard-ready metadata."""
 
     def _run() -> None:
         global _retrain_notifier
         timeout_env = "GUARDRAIL_TRAIN_TIMEOUT_SEC"
         default_timeout = 14400
+        guardrail_root = Path(__file__).resolve().parent
+        train_timeout = _train_subprocess_timeout()
+        stage_results: list[dict[str, object]] = []
+
+        def _emit_partial_or_failure(message: str) -> None:
+            train_completed = any(
+                row.get("name") == "train" and row.get("status") == "success"
+                for row in stage_results
+            )
+            summary = build_retrain_dashboard_summary(
+                stage_results=stage_results,
+                publish_target="supabase_and_static",
+                publish_status={
+                    "attempted": False,
+                    "success": False,
+                    "table": os.environ.get("GUARDRAIL_RETRAIN_SUPABASE_TABLE", "retrain_runs"),
+                    "error": message,
+                },
+            )
+            print(
+                f"[retrain] wrote failure summary to {RETRAIN_SUMMARY_PATH.as_posix()} "
+                f"pipeline_status={summary.get('pipeline', {}).get('status')}",
+                flush=True,
+            )
+            if _retrain_notifier is None:
+                return
+            if train_completed:
+                _retrain_notifier.show_partial_success.emit(
+                    f"Model retrained, but post-train automation stopped early: {message}"
+                )
+            else:
+                _retrain_notifier.show_failure.emit(message)
+
         try:
-            guardrail_root = Path(__file__).resolve().parent
             python = sys.executable
             cwd = str(guardrail_root)
-            train_timeout = _train_subprocess_timeout()
+
+            def _run_stage(
+                name: str,
+                command: list[str],
+                *,
+                timeout: float | None,
+                required: bool = True,
+            ) -> None:
+                started = time.perf_counter()
+                print(f"[retrain] starting stage={name}: {' '.join(command)}", flush=True)
+                r = subprocess.run(
+                    command,
+                    cwd=cwd,
+                    timeout=timeout,
+                )
+                elapsed = round(time.perf_counter() - started, 3)
+                row = {
+                    "name": name,
+                    "status": "success" if r.returncode == 0 else "failed",
+                    "returncode": int(r.returncode),
+                    "duration_sec": elapsed,
+                    "command": " ".join(command),
+                }
+                stage_results.append(row)
+                if r.returncode != 0 and required:
+                    raise RuntimeError(f"{name} exited {r.returncode}")
 
             merge = guardrail_root / "merge_feedback_to_training.py"
             if merge.exists():
-                r = subprocess.run(
-                    [python, str(merge)],
-                    cwd=cwd,
-                    timeout=120,
-                )
-                if r.returncode != 0:
-                    raise RuntimeError(
-                        f"merge_feedback_to_training.py exited {r.returncode}"
-                    )
+                _run_stage("merge_feedback", [python, str(merge)], timeout=120)
 
             train = guardrail_root / "train.py"
             if not train.exists():
@@ -157,16 +213,57 @@ def auto_retrain() -> None:
             if not train.exists():
                 raise RuntimeError("train.py not found under guardrail or repo root")
 
-            r = subprocess.run(
-                [python, str(train)],
-                cwd=cwd,
-                timeout=train_timeout,
-            )
-            if r.returncode != 0:
-                raise RuntimeError(f"train.py exited {r.returncode}")
+            _run_stage("train", [python, str(train)], timeout=train_timeout)
 
+            evaluate = guardrail_root / "evaluate_test.py"
+            if not evaluate.exists():
+                raise RuntimeError("evaluate_test.py not found under guardrail root")
+            _run_stage("evaluate_test", [python, str(evaluate)], timeout=1800)
+
+            calibrate = guardrail_root / "calibrate_thresholds.py"
+            if not calibrate.exists():
+                raise RuntimeError("calibrate_thresholds.py not found under guardrail root")
+            _run_stage(
+                "calibrate_validation",
+                [python, str(calibrate), "--validation-sweep"],
+                timeout=1800,
+            )
+            _run_stage(
+                "apply_thresholds",
+                [python, str(calibrate), "--apply"],
+                timeout=300,
+            )
+
+            summary = build_retrain_dashboard_summary(
+                stage_results=stage_results,
+                publish_target="supabase_and_static",
+            )
+            publish_status = publish_retrain_summary_to_supabase(summary)
+            summary = build_retrain_dashboard_summary(
+                stage_results=stage_results,
+                publish_target="supabase_and_static",
+                publish_status=publish_status,
+            )
+            publish_ok = bool(publish_status.get("success"))
+
+            print(
+                f"[retrain] pipeline complete. summary={RETRAIN_SUMMARY_PATH.as_posix()} "
+                f"publish_ok={publish_ok}",
+                flush=True,
+            )
             if _retrain_notifier is not None:
-                _retrain_notifier.show_success.emit()
+                if publish_ok:
+                    _retrain_notifier.show_success.emit(
+                        "Model, reports, thresholds, and dashboard metadata refreshed."
+                    )
+                else:
+                    reason = str(
+                        publish_status.get("error")
+                        or f"Supabase publish to {publish_status.get('table', 'retrain_runs')} failed"
+                    )
+                    _retrain_notifier.show_partial_success.emit(
+                        f"Model and local dashboard artifacts updated, but publish failed: {reason}"
+                    )
         except subprocess.TimeoutExpired as exc:
             timed_out_after = int(getattr(exc, "timeout", 0) or 0)
             if timed_out_after <= 0:
@@ -182,12 +279,10 @@ def auto_retrain() -> None:
                 f"  Check: .env file, system env vars, shell profile (~/.bashrc, ~/.zshrc)",
                 flush=True,
             )
-            if _retrain_notifier is not None:
-                _retrain_notifier.show_failure.emit("train.py timed out (see log)")
+            _emit_partial_or_failure("train.py timed out (see log)")
         except Exception as e:
             print(f"[retrain] failed: {e}", flush=True)
-            if _retrain_notifier is not None:
-                _retrain_notifier.show_failure.emit(str(e))
+            _emit_partial_or_failure(str(e))
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
@@ -387,6 +482,20 @@ class _PasteAnalysisController(QObject):
         self._replay_sent = False
         self._safe_paste_count = 0
         self._char_event = None
+        self._panel_dialog: RemediationDialog | None = None
+        self._panel_signature: tuple[str, str, bool, int] | None = None
+        self._warn_panel_timer = QTimer(self)
+        self._warn_panel_timer.setSingleShot(True)
+        self._warn_panel_timer.timeout.connect(self._flush_warn_panel)
+        self._pending_warn_panel: tuple[str, dict, str, object, object] | None = None
+        self._perf_stats: dict[str, int] = {
+            "panel_open_count": 0,
+            "panel_reuse_count": 0,
+            "panel_replace_count": 0,
+            "warn_timer_cancel_count": 0,
+            "warn_timer_fire_count": 0,
+            "dispatch_count": 0,
+        }
 
     def _show_random_safe_character(self, score: int) -> None:
         from ui_risk_bubble import CharacterEvent
@@ -557,6 +666,96 @@ class _PasteAnalysisController(QObject):
         except Exception:
             pass
 
+    @staticmethod
+    def _panel_sig(text: str, result: dict, *, hold_mode: bool) -> tuple[str, str, bool, int]:
+        try:
+            risk_score = int(result.get("risk_score", 0) or 0)
+        except (TypeError, ValueError):
+            risk_score = 0
+        return (
+            (text or "").strip(),
+            str(result.get("risk", "low") or "low"),
+            bool(hold_mode),
+            risk_score,
+        )
+
+    def _record_perf(self, key: str, delta_ms: float | None = None) -> None:
+        self._perf_stats[key] = int(self._perf_stats.get(key, 0) or 0) + 1
+        if DEBUG_PASTE and delta_ms is not None:
+            print(f"[perf] {key}={self._perf_stats[key]} dt_ms={delta_ms:.1f}", flush=True)
+
+    def _log_perf_timing(self, key: str, delta_ms: float) -> None:
+        if DEBUG_PASTE:
+            print(f"[perf] {key}_dt_ms={delta_ms:.1f}", flush=True)
+
+    def _cancel_pending_warn_panel(self) -> None:
+        if self._warn_panel_timer.isActive():
+            self._warn_panel_timer.stop()
+            self._record_perf("warn_timer_cancel_count")
+        self._pending_warn_panel = None
+
+    def _on_panel_finished(self, _code: int = 0) -> None:
+        sender = self.sender()
+        if self._panel_dialog is not None and sender is self._panel_dialog:
+            self._panel_dialog = None
+            self._panel_signature = None
+        self._clear_paste_hold_state()
+
+    def _flush_warn_panel(self) -> None:
+        payload = self._pending_warn_panel
+        self._pending_warn_panel = None
+        if payload is None:
+            return
+        self._record_perf("warn_timer_fire_count")
+        text, result, agent_name, url, cleaned_title = payload
+        self._show_warn_panel(text, result, agent_name, url, cleaned_title)
+
+    def _show_or_replace_panel(
+        self,
+        dialog: RemediationDialog,
+        *,
+        signature: tuple[str, str, bool, int],
+    ) -> RemediationDialog:
+        existing = self._panel_dialog
+        if existing is not None:
+            if existing.isVisible() and self._panel_signature == signature:
+                self._record_perf("panel_reuse_count")
+                try:
+                    existing.raise_()
+                    existing.activateWindow()
+                except Exception:
+                    pass
+                dialog.deleteLater()
+                return existing
+            self._record_perf("panel_replace_count")
+            try:
+                existing.hide()
+                existing.close()
+            except Exception:
+                pass
+            existing.deleteLater()
+
+        self._panel_dialog = dialog
+        self._panel_signature = signature
+        dialog.finished.connect(self._on_panel_finished)
+        dialog.destroyed.connect(lambda *_: self._on_panel_finished())
+        self._record_perf("panel_open_count")
+        return dialog
+
+    def _reuse_existing_panel_if_same(self, signature: tuple[str, str, bool, int]) -> bool:
+        existing = self._panel_dialog
+        if existing is None or not existing.isVisible():
+            return False
+        if self._panel_signature != signature:
+            return False
+        self._record_perf("panel_reuse_count")
+        try:
+            existing.raise_()
+            existing.activateWindow()
+        except Exception:
+            pass
+        return True
+
     def _show_warn_panel(
         self,
         text: str,
@@ -566,7 +765,11 @@ class _PasteAnalysisController(QObject):
         cleaned_title,
     ) -> None:
         """Open remediation in review mode: paste already replayed; panel is non-blocking."""
+        self._cancel_pending_warn_panel()
         try:
+            signature = self._panel_sig(text, result, hold_mode=False)
+            if self._reuse_existing_panel_if_same(signature):
+                return
             sp = result.get("spans")
             spans_list = sp if isinstance(sp, list) else []
             try:
@@ -586,8 +789,12 @@ class _PasteAnalysisController(QObject):
                 lambda paused: self.kick_queue() if not paused else None
             )
             dialog.remediation_finished.connect(lambda _ok: None)
-            dialog.finished.connect(lambda _code: None)
-            dialog.show_with_warn_mode(spans=spans_list, score=sc, risk=rk)
+            dialog = self._show_or_replace_panel(
+                dialog,
+                signature=signature,
+            )
+            if dialog is self._panel_dialog:
+                dialog.show_with_warn_mode(spans=spans_list, score=sc, risk=rk)
         except Exception as e:
             if DEBUG_PASTE:
                 print(f"[Paste] Warn panel error: {e}", flush=True)
@@ -600,6 +807,8 @@ class _PasteAnalysisController(QObject):
         url,
         cleaned_title,
     ) -> None:
+        dispatch_started = time.perf_counter()
+        self._record_perf("dispatch_count")
         action = self._normalize_action(result)
         self._bubble._update_streak_from_action(action)
         score = result.get("risk_score", 0)
@@ -640,6 +849,7 @@ class _PasteAnalysisController(QObject):
                         )
                 if sc > 20 and count not in _STREAK_MILESTONES:
                     toast_safe(f"Safe — score {sc}/100")
+            self._log_perf_timing("dispatch", (time.perf_counter() - dispatch_started) * 1000.0)
             return
 
         if action == "warn":
@@ -661,17 +871,19 @@ class _PasteAnalysisController(QObject):
                         replay_suppressed_paste()
                 except Exception:
                     pass
-            res_copy = dict(result)
-            ag = agent_name or "LLM"
-            QTimer.singleShot(
-                300,
-                lambda t=text, r=res_copy, a=ag, u=url, ct=cleaned_title: self._show_warn_panel(
-                    t, r, a, u, ct
-                ),
+            self._pending_warn_panel = (
+                text,
+                dict(result),
+                agent_name or "LLM",
+                url,
+                cleaned_title,
             )
+            self._warn_panel_timer.start(220)
+            self._log_perf_timing("dispatch", (time.perf_counter() - dispatch_started) * 1000.0)
             return
 
         if action == "block":
+            self._cancel_pending_warn_panel()
             if user_settings.load().get("play_sound_on_block"):
                 try:
                     import winsound
@@ -688,12 +900,18 @@ class _PasteAnalysisController(QObject):
                     "(analysis already completed).",
                     flush=True,
                 )
+                self._log_perf_timing("dispatch", (time.perf_counter() - dispatch_started) * 1000.0)
                 return
             hold_paste = self._should_intercept_paste_hold(result)
             if hold_paste:
                 self._blocked_text = text
                 self._blocked_result = result
                 self._bubble.set_hold_state(True, critical=critical)
+            signature = self._panel_sig(text, result, hold_mode=hold_paste)
+            if self._reuse_existing_panel_if_same(signature):
+                self._log_perf_timing("dispatch", (time.perf_counter() - dispatch_started) * 1000.0)
+                return
+            if hold_paste:
                 dialog = RemediationDialog(
                     text,
                     result,
@@ -708,7 +926,10 @@ class _PasteAnalysisController(QObject):
                 lambda paused: self.kick_queue() if not paused else None
             )
             dialog.remediation_finished.connect(lambda _ok: self._clear_paste_hold_state())
-            dialog.finished.connect(lambda _code: self._clear_paste_hold_state())
+            dialog = self._show_or_replace_panel(
+                dialog,
+                signature=signature,
+            )
             if hold_paste:
                 sp = result.get("spans")
                 spans_list = sp if isinstance(sp, list) else []
@@ -726,6 +947,7 @@ class _PasteAnalysisController(QObject):
                 QTimer.singleShot(50, self._clear_clipboard_for_hold)
             else:
                 dialog.show()
+            self._log_perf_timing("dispatch", (time.perf_counter() - dispatch_started) * 1000.0)
 
     @pyqtSlot(object)
     def on_inference_done(self, result: object) -> None:
@@ -941,10 +1163,19 @@ def main():
     global _retrain_notifier
     _retrain_notifier = _RetrainNotifier(bubble)
     _retrain_notifier.show_success.connect(
-        lambda: show_toast(
-            "Core Sentinel has learned from your corrections",
+        lambda msg: show_toast(
+            msg,
             title="Model retrained successfully",
             parent=bubble,
+        )
+    )
+    _retrain_notifier.show_partial_success.connect(
+        lambda msg: show_toast(
+            msg,
+            color="#FFB300",
+            duration=9000,
+            parent=bubble,
+            title="Retrain finished with warnings",
         )
     )
     _retrain_notifier.show_failure.connect(
@@ -978,7 +1209,7 @@ def main():
 
     from clipboard_monitor import ClipboardMonitor
 
-    _clip_monitor = ClipboardMonitor()
+    _clip_monitor = ClipboardMonitor(bubble_ref=bubble)
     _clip_monitor.clipboard_changed.connect(
         lambda t, r, b=bubble: _on_clipboard_preview_impl(t, r, b),
         Qt.ConnectionType.QueuedConnection,
