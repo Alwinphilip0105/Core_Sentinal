@@ -731,9 +731,9 @@
           <li>Model quality drift and QA snapshot view</li>
         </ul>
         <div class="chips">
-          <span class="chip">AUC: 0.998</span>
-          <span class="chip">Precision: 0.976</span>
-          <span class="chip">FPR: 0.0%</span>
+          <span class="chip" id="mlChipAuc">AUC: 0.998</span>
+          <span class="chip" id="mlChipPrecision">Precision: 0.976</span>
+          <span class="chip" id="mlChipFpr">FPR: 0.0%</span>
         </div>
         <p class="card-note">Why click: verify model reliability before demos, reviews, or releases.</p>
       </a>
@@ -937,6 +937,11 @@
       recallLow: 1.0,
       recallMed: 0.413,
       recallHigh: 0.989
+    };
+    const ML_CARD_DEFAULT = {
+      auc: 0.998,
+      precision: 0.976,
+      fprPct: 0.0
     };
     let _lastActivityRows = [];
 
@@ -1148,6 +1153,39 @@
       return `Last retrain: ${d.toLocaleString()}`;
     }
 
+    function _toFiniteNumber(val) {
+      const n = Number(val);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function _parseFprFromCalibration(policy) {
+      const calib = policy && policy.inference_3class_labels
+        ? policy.inference_3class_labels._calibration_metrics_val
+        : "";
+      if (!calib) return null;
+      const match = String(calib).match(/fpr_non_high_as_high[^0-9]*([0-9]*\.?[0-9]+)/i);
+      if (!match) return null;
+      return _toFiniteNumber(match[1]);
+    }
+
+    function updateMlCardChips(retrainMeta) {
+      const aucEl = document.getElementById("mlChipAuc");
+      const precisionEl = document.getElementById("mlChipPrecision");
+      const fprEl = document.getElementById("mlChipFpr");
+      if (!aucEl || !precisionEl || !fprEl) return;
+
+      const metrics = retrainMeta && typeof retrainMeta === "object"
+        ? (retrainMeta.metrics || {})
+        : {};
+      const auc = _toFiniteNumber(metrics.auc);
+      const precision = _toFiniteNumber(metrics.precision);
+      const fpr = _toFiniteNumber(metrics.fpr_non_high_as_high) ?? _parseFprFromCalibration(retrainMeta?.policy);
+
+      aucEl.textContent = `AUC: ${(auc ?? ML_CARD_DEFAULT.auc).toFixed(3)}`;
+      precisionEl.textContent = `Precision: ${(precision ?? ML_CARD_DEFAULT.precision).toFixed(3)}`;
+      fprEl.textContent = `FPR: ${(((fpr ?? (ML_CARD_DEFAULT.fprPct / 100)) * 100)).toFixed(1)}%`;
+    }
+
     async function loadRetrainSummary() {
       const sbUrl = (localStorage.getItem("sb_url") || "").trim().replace(/\/$/, "");
       const sbKey = (localStorage.getItem("sb_key") || "").trim();
@@ -1285,6 +1323,7 @@
         const sourceHint = retrainMeta ? "" : ` • source=${kpiSource}`;
         meta.textContent = `${formatRetrainTime(retrainMeta?.generated_at)}${versionTag}${sourceHint}`;
       }
+      updateMlCardChips(retrainMeta);
     }
 
     async function loadMiniStats() {

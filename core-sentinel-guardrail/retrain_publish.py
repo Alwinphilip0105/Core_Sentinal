@@ -14,6 +14,7 @@ REPORTS_DIR = ROOT / "reports"
 SUMMARY_PATH = REPORTS_DIR / "retrain_dashboard_summary.json"
 TRAIN_EVAL_SUMMARY_PATH = REPORTS_DIR / "train_eval_summary.json"
 PR_CURVE_SUMMARY_PATH = REPORTS_DIR / "pr_curve_summary.json"
+ROC_CURVE_SUMMARY_PATH = REPORTS_DIR / "roc_curve_summary.json"
 THRESHOLD_CALIBRATION_PATH = REPORTS_DIR / "threshold_calibration.json"
 RISK_POLICY_PATH = ROOT / "config" / "risk_policy.json"
 MODEL_DIR = ROOT / "models" / "tinybert_guardrail"
@@ -85,16 +86,22 @@ def _compact_stage_rows(stage_results: list[dict[str, Any]] | None) -> list[dict
     return out
 
 
-def _roc_auc_from_pr_curve(pr: dict[str, Any]) -> float | None:
-    """Macro one-vs-rest ROC-AUC from evaluate_test.py (pr_curve_summary.json)."""
-    v = pr.get("roc_auc_macro")
-    if v is None:
-        return None
+def _float_or_none(v: Any) -> float | None:
     try:
         x = float(v)
-        return x if x == x else None  # NaN -> None
+        return x if x == x else None
     except (TypeError, ValueError):
         return None
+
+
+def _roc_auc_from_curve_summaries(pr: dict[str, Any], roc: dict[str, Any]) -> float | None:
+    """Prefer dedicated ROC artifact, then legacy pr_curve_summary fallback."""
+    hc = roc.get("high_class_curve")
+    if isinstance(hc, dict):
+        val = _float_or_none(hc.get("auc"))
+        if val is not None:
+            return val
+    return _float_or_none(pr.get("roc_auc_macro"))
 
 
 def _macro_auprc_from_pr_curve(pr: dict[str, Any]) -> float | None:
@@ -125,6 +132,7 @@ def build_retrain_dashboard_summary(
 
     train_eval = _load_json(TRAIN_EVAL_SUMMARY_PATH)
     pr_curve = _load_json(PR_CURVE_SUMMARY_PATH)
+    roc_curve = _load_json(ROC_CURVE_SUMMARY_PATH)
     threshold_calibration = _load_json(THRESHOLD_CALIBRATION_PATH)
     risk_policy = _load_json(RISK_POLICY_PATH)
     best = train_eval.get("best") if isinstance(train_eval.get("best"), dict) else {}
@@ -140,7 +148,7 @@ def build_retrain_dashboard_summary(
     failed_stage = next((s["name"] for s in stages if s.get("status") != "success"), None)
     pipeline_status = "success" if not failed_stage else "failed"
     auc_macro = _macro_auprc_from_pr_curve(pr_curve)
-    roc_macro = _roc_auc_from_pr_curve(pr_curve)
+    roc_macro = _roc_auc_from_curve_summaries(pr_curve, roc_curve)
 
     summary: dict[str, Any] = {
         "artifact_version": 1,
@@ -184,6 +192,7 @@ def build_retrain_dashboard_summary(
         "evaluation": {
             "train_eval_summary": train_eval,
             "pr_curve_summary": pr_curve,
+            "roc_curve_summary": roc_curve,
             "threshold_calibration": threshold_calibration,
         },
         "policy": {

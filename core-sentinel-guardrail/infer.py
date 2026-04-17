@@ -7,6 +7,8 @@ Env: GUARDRAIL_TORCH_THREADS (default 2), GUARDRAIL_MAX_SEQ_LEN (default 128), G
 overlap between windows for long texts), GUARDRAIL_BLOCKING_PRELOAD (main.py),
 GUARDRAIL_BLOCK_RISK_SCORE_MIN (default 95: score at/above forces block UI),
 GUARDRAIL_DUPLICATE_BYPASS_MIN_SCORE (default 80: at/above never skips duplicate or inference-cache).
+GUARDRAIL_DYNAMIC_RISK_SCORE (optional): set to 1/true to blend model softmax (low/med/high) into 0–100;
+  set to blend for 50/50 mix with the legacy tier+trigger score. Default off — legacy uses fixed tier bases (0/30/70).
 
 Decision driven by config/risk_policy.json (3-class: min_prob_* defaults or file;
 9-class: optional per_class_thresholds with per-PII warn/block scores). Scoring queues a row to
@@ -1666,6 +1668,53 @@ def compute_risk_score(risk: str, triggers: list[str]) -> int:
     return int(min(100, score))
 
 
+def _three_class_probs_from_scores_list(scores_list: list | None) -> tuple[float, float, float] | None:
+    """If merged sliding-window scores look like a 3-class risk model, return (p_low, p_med, p_high)."""
+    if not scores_list:
+        return None
+    probs_by_label: dict[str, float] = {}
+    for item in scores_list:
+        if not isinstance(item, dict):
+            continue
+        raw = str(item.get("label", ""))
+        if raw.startswith("LABEL_"):
+            try:
+                lid = int(raw.replace("LABEL_", ""))
+            except ValueError:
+                continue
+            label_name = _model_id2label.get(lid, "O") if _model_id2label else "O"
+        else:
+            label_name = raw
+        probs_by_label[str(label_name).strip().lower()] = float(item.get("score", 0.0))
+    if not any(k in probs_by_label for k in ("low", "med", "high")):
+        return None
+    pl = float(probs_by_label.get("low", 0.0))
+    pm = float(probs_by_label.get("med", 0.0))
+    ph = float(probs_by_label.get("high", 0.0))
+    s = pl + pm + ph
+    if s <= 1e-9:
+        return None
+    return (pl / s, pm / s, ph / s)
+
+
+def _expected_risk_score_from_3class_probs(pl: float, pm: float, ph: float) -> int:
+    """
+    Map softmax probabilities to a single 0..100 score (higher = riskier).
+    Weights approximate severity: high=1.0, med≈0.5, low≈0.08 on the risk axis.
+    """
+    ev = ph * 1.0 + pm * 0.52 + pl * 0.08
+    return int(round(max(0.0, min(1.0, ev)) * 100))
+
+
+def _dynamic_risk_score_mode() -> str | None:
+    raw = (os.environ.get("GUARDRAIL_DYNAMIC_RISK_SCORE") or "").strip().lower()
+    if raw in ("1", "true", "yes", "on"):
+        return "replace"
+    if raw == "blend":
+        return "blend"
+    return None
+
+
 def text_heuristic_implied_risk_score(text: str) -> int:
     """Risk score from regex PII overrides only (no model); used before inference for duplicate bypass."""
     t = (text or "").strip()
@@ -1900,6 +1949,19 @@ def score_clipboard_with_pii(
     merged_score_for_penalty = compute_risk_score(risk, triggers)
     if hipaa_critical_triggers:
         merged_score_for_penalty = max(merged_score_for_penalty, 95)
+    dmode = _dynamic_risk_score_mode()
+    if dmode and got is not None and scores_list:
+        probs3 = _three_class_probs_from_scores_list(scores_list)
+        if probs3 is not None:
+            pl, pm, ph = probs3
+            soft = _expected_risk_score_from_3class_probs(pl, pm, ph)
+            tier_only = compute_risk_score(risk, [])
+            trigger_extra = max(0, merged_score_for_penalty - tier_only)
+            combined = min(100, soft + trigger_extra)
+            if dmode == "blend":
+                merged_score_for_penalty = int(round(0.5 * merged_score_for_penalty + 0.5 * combined))
+            else:
+                merged_score_for_penalty = combined
     if (
         not critical_secret_detected
         and not triggers

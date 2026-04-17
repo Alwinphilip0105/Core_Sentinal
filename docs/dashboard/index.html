@@ -5,81 +5,158 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>My Privacy Dashboard — Core Sentinel</title>
 <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 :root{
-  --bg:#0a0c18;
-  --bg-soft:#0f1326;
-  --card:#121a31;
-  --line:rgba(255,255,255,.09);
-  --muted:rgba(224,231,255,.62);
-  --text:#e6ecff;
+  --bg:#080810;
+  --bg-soft:#0a0a0f;
+  --card:#111118;
+  --line:rgba(2,195,154,0.08);
+  --divider:rgba(255,255,255,0.04);
+  --muted:#6b7280;
+  --text:#e8e8e8;
   --accent:#02C39A;
   --warn:#FFB300;
   --danger:#E53935;
+  --radius:12px;
+  --shadow:0 4px 24px rgba(0,0,0,0.3);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
-     sans-serif;background:
-     radial-gradient(900px 380px at 78% -12%, rgba(2,195,154,.18), transparent 56%),
-     var(--bg);
-     color:var(--text);min-height:100vh}
-.hdr{background:var(--bg-soft);padding:16px 28px;display:flex;
-      align-items:center;justify-content:space-between;
-      border-bottom:1px solid var(--line)}
-.hdr-title{font-size:17px;font-weight:700;color:#fff}
-.hdr-sub{font-size:11px;color:var(--muted);margin-top:1px}
+body{
+  font-family:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  background:radial-gradient(1100px 420px at 80% -12%, rgba(2,195,154,.12), transparent 55%), var(--bg);
+  color:var(--text);
+  min-height:100vh;
+  font-size:13px;
+}
+.hdr{
+  position:sticky;top:0;z-index:120;
+  background:var(--bg-soft);
+  padding:16px 28px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  border-bottom:1px solid var(--divider);
+}
+.hdr-title{font-size:16px;font-weight:600;color:#fff;display:flex;align-items:center;gap:8px}
+.hdr-sub{font-size:11px;color:var(--muted);margin-top:2px}
 .top-row{display:flex;align-items:center;gap:12px}
-.btn{background:#02C39A;color:#fff;border:none;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer}
-.btn:hover{background:#019B7A}
+.badge{
+  display:inline-flex;align-items:center;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,0.14);
+  background:rgba(255,255,255,0.04);
+  color:#cdece4;
+  padding:3px 8px;
+  font-size:10px;
+  font-weight:700;
+}
+.badge.good{color:#9de7d0;border-color:rgba(2,195,154,0.35);background:rgba(2,195,154,0.12)}
+.badge.warn{color:#ffe0a3;border-color:rgba(255,179,0,0.35);background:rgba(255,179,0,0.12)}
+.badge.bad{color:#ffb0ae;border-color:rgba(229,57,53,0.35);background:rgba(229,57,53,0.12)}
+.badge.muted{background:rgba(255,255,255,0.05);color:#6b7280;border-color:transparent}
+.btn{
+  background:var(--accent);
+  color:#05241d;
+  border:1px solid rgba(2,195,154,.6);
+  padding:9px 14px;
+  border-radius:10px;
+  font-size:12px;
+  font-weight:700;
+  cursor:pointer;
+  transition:transform .2s,border-color .2s,background .2s;
+}
+.btn:hover{background:#03d6ac;transform:translateY(-2px)}
 .demo-strip{max-width:1100px;margin:14px auto 0;padding:0 24px}
-.demo-box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;display:grid;gap:8px;box-shadow:0 12px 30px rgba(0,0,0,.28)}
+.demo-box{
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  padding:12px;
+  display:grid;
+  gap:8px;
+  box-shadow:var(--shadow);
+  transition:transform .2s ease;
+}
+.demo-box:hover{transform:translateY(-2px)}
 .demo-top{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
-.demo-top strong{font-size:12px;color:#dce7ff}
-.demo-status{font-size:11px;color:#9eddd2;border:1px solid rgba(2,195,154,.4);background:rgba(2,195,154,.12);border-radius:999px;padding:3px 8px}
+.demo-top strong{font-size:13px;font-weight:600;color:#fff}
+.demo-status{font-size:11px;border-radius:999px;padding:3px 8px}
 .demo-btns{display:flex;flex-wrap:wrap;gap:7px}
-.mini-btn{border:1px solid #3a3e4b;background:#212532;color:#dce3ef;border-radius:999px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer}
-.mini-btn:hover{transform:translateY(-1px)}
-.mini-btn.safe{border-color:rgba(67,160,71,.55)}
-.mini-btn.warn{border-color:rgba(255,179,0,.55)}
-.mini-btn.crit{border-color:rgba(229,57,53,.62)}
-.mini-btn.rec{border-color:rgba(2,195,154,.55)}
-.mini-btn.walk{border-color:rgba(66,165,245,.55);background:rgba(66,165,245,.14)}
+.mini-btn{
+  border:1px solid rgba(2,195,154,0.3);
+  background:transparent;
+  color:var(--accent);
+  border-radius:999px;
+  padding:6px 11px;
+  font-size:11px;
+  font-weight:700;
+  cursor:pointer;
+  transition:transform .2s,border-color .2s,background .2s,color .2s;
+}
+.mini-btn:hover{transform:translateY(-1px);background:rgba(2,195,154,.18);color:#d8fff3}
 .wrap{max-width:1100px;margin:0 auto;padding:20px 24px}
-.howto{background:rgba(2,195,154,.08);border:1px solid rgba(2,195,154,.24);border-radius:10px;padding:10px 12px;margin-bottom:14px}
-.howto strong{display:block;font-size:12px;color:#c7fff4;margin-bottom:5px}
-.howto ul{padding-left:18px;color:var(--muted);font-size:11px;display:grid;gap:4px}
+.howto{
+  background:var(--card);
+  border:none;
+  border-left:4px solid var(--accent);
+  border-radius:var(--radius);
+  padding:12px 14px;
+  margin-bottom:14px;
+  box-shadow:var(--shadow);
+}
+.howto strong{display:block;font-size:14px;font-weight:600;color:#fff;margin-bottom:6px}
+.howto ul{padding-left:18px;color:var(--muted);font-size:13px;display:grid;gap:4px}
 .stats-row{display:grid;grid-template-columns:repeat(5,1fr);
             gap:12px;margin-bottom:20px}
-.stat{background:var(--card);border-radius:10px;padding:14px;
-       border:1px solid var(--line);text-align:center}
-.stat-num{font-size:26px;font-weight:700;line-height:1;margin-bottom:3px}
-.stat-lbl{font-size:10px;color:var(--muted);
-           text-transform:uppercase;letter-spacing:.06em}
+.stat{
+  background:var(--card);
+  border-radius:var(--radius);
+  padding:14px;
+  border:1px solid var(--line);
+  box-shadow:var(--shadow);
+  display:grid;
+  gap:7px;
+  transition:transform .2s ease;
+}
+.stat:hover{transform:translateY(-2px)}
+.stat-num{font-size:32px;font-weight:700;line-height:1;color:var(--accent)}
+.stat-lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+.stat-trend{font-size:11px;font-weight:700;color:#9de7d0}
+.stat-spark{height:28px;border-top:1px solid var(--divider);margin-top:2px;position:relative}
+.stat-spark::after{
+  content:"";
+  position:absolute;left:0;right:0;bottom:4px;height:2px;
+  background:linear-gradient(90deg,rgba(2,195,154,.2), var(--accent), rgba(2,195,154,.2));
+}
 .grid2{display:grid;grid-template-columns:1fr 1fr;
         gap:16px;margin-bottom:16px}
-.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;
-        gap:14px;margin-bottom:16px}
-.card{background:var(--card);border-radius:12px;padding:18px;
-       border:1px solid var(--line);box-shadow:0 10px 24px rgba(0,0,0,.2)}
-.card-title{font-size:12px;font-weight:600;
-             color:var(--muted);
-             margin-bottom:14px}
+.insights-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;align-items:stretch}
+.card{
+  background:var(--card);
+  border-radius:var(--radius);
+  padding:18px;
+  border:1px solid var(--line);
+  box-shadow:var(--shadow);
+  transition:transform .2s ease;
+}
+.card:hover{transform:translateY(-2px)}
+.card-title{font-size:14px;font-weight:600;color:#fff;margin-bottom:14px}
 .insight-val{font-size:24px;font-weight:800;line-height:1;margin-bottom:6px}
-.insight-sub{font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:8px}
+.insight-sub{font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:8px}
 .meter{height:8px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}
 .meter span{display:block;height:100%;width:0;background:linear-gradient(90deg,#FFB300,#E53935);transition:width .4s}
 .mini-list{display:grid;gap:6px}
-.mini-row{font-size:11px;color:var(--muted);padding:6px 8px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.02);border-radius:8px}
+.mini-row{font-size:12px;color:var(--muted);padding:6px 8px;border:1px solid var(--divider);background:rgba(255,255,255,.02);border-radius:8px}
 canvas{max-height:200px}
 .persona{display:flex;gap:16px;align-items:flex-start}
 .persona-face{font-size:56px;line-height:1;flex-shrink:0}
 .persona-right{flex:1}
 .persona-name{font-size:16px;font-weight:700;
                color:#fff;margin-bottom:4px}
-.persona-badge{display:inline-block;padding:2px 10px;
-                border-radius:10px;font-size:11px;
-                font-weight:700;margin-bottom:8px}
 .persona-msg{font-size:12px;line-height:1.6;
               color:rgba(255,255,255,0.7);margin-bottom:10px}
 .tip{font-size:11px;color:rgba(255,255,255,0.6);
@@ -91,49 +168,58 @@ canvas{max-height:200px}
 .hm-xl{display:flex;justify-content:space-between;
          font-size:9px;color:rgba(255,255,255,0.25);
          margin-top:4px}
-.score-circle{width:80px;height:80px;border-radius:50%;
-               border:4px solid #2E7D32;
-               display:flex;align-items:center;
-               justify-content:center;margin:0 auto 8px;
-               flex-direction:column}
+.score-wheel{width:92px;height:92px;display:block;margin:0 auto 8px}
 .score-num{font-size:24px;font-weight:700;
-            color:#2E7D32;line-height:1}
+            color:var(--accent);line-height:1}
 .score-lbl{font-size:9px;color:rgba(255,255,255,0.4);
             text-transform:uppercase;letter-spacing:.05em}
 table{width:100%;border-collapse:collapse;font-size:12px}
-th{color:rgba(255,255,255,0.3);padding:6px 8px;
+th{color:var(--muted);padding:6px 8px;
     text-align:left;border-bottom:1px solid
-    rgba(255,255,255,0.07);font-size:10px;
+    var(--divider);font-size:10px;
     text-transform:uppercase;font-weight:600;
     letter-spacing:.04em}
 td{padding:7px 8px;border-bottom:1px solid
-    rgba(255,255,255,0.04);color:rgba(255,255,255,0.7)}
+    var(--divider);color:var(--text)}
 .pill{padding:2px 8px;border-radius:10px;
        font-size:10px;font-weight:700}
+.pill.silent{background:rgba(2,195,154,.12);color:#9de7d0;border:1px solid rgba(2,195,154,.28)}
+.pill.warn{background:rgba(255,179,0,.12);color:#ffe0a3;border:1px solid rgba(255,179,0,.28)}
+.pill.block{background:rgba(229,57,53,.12);color:#ffb0ae;border:1px solid rgba(229,57,53,.28)}
 .streak-bar{height:8px;background:rgba(255,255,255,0.08);
              border-radius:4px;overflow:hidden;margin-top:6px}
 .streak-fill{height:100%;border-radius:4px;
-              background:#FFB300;transition:width .5s}
+              background:linear-gradient(90deg,#02C39A,#7af0d9);transition:width .5s}
 .footer{text-align:center;color:rgba(255,255,255,0.2);
           font-size:11px;padding:20px 0;margin-top:8px}
+.wrap > *{animation:fadeInUp .45s ease both}
+.wrap > *:nth-child(2){animation-delay:.04s}
+.wrap > *:nth-child(3){animation-delay:.08s}
+.wrap > *:nth-child(4){animation-delay:.12s}
+@keyframes fadeInUp{
+  from{opacity:0;transform:translateY(10px)}
+  to{opacity:1;transform:translateY(0)}
+}
 @media (max-width:980px){
   .stats-row{grid-template-columns:repeat(2,1fr)}
-  .grid3{grid-template-columns:1fr}
+  .insights-grid{grid-template-columns:1fr}
   .grid2{grid-template-columns:1fr}
+}
+@media (max-width:720px){
+  .hdr{padding:14px 16px;flex-direction:column;align-items:flex-start;gap:8px}
+  .demo-strip,.wrap{padding-left:16px;padding-right:16px}
+  .stats-row{grid-template-columns:1fr}
 }
 </style>
 </head>
 <body>
 <div class="hdr">
   <div>
-    <div class="hdr-title">🛡 My Privacy Dashboard</div>
+    <div class="hdr-title">🛡 My Privacy Dashboard <span class="badge muted">Local data only</span></div>
     <div class="hdr-sub" id="generatedAt">Core Sentinel · Generated --</div>
   </div>
   <div class="top-row">
     <button class="btn" onclick="goBackToHub()">← Back</button>
-    <div style="font-size:11px;color:rgba(255,255,255,0.3)">
-      Local data only · Nothing leaves your machine
-    </div>
   </div>
 </div>
 
@@ -141,7 +227,7 @@ td{padding:7px 8px;border-bottom:1px solid
   <div class="demo-box">
     <div class="demo-top">
       <strong>🎬 Dashboard demo mode (for users)</strong>
-      <span class="demo-status" id="demoStatus">Ready: choose a user behavior scenario</span>
+      <span class="demo-status badge muted" id="demoStatus">Ready: choose a user behavior scenario</span>
     </div>
     <div class="demo-btns">
       <button class="mini-btn safe" id="demoSafe">Safe Day</button>
@@ -166,33 +252,38 @@ td{padding:7px 8px;border-bottom:1px solid
   <!-- STATS ROW -->
   <div class="stats-row">
     <div class="stat">
-      <div class="stat-num" id="statPrivacy" style="color:#2E7D32">
-        73</div>
       <div class="stat-lbl">Privacy score</div>
+      <div class="stat-num" id="statPrivacy">73</div>
+      <div class="stat-trend" id="trendPrivacy">↑ improving this week</div>
+      <div class="stat-spark"></div>
     </div>
     <div class="stat">
-      <div class="stat-num" id="statPastes" style="color:#02C39A">
-        493</div>
       <div class="stat-lbl">Pastes this week</div>
+      <div class="stat-num" id="statPastes">493</div>
+      <div class="stat-trend" id="trendPastes">↑ active usage</div>
+      <div class="stat-spark"></div>
     </div>
     <div class="stat">
-      <div class="stat-num" id="statBlocked" style="color:#E53935">
-        157</div>
       <div class="stat-lbl">Blocked this week</div>
+      <div class="stat-num" id="statBlocked" style="color:var(--danger)">157</div>
+      <div class="stat-trend" id="trendBlocked" style="color:#ffb0ae">↑ elevated</div>
+      <div class="stat-spark"></div>
     </div>
     <div class="stat">
-      <div class="stat-num" id="statStreak" style="color:#FFB300">
-        0</div>
       <div class="stat-lbl">Current streak</div>
+      <div class="stat-num" id="statStreak">0</div>
+      <div class="stat-trend" id="trendStreak">→ reset today</div>
+      <div class="stat-spark"></div>
     </div>
     <div class="stat">
-      <div class="stat-num" id="statBest" style="color:#43A047">
-        4</div>
       <div class="stat-lbl">Best streak ever</div>
+      <div class="stat-num" id="statBest">4</div>
+      <div class="stat-trend" id="trendBest">↑ personal best</div>
+      <div class="stat-spark"></div>
     </div>
   </div>
 
-  <div class="grid3">
+  <div class="insights-grid">
     <div class="card">
       <div class="card-title">📉 Exposure ratio</div>
       <div class="insight-val" id="insightLeakRate" style="color:#FFB300">31.8%</div>
@@ -226,9 +317,7 @@ td{padding:7px 8px;border-bottom:1px solid
         <div class="persona-face" id="personaFace">😱</div>
         <div class="persona-right">
           <div class="persona-name" id="personaName">Danger Dave</div>
-          <span class="persona-badge" id="personaBadge"
-            style="background:#E5393522;
-                   color:#E53935">
+          <span class="badge bad" id="personaBadge">
             High Risk
           </span>
           <div class="persona-msg" id="personaMsg"><strong>32% of your pastes are blocked</strong> — you frequently paste credentials and sensitive data. Privacy score: <strong>73/100</strong>. Build better habits before something leaks.</div>
@@ -240,10 +329,12 @@ td{padding:7px 8px;border-bottom:1px solid
     <div class="card">
       <div class="card-title">🔥 Safe paste streak</div>
       <div style="text-align:center;padding:10px 0">
-        <div class="score-circle">
-          <div class="score-num" id="streakCircleNum">0</div>
-          <div class="score-lbl">streak</div>
-        </div>
+        <svg class="score-wheel" viewBox="0 0 92 92" aria-label="safe streak gauge">
+          <circle cx="46" cy="46" r="32" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="8"></circle>
+          <circle id="streakGaugeArc" cx="46" cy="46" r="32" fill="none" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-dasharray="201.06" stroke-dashoffset="201.06" transform="rotate(-90 46 46)"></circle>
+          <text x="46" y="45" text-anchor="middle" class="score-num" id="streakCircleNum" style="font-size:21px">0</text>
+          <text x="46" y="58" text-anchor="middle" class="score-lbl">streak</text>
+        </svg>
         <div id="bestStreakTxt" style="font-size:12px;color:rgba(255,255,255,0.5);
                     margin-bottom:6px">
           Best ever: <strong style="color:#FFB300">
@@ -260,7 +351,7 @@ td{padding:7px 8px;border-bottom:1px solid
                     font-size:9px;color:rgba(255,255,255,0.2);
                     margin-top:4px">
           <span>0</span>
-          <span>5</span>
+          <span>10</span>
         </div>
       </div>
     </div>
@@ -511,6 +602,15 @@ function _refreshRecentEventTimes(){
   });
 }
 
+function _setStreakGauge(streak){
+  const arc = document.getElementById("streakGaugeArc");
+  if (!arc) return;
+  const circumference = 201.06;
+  const pct = Math.max(0, Math.min(100, (Number(streak) / 10) * 100));
+  arc.style.strokeDasharray = String(circumference);
+  arc.style.strokeDashoffset = String(circumference * (1 - pct / 100));
+}
+
 const TREND_LABELS = _lastNDaysLabels(7);
 const TREND_BLOCK  = [0, 0, 0, 0, 0, 157, 0];
 const TREND_WARN   = [0, 0, 0, 0, 0, 192, 0];
@@ -734,9 +834,15 @@ function goBackToHub(){
   window.location.href = '../index.html';
 }
 
-function setDemoStatus(text){
+function setDemoStatus(text, mode = "muted"){
   const el = document.getElementById("demoStatus");
-  if (el) el.textContent = text;
+  if (!el) return;
+  el.textContent = text;
+  el.className = "demo-status badge";
+  if (mode === "live") el.classList.add("good");
+  else if (mode === "warn") el.classList.add("warn");
+  else if (mode === "bad") el.classList.add("bad");
+  else el.classList.add("muted");
 }
 
 function renderTips(tips){
@@ -752,7 +858,12 @@ function applyScenario(name){
   document.getElementById("statBlocked").textContent = String(cfg.stats.blocked);
   document.getElementById("statStreak").textContent = String(cfg.stats.streak);
   document.getElementById("statBest").textContent = String(cfg.stats.best);
+  document.getElementById("trendPrivacy").textContent = cfg.stats.privacy >= 85 ? "↑ excellent hygiene" : cfg.stats.privacy >= 70 ? "→ moderate risk" : "↓ needs attention";
+  document.getElementById("trendBlocked").textContent = cfg.stats.blocked <= 10 ? "↓ minimal blocks" : cfg.stats.blocked <= 60 ? "→ manageable" : "↑ elevated";
+  document.getElementById("trendStreak").textContent = cfg.stats.streak >= 5 ? "↑ strong streak" : cfg.stats.streak > 0 ? "→ rebuilding" : "→ reset today";
+  document.getElementById("trendBest").textContent = cfg.stats.best >= 10 ? "↑ personal best" : "→ early progress";
   document.getElementById("streakCircleNum").textContent = String(cfg.stats.streak);
+  _setStreakGauge(cfg.stats.streak);
   document.getElementById("bestStreakTxt").innerHTML = `Best ever: <strong style="color:#FFB300">${cfg.stats.best}</strong> safe pastes in a row`;
   document.getElementById("nextMilestoneTxt").textContent = `Next milestone: ${Math.max(cfg.stats.streak + 2, 5)} pastes`;
   document.getElementById("streakFill").style.width = `${Math.min(100, (cfg.stats.streak / 10) * 100)}%`;
@@ -760,8 +871,10 @@ function applyScenario(name){
   document.getElementById("personaName").textContent = cfg.persona.name;
   const badge = document.getElementById("personaBadge");
   badge.textContent = cfg.persona.badge;
-  badge.style.background = cfg.persona.badgeBg;
-  badge.style.color = cfg.persona.badgeColor;
+  badge.className = "badge";
+  if (/high/i.test(cfg.persona.badge)) badge.classList.add("bad");
+  else if (/medium|improving/i.test(cfg.persona.badge)) badge.classList.add("warn");
+  else badge.classList.add("good");
   document.getElementById("personaMsg").innerHTML = cfg.persona.msg;
   renderTips(cfg.persona.tips);
   document.getElementById("riskyHourTxt").textContent = cfg.riskyHour;
@@ -780,7 +893,7 @@ function applyScenario(name){
   document.getElementById("policyWarn").textContent = cfg.policy.warn;
   document.getElementById("policyBlock").textContent = cfg.policy.block;
   document.getElementById("incidentList").innerHTML = cfg.incidents.map((row) => `<div class=\"mini-row\">${row}</div>`).join("");
-  setDemoStatus(cfg.status);
+  setDemoStatus(cfg.status, "muted");
   if (trendChart) {
     trendChart.data.datasets[0].data = cfg.trend.block;
     trendChart.data.datasets[1].data = cfg.trend.warn;
@@ -792,6 +905,9 @@ function applyScenario(name){
     piiChart.data.datasets[0].data = cfg.pii.values;
     piiChart.update();
   }
+  const demoEvents = _scenarioDemoEvents(cfg);
+  _renderHeatmap(demoEvents);
+  _renderRecentRows(demoEvents);
 }
 
 function _fmtHour(hour){
@@ -800,6 +916,38 @@ function _fmtHour(hour){
   if (h < 12) return `${h}am`;
   if (h === 12) return "12pm";
   return `${h - 12}pm`;
+}
+
+function _hourFromLabel(label){
+  const t = String(label || "").trim().toLowerCase();
+  const m = t.match(/^(\d{1,2})(am|pm)$/);
+  if (!m) return 21;
+  let h = Number(m[1]) % 12;
+  if (m[2] === "pm") h += 12;
+  return h;
+}
+
+function _scenarioDemoEvents(cfg){
+  const out = [];
+  const now = Date.now();
+  const risky = _hourFromLabel(cfg.riskyHour);
+  const base = cfg.stats.blocked > 100 ? 72 : cfg.stats.blocked > 30 ? 52 : 24;
+  for (let i = 0; i < 60; i++) {
+    const dt = new Date(now - i * 35 * 60 * 1000);
+    const h = dt.getHours();
+    let score = Math.max(0, Math.min(100, base + ((i * 7) % 18) - 9));
+    if (Math.abs(h - risky) <= 1) score = Math.min(100, score + 22);
+    if (cfg.stats.privacy >= 88) score = Math.max(0, score - 18);
+    const action = score >= 80 ? "block" : score > 30 ? "warn" : "silent";
+    out.push({
+      ts: dt.toISOString(),
+      score,
+      action,
+      pii: (cfg.pii.labels[i % Math.max(1, cfg.pii.labels.length)] || "low").toLowerCase(),
+      llm: "clipboard"
+    });
+  }
+  return out;
 }
 
 function _toEvent(raw){
@@ -861,18 +1009,18 @@ function _renderRecentRows(events){
       ? e.ts
       : `${d.getFullYear()}-${_pad2(d.getMonth() + 1)}-${_pad2(d.getDate())} ${_pad2(d.getHours())}:${_pad2(d.getMinutes())}`;
     const pill = e.action === "block"
-      ? `<span class="pill" style="background:#FBE9E7;color:#B71C1C">block</span>`
+      ? `<span class="pill block">block</span>`
       : e.action === "warn"
-        ? `<span class="pill" style="background:#FFF8E1;color:#E65100">warn</span>`
-        : `<span class="pill" style="background:#E8F5E9;color:#1B5E20">silent</span>`;
-    const scoreColor = e.score >= 80 ? "#C62828" : e.score > 30 ? "#E65100" : "#2E7D32";
+        ? `<span class="pill warn">warn</span>`
+        : `<span class="pill silent">silent</span>`;
+    const scoreColor = e.score >= 80 ? "var(--danger)" : e.score > 30 ? "var(--warn)" : "var(--accent)";
     return `
       <tr>
-        <td style="color:#888;font-size:11px">${ts}</td>
+        <td style="color:var(--muted);font-size:11px">${ts}</td>
         <td>${pill}</td>
         <td style="font-weight:600;color:${scoreColor}">${Math.round(e.score)}</td>
         <td style="font-size:11px">${e.pii}</td>
-        <td style="font-size:11px;color:#888">${e.llm}</td>
+        <td style="font-size:11px;color:var(--muted)">${e.llm}</td>
       </tr>
     `;
   }).join("");
@@ -952,7 +1100,12 @@ function _applyLiveDashboard(events){
   document.getElementById("statBlocked").textContent = String(blocked);
   document.getElementById("statStreak").textContent = String(streak);
   document.getElementById("statBest").textContent = String(Math.max(best, streak));
+  document.getElementById("trendPrivacy").textContent = privacy >= 85 ? "↑ excellent hygiene" : privacy >= 70 ? "→ moderate risk" : "↓ needs attention";
+  document.getElementById("trendBlocked").textContent = blocked <= 10 ? "↓ minimal blocks" : blocked <= 60 ? "→ manageable" : "↑ elevated";
+  document.getElementById("trendStreak").textContent = streak >= 5 ? "↑ strong streak" : streak > 0 ? "→ rebuilding" : "→ reset today";
+  document.getElementById("trendBest").textContent = Math.max(best, streak) >= 10 ? "↑ personal best" : "→ early progress";
   document.getElementById("streakCircleNum").textContent = String(streak);
+  _setStreakGauge(streak);
   document.getElementById("bestStreakTxt").innerHTML = `Best ever: <strong style="color:#FFB300">${Math.max(best, streak)}</strong> safe pastes in a row`;
   document.getElementById("nextMilestoneTxt").textContent = `Next milestone: ${Math.max(streak + 2, 5)} pastes`;
   document.getElementById("streakFill").style.width = `${Math.min(100, (streak / 10) * 100)}%`;
@@ -985,7 +1138,7 @@ function _applyLiveDashboard(events){
     piiChart.data.datasets[0].data = piiValues;
     piiChart.update();
   }
-  setDemoStatus(`Live mode: synced ${events.length} events from Supabase`);
+  setDemoStatus(`Live mode: synced ${events.length} events from Supabase`, "live");
   return true;
 }
 
@@ -993,7 +1146,7 @@ async function _loadLiveDashboard(){
   const url = (localStorage.getItem("sb_url") || "").trim().replace(/\/$/, "");
   const key = (localStorage.getItem("sb_key") || "").trim();
   if (!url || !key) {
-    setDemoStatus("Demo mode: configure sb_url/sb_key in Hub for live dashboard");
+    setDemoStatus("Demo mode: configure sb_url/sb_key in Hub for live dashboard", "muted");
     return false;
   }
   try {
@@ -1007,7 +1160,7 @@ async function _loadLiveDashboard(){
     return _applyLiveDashboard(rows.map(_toEvent));
   } catch (err) {
     console.warn("[privacy-dashboard] live fetch failed:", err);
-    setDemoStatus("Demo mode: live sync failed, showing scenario data");
+    setDemoStatus("Demo mode: live sync failed, showing scenario data", "muted");
     return false;
   }
 }
@@ -1015,7 +1168,7 @@ async function _loadLiveDashboard(){
 async function runDashboardWalkthrough(){
   if (walkthroughRunning) return;
   walkthroughRunning = true;
-  setDemoStatus("Walkthrough running: safe → mixed → critical → recovery");
+  setDemoStatus("Walkthrough running: safe → mixed → critical → recovery", "warn");
   applyScenario("safe");
   await new Promise((r) => setTimeout(r, 1100));
   applyScenario("mixed");
@@ -1023,7 +1176,7 @@ async function runDashboardWalkthrough(){
   applyScenario("critical");
   await new Promise((r) => setTimeout(r, 1100));
   applyScenario("recovery");
-  setDemoStatus("Walkthrough complete: user can see behavior change over time");
+  setDemoStatus("Walkthrough complete: user can see behavior change over time", "muted");
   walkthroughRunning = false;
 }
 
@@ -1034,6 +1187,7 @@ document.getElementById("demoRecovery").addEventListener("click", () => applySce
 document.getElementById("demoWalk").addEventListener("click", runDashboardWalkthrough);
 _refreshGeneratedTimestamp();
 _refreshRecentEventTimes();
+applyScenario("critical");
 _loadLiveDashboard();
 window.setInterval(() => {
   _refreshGeneratedTimestamp();

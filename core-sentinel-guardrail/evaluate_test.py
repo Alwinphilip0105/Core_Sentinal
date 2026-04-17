@@ -26,6 +26,7 @@ from sklearn.metrics import (
     classification_report,
     confusion_matrix,
     precision_recall_curve,
+    roc_curve,
     roc_auc_score,
 )
 from torch.nn.functional import softmax
@@ -37,6 +38,82 @@ from train import LABEL_CONFIG_FILENAME, load_arrow_splits, make_compute_metrics
 
 # Saved fine-tuned weights (same as train.SAVE_DIR)
 MODEL_DIR = _ROOT / "models" / "tinybert_guardrail"
+THRESHOLD_CALIBRATION_PATH = _ROOT / "reports" / "threshold_calibration.json"
+
+
+def _to_float_list(arr: np.ndarray | list[float]) -> list[float]:
+    return [float(x) for x in np.asarray(arr, dtype=np.float64).tolist()]
+
+
+def _resample_curve_with_thresholds(
+    x_vals: np.ndarray,
+    y_vals: np.ndarray,
+    threshold_x: np.ndarray,
+    threshold_vals: np.ndarray,
+    *,
+    points: int = 101,
+) -> tuple[list[float], list[float], list[float]]:
+    """
+    Resample a curve to fixed point count for smooth dashboard rendering.
+    Returns x_grid, y_grid, thresholds_grid with equal lengths.
+    """
+    if points < 2:
+        points = 2
+    x = np.asarray(x_vals, dtype=np.float64)
+    y = np.asarray(y_vals, dtype=np.float64)
+    tx = np.asarray(threshold_x, dtype=np.float64)
+    tv = np.asarray(threshold_vals, dtype=np.float64)
+    if x.size == 0 or y.size == 0:
+        grid = np.linspace(0.0, 1.0, points)
+        return _to_float_list(grid), [0.0] * points, [0.0] * points
+
+    # Ensure monotonic ascending interpolation domain.
+    order = np.argsort(x)
+    x_sorted = x[order]
+    y_sorted = y[order]
+    x_unique, idx_unique = np.unique(x_sorted, return_index=True)
+    y_unique = y_sorted[idx_unique]
+    if x_unique.size == 1:
+        grid = np.linspace(0.0, 1.0, points)
+        y_grid = np.full(points, float(y_unique[0]), dtype=np.float64)
+    else:
+        grid = np.linspace(max(0.0, float(x_unique.min())), min(1.0, float(x_unique.max())), points)
+        y_grid = np.interp(grid, x_unique, y_unique)
+
+    if tx.size == 0 or tv.size == 0:
+        t_grid = np.zeros(points, dtype=np.float64)
+    else:
+        t_order = np.argsort(tx)
+        tx_sorted = tx[t_order]
+        tv_sorted = tv[t_order]
+        tx_unique, tx_idx = np.unique(tx_sorted, return_index=True)
+        tv_unique = tv_sorted[tx_idx]
+        if tx_unique.size == 1:
+            t_grid = np.full(points, float(tv_unique[0]), dtype=np.float64)
+        else:
+            t_grid = np.interp(grid, tx_unique, tv_unique)
+
+    return _to_float_list(grid), _to_float_list(y_grid), _to_float_list(t_grid)
+
+
+def _load_calibrated_high_threshold() -> float | None:
+    if not THRESHOLD_CALIBRATION_PATH.is_file():
+        return None
+    try:
+        with open(THRESHOLD_CALIBRATION_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return None
+    if not isinstance(data, dict):
+        return None
+    rec = data.get("recommended")
+    if not isinstance(rec, dict):
+        return None
+    v = rec.get("prob_threshold_high")
+    try:
+        return float(v) if v is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _resolve_arrow_dir() -> Path:
@@ -225,6 +302,7 @@ def main() -> None:
     n_samples = len(all_labels_arr)
 
     label_names = [str(id2label.get(i, f"class_{i}")) for i in range(num_labels_cfg)]
+    high_idx = label_names.index("high") if "high" in label_names else None
 
     pr_rows: list[tuple[str, float, str, str]] = []
     classes_out: dict = {}
@@ -268,6 +346,78 @@ def main() -> None:
             "threshold_at_precision_085": threshold_at_p85,
             "recall_at_threshold": recall_at_p85,
         }
+
+    high_pr_curve: dict[str, object] = {}
+    high_roc_curve: dict[str, object] = {}
+    if high_idx is not None and n_samples > 0:
+        y_true_high = (all_labels_arr == high_idx).astype(np.int32)
+        y_scores_high = all_probs_arr[:, high_idx]
+        if y_true_high.sum() > 0 and y_true_high.sum() < n_samples:
+            pr_precision, pr_recall, pr_thresholds = precision_recall_curve(y_true_high, y_scores_high)
+            # Map thresholds to recall/precision pairs (skip first PR point which has no threshold).
+            recall_for_threshold = pr_recall[1:] if pr_recall.size > 1 else np.array([], dtype=np.float64)
+            precision_for_threshold = pr_precision[1:] if pr_precision.size > 1 else np.array([], dtype=np.float64)
+            r_grid, p_grid, t_grid = _resample_curve_with_thresholds(
+                pr_recall,
+                pr_precision,
+                recall_for_threshold,
+                pr_thresholds,
+                points=101,
+            )
+            op_precision = None
+            op_recall = None
+            op_threshold = None
+            if pr_thresholds.size > 0:
+                for p, r, t in zip(precision_for_threshold, recall_for_threshold, pr_thresholds):
+                    if p >= 0.85:
+                        op_precision = float(p)
+                        op_recall = float(r)
+                        op_threshold = float(t)
+                        break
+            high_pr_curve = {
+                "precision_values": p_grid,
+                "recall_values": r_grid,
+                "thresholds": t_grid,
+                "operating_point": {
+                    "precision": op_precision,
+                    "recall": op_recall,
+                    "threshold": op_threshold,
+                },
+            }
+
+            fpr_vals, tpr_vals, roc_thresholds = roc_curve(y_true_high, y_scores_high)
+            f_grid, t_grid_roc, thr_grid_roc = _resample_curve_with_thresholds(
+                fpr_vals,
+                tpr_vals,
+                fpr_vals,
+                roc_thresholds,
+                points=101,
+            )
+            roc_auc_high = float(roc_auc_score(y_true_high, y_scores_high))
+            calibrated_thr = _load_calibrated_high_threshold()
+            op_fpr = None
+            op_tpr = None
+            op_thr = None
+            if roc_thresholds.size > 0:
+                if calibrated_thr is None:
+                    # Fall back to threshold where TPR-FPR is maximized.
+                    best_idx = int(np.argmax(tpr_vals - fpr_vals))
+                else:
+                    best_idx = int(np.argmin(np.abs(roc_thresholds - calibrated_thr)))
+                op_fpr = float(fpr_vals[best_idx])
+                op_tpr = float(tpr_vals[best_idx])
+                op_thr = float(roc_thresholds[best_idx])
+            high_roc_curve = {
+                "fpr_values": f_grid,
+                "tpr_values": t_grid_roc,
+                "thresholds": thr_grid_roc,
+                "auc": roc_auc_high,
+                "operating_point": {
+                    "fpr": op_fpr,
+                    "tpr": op_tpr,
+                    "threshold": op_thr,
+                },
+            }
 
     print("\n" + "=" * 60)
     print("PR curve analysis (test split, softmax)")
@@ -336,6 +486,7 @@ def main() -> None:
     reports_dir = _ROOT / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
     summary_path = reports_dir / "pr_curve_summary.json"
+    roc_summary_path = reports_dir / "roc_curve_summary.json"
     out_payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "model_path": str(MODEL_DIR.resolve().as_posix()),
@@ -343,10 +494,32 @@ def main() -> None:
         "classes": classes_out,
         "safety_profile": safety,
         "roc_auc_macro": roc_auc_macro,
+        "high_class_curve": high_pr_curve,
+        "precision_values": high_pr_curve.get("precision_values", []),
+        "recall_values": high_pr_curve.get("recall_values", []),
+        "thresholds": high_pr_curve.get("thresholds", []),
+        "operating_point": high_pr_curve.get("operating_point", {}),
     }
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(out_payload, f, indent=2)
+    with open(roc_summary_path, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "model_path": str(MODEL_DIR.resolve().as_posix()),
+                "test_split_size": int(n_samples),
+                "high_class_curve": high_roc_curve,
+                "fpr_values": high_roc_curve.get("fpr_values", []),
+                "tpr_values": high_roc_curve.get("tpr_values", []),
+                "thresholds": high_roc_curve.get("thresholds", []),
+                "auc": high_roc_curve.get("auc"),
+                "operating_point": high_roc_curve.get("operating_point", {}),
+            },
+            f,
+            indent=2,
+        )
     print(f"\n  Wrote {summary_path}")
+    print(f"  Wrote {roc_summary_path}")
     if roc_auc_macro is not None:
         print(f"\n  Macro ROC-AUC (OvR, test split): {roc_auc_macro:.6f}")
 
