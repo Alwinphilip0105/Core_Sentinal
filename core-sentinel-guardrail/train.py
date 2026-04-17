@@ -49,6 +49,7 @@ LABEL_SMOOTHING = 0.05
 EARLY_STOPPING_PATIENCE = 2
 BEST_MODEL_METRIC = "eval_f1"
 ID_TO_RISK_3 = {v: k for k, v in RISK_TO_ID.items()}
+ID_TO_RISK_2 = {0: "safe", 1: "risky"}
 LABEL_CONFIG_FILENAME = "label_config.json"
 
 
@@ -397,9 +398,10 @@ def main():
     else:
         print("WARNING: Validation split missing or empty. Training without evaluation.")
 
-    # Label config: from arrow_dir/label_config.json (e.g. ai4privacy 9-class) or default 3-class
+    # Label config: from arrow_dir/label_config.json (e.g. ai4privacy 9-class / binary) or default 3-class
     arrow_path = Path(ARROW_SAVE_DIR)
     label_config_path = arrow_path / LABEL_CONFIG_FILENAME
+    binary_env = str(os.environ.get("GUARDRAIL_BINARY_MODE", "")).strip().lower() in ("1", "true", "yes", "on")
     if label_config_path.exists():
         with open(label_config_path, encoding="utf-8") as f:
             label_config = json.load(f)
@@ -411,6 +413,23 @@ def main():
         num_labels = NUM_LABELS_DEFAULT
         id2label = ID_TO_RISK_3
         print("Using default 3-class labels (no label_config.json).")
+
+    unique_labels: set[int] = set()
+    try:
+        unique_labels.update(int(x) for x in train_ds["labels"])
+        if val_ds is not None:
+            unique_labels.update(int(x) for x in val_ds["labels"])
+    except Exception:
+        pass
+    binary_dataset = len(unique_labels) == 2 and unique_labels.issubset({0, 1})
+    binary_active = bool(binary_env or num_labels == 2 or binary_dataset)
+    if binary_active:
+        num_labels = 2
+        id2label = ID_TO_RISK_2
+        print(
+            "[train] Binary classifier mode active: "
+            f"env={binary_env}, dataset_unique_labels={sorted(unique_labels) if unique_labels else 'unknown'}"
+        )
 
     compute_metrics = make_compute_metrics(num_labels, id2label)
 
@@ -484,6 +503,20 @@ def main():
         print(f"Label mapping: {model.config.label2id}")
 
     train_cfg = load_train_config()
+    if binary_active:
+        # Binary-safe defaults requested for med/high merged training.
+        train_cfg["epochs"] = 4
+        train_cfg["learning_rate"] = 1e-5
+        train_cfg["weight_decay"] = 0.01
+        train_cfg["classifier_dropout"] = 0.3
+        train_cfg["label_smoothing_factor"] = 0.1
+        train_cfg["early_stopping_patience"] = 2
+        train_cfg["use_class_weights"] = False
+        train_cfg["rebalance_train_3class"] = False
+        print(
+            "[train] Binary hyperparams: epochs=4 lr=1e-5 dropout=0.3 "
+            "label_smoothing=0.1 weight_decay=0.01 early_stop=2"
+        )
     if num_labels == 3 and train_cfg.get("rebalance_train_3class", True):
         train_ds = rebalance_three_class_train_dataset(
             train_ds,

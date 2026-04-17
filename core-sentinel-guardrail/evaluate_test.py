@@ -188,8 +188,24 @@ def _load_label_config(arrow_dir: Path, model_num_labels: int) -> tuple[int, dic
         num_labels = int(cfg["num_labels"])
         id2label = {int(k): str(v) for k, v in cfg.get("id2label", {}).items()}
         return num_labels, id2label
-    # Fallback: trust saved model (3-class default)
+    # Fallback: trust saved model
+    if int(model_num_labels) == 2:
+        return 2, {0: "safe", 1: "risky"}
     return model_num_labels, {0: "low", 1: "med", 2: "high"}
+
+
+def _binary_label_from_raw(raw_label: int | str | None, risk_text: str | None = None) -> int:
+    """Map low->safe(0), med/high->risky(1) for robust 2-class eval."""
+    rt = str(risk_text or "").strip().lower()
+    if rt:
+        return 0 if rt in ("low", "safe") else 1
+    try:
+        lv = int(raw_label) if raw_label is not None else 0
+    except (TypeError, ValueError):
+        return 1
+    if lv <= 0:
+        return 0
+    return 1
 
 
 def main() -> None:
@@ -219,6 +235,18 @@ def main() -> None:
         )
         num_labels_cfg = model_nl
         id2label = {int(k): str(v) for k, v in (model.config.id2label or {}).items()}
+
+    binary_active = int(num_labels_cfg) == 2 or any(
+        str(v).strip().lower() in ("safe", "risky") for v in id2label.values()
+    )
+    if binary_active:
+        def _map_row(ex):
+            ex["labels"] = _binary_label_from_raw(ex.get("labels"), ex.get("risk"))
+            return ex
+        test_ds = test_ds.map(_map_row, desc="Mapping test labels to binary safe/risky")
+        num_labels_cfg = 2
+        id2label = {0: "safe", 1: "risky"}
+        print("[evaluate] Binary mode: mapped med/high -> risky on test split.")
 
     compute_metrics = make_compute_metrics(num_labels_cfg, id2label)
 
@@ -250,10 +278,11 @@ def main() -> None:
         else:
             print(f"  {k}: {v}")
 
-    # Trainer prefixes sklearn metrics with eval_; highlight high-class when present
-    if "high" in [id2label.get(i, str(i)) for i in range(num_labels_cfg)]:
-        print("\n--- High-risk class (from same eval pass) ---")
-        for k in ("eval_precision_high", "eval_recall_high", "eval_f1_high"):
+    # Trainer prefixes sklearn metrics with eval_; highlight risky/high positive class when present
+    _metric_suffix = "risky" if "risky" in [id2label.get(i, str(i)) for i in range(num_labels_cfg)] else "high"
+    if _metric_suffix in [id2label.get(i, str(i)) for i in range(num_labels_cfg)]:
+        print(f"\n--- Positive class ({_metric_suffix}) from same eval pass ---")
+        for k in (f"eval_precision_{_metric_suffix}", f"eval_recall_{_metric_suffix}", f"eval_f1_{_metric_suffix}"):
             if k in metrics:
                 print(f"  {k}: {metrics[k]:.6f}")
 
@@ -302,7 +331,8 @@ def main() -> None:
     n_samples = len(all_labels_arr)
 
     label_names = [str(id2label.get(i, f"class_{i}")) for i in range(num_labels_cfg)]
-    high_idx = label_names.index("high") if "high" in label_names else None
+    positive_name = "risky" if "risky" in label_names else "high"
+    high_idx = label_names.index(positive_name) if positive_name in label_names else None
 
     pr_rows: list[tuple[str, float, str, str]] = []
     classes_out: dict = {}
@@ -378,6 +408,7 @@ def main() -> None:
                 "precision_values": p_grid,
                 "recall_values": r_grid,
                 "thresholds": t_grid,
+                "positive_class": positive_name,
                 "operating_point": {
                     "precision": op_precision,
                     "recall": op_recall,
@@ -412,6 +443,7 @@ def main() -> None:
                 "tpr_values": t_grid_roc,
                 "thresholds": thr_grid_roc,
                 "auc": roc_auc_high,
+                "positive_class": positive_name,
                 "operating_point": {
                     "fpr": op_fpr,
                     "tpr": op_tpr,

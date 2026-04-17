@@ -34,12 +34,26 @@ MODEL_DIR = _ROOT / "models" / "tinybert_guardrail"
 REPORTS_DIR = _ROOT / "reports"
 CONFIG_PATH = _ROOT / "config" / "risk_policy.json"
 PR_CURVE_SUMMARY_PATH = REPORTS_DIR / "pr_curve_summary.json"
+THRESHOLD_CALIBRATION_PATH = REPORTS_DIR / "threshold_calibration.json"
 
 # Default FPR cap on non-high rows predicting as high (low+med negatives)
 DEFAULT_MAX_FPR = 0.05
 DEFAULT_MIN_MED_RECALL = 0.35
 # Prefer catching true high-risk rows before optimizing headline precision (guardrail priority).
 DEFAULT_MIN_HIGH_RECALL = 0.85
+DEFAULT_BINARY_SELECTION_RULE = "max_recall_under_fpr_cap"
+
+
+def _binary_selection_rule() -> str:
+    """
+    Binary calibration objective:
+      - max_recall_under_fpr_cap (default, recall-first safety mode)
+      - max_f1_under_fpr_cap
+    """
+    raw = (os.environ.get("GUARDRAIL_BINARY_CALIB_OBJECTIVE") or "").strip().lower()
+    if raw in ("max_f1_under_fpr_cap", "f1"):
+        return "max_f1_under_fpr_cap"
+    return DEFAULT_BINARY_SELECTION_RULE
 
 
 def _resolve_arrow_dir() -> Path:
@@ -59,17 +73,86 @@ def _predict_buckets_batch(
     return np.where(prob_high > th, 2, np.where(prob_med > tm, 1, 0))
 
 
+def _binary_metrics_at_threshold(
+    labels: np.ndarray,
+    prob_risky: np.ndarray,
+    threshold: float,
+) -> dict:
+    """Compute binary metrics at a given risky-prob threshold."""
+    y_true = (np.asarray(labels).astype(np.int64) > 0).astype(np.int64)
+    y_pred = (np.asarray(prob_risky).astype(np.float64) >= float(threshold)).astype(np.int64)
+    tp = int(((y_pred == 1) & (y_true == 1)).sum())
+    tn = int(((y_pred == 0) & (y_true == 0)).sum())
+    fp = int(((y_pred == 1) & (y_true == 0)).sum())
+    fn = int(((y_pred == 0) & (y_true == 1)).sum())
+    n = max(1, int(y_true.size))
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    f1 = (2.0 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+    accuracy = (tp + tn) / n
+    fpr = fp / (fp + tn) if (fp + tn) > 0 else 0.0
+    return {
+        "threshold": float(threshold),
+        "accuracy": float(accuracy),
+        "precision": float(precision),
+        "recall": float(recall),
+        "f1": float(f1),
+        "fpr": float(fpr),
+        "tp": tp,
+        "tn": tn,
+        "fp": fp,
+        "fn": fn,
+    }
+
+
 def apply_calibrated_thresholds() -> None:
     """
     Read PR curve summary from evaluate_test.py, merge calibrated block/warn thresholds into
     config/risk_policy.json under policy["thresholds"][class_name].
     """
+    if not CONFIG_PATH.is_file():
+        raise SystemExit(f"Missing {CONFIG_PATH}")
+
+    if THRESHOLD_CALIBRATION_PATH.is_file():
+        try:
+            with open(THRESHOLD_CALIBRATION_PATH, encoding="utf-8") as f:
+                calib = json.load(f)
+        except Exception:
+            calib = None
+        if isinstance(calib, dict) and str(calib.get("calibration_mode", "")).lower() == "binary":
+            rec = calib.get("recommended") if isinstance(calib.get("recommended"), dict) else {}
+            thr = rec.get("prob_threshold_risky")
+            if thr is not None:
+                with open(CONFIG_PATH, encoding="utf-8") as f:
+                    policy = json.load(f)
+                policy["inference_binary_labels"] = {
+                    "prob_threshold_risky": float(thr),
+                    "max_fpr": float(calib.get("max_fpr", DEFAULT_MAX_FPR)),
+                    "selected_by": str(calib.get("selection_rule", DEFAULT_BINARY_SELECTION_RULE)),
+                    "metrics": {
+                        "accuracy": float(rec.get("accuracy", 0.0)),
+                        "precision": float(rec.get("precision", 0.0)),
+                        "recall": float(rec.get("recall", 0.0)),
+                        "f1": float(rec.get("f1", 0.0)),
+                        "fpr": float(rec.get("fpr", 0.0)),
+                    },
+                    "source": "reports/threshold_calibration.json",
+                }
+                policy["_calibrated_at"] = calib.get("generated_at", "")
+                policy["_calibration_source"] = "reports/threshold_calibration.json"
+                with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+                    json.dump(policy, f, indent=2)
+                try:
+                    clear_risk_policy_cache()
+                except Exception:
+                    pass
+                print("Binary threshold updated in config/risk_policy.json from threshold_calibration.json")
+                return
+
     if not PR_CURVE_SUMMARY_PATH.is_file():
         raise SystemExit(
             f"Missing {PR_CURVE_SUMMARY_PATH}. Run: python evaluate_test.py (generates pr_curve_summary.json)"
         )
-    if not CONFIG_PATH.is_file():
-        raise SystemExit(f"Missing {CONFIG_PATH}")
 
     with open(PR_CURVE_SUMMARY_PATH, encoding="utf-8") as f:
         pr = json.load(f)
@@ -138,6 +221,77 @@ def run_validation_threshold_sweep() -> None:
 
     model = AutoModelForSequenceClassification.from_pretrained(str(MODEL_DIR.resolve()))
     nl = int(getattr(model.config, "num_labels", 3))
+    if nl == 2:
+        selection_rule = _binary_selection_rule()
+        max_fpr_binary = float(os.environ.get("GUARDRAIL_CALIB_MAX_FPR_BINARY", str(max_fpr)))
+        args = TrainingArguments(
+            output_dir=str(MODEL_DIR / "calibrate_tmp"),
+            per_device_eval_batch_size=32,
+            report_to="none",
+        )
+        trainer = Trainer(model=model, args=args)
+        pred_out = trainer.predict(val_ds)
+        logits = np.asarray(pred_out.predictions)
+        labels = np.asarray(pred_out.label_ids)
+        probs = torch.softmax(torch.from_numpy(logits), dim=-1).numpy()
+        prob_risky = probs[:, 1]
+
+        thresholds = [round(float(x), 2) for x in np.arange(0.10, 0.901, 0.05)]
+        rows = [_binary_metrics_at_threshold(labels, prob_risky, t) for t in thresholds]
+        feasible = [r for r in rows if float(r["fpr"]) <= max_fpr_binary]
+        if selection_rule == "max_f1_under_fpr_cap":
+            sort_key = lambda r: (-float(r["f1"]), float(r["fpr"]), -float(r["recall"]), -float(r["precision"]))
+            fallback_note = "No threshold met FPR cap; recommended threshold is global best F1."
+            selected_note = "Recommended threshold maximizes F1 under FPR cap."
+        else:
+            sort_key = lambda r: (-float(r["recall"]), -float(r["precision"]), -float(r["f1"]), float(r["fpr"]))
+            fallback_note = "No threshold met FPR cap; recommended threshold is global best recall."
+            selected_note = "Recommended threshold maximizes recall under FPR cap."
+        if feasible:
+            feasible.sort(key=sort_key)
+            best = feasible[0]
+            note = selected_note
+        else:
+            rows_sorted = sorted(rows, key=sort_key)
+            best = rows_sorted[0]
+            note = fallback_note
+
+        print("\n" + "=" * 60)
+        print("Threshold calibration (validation set, binary)")
+        print("=" * 60)
+        print(
+            f"  Samples: {len(labels)}  |  max FPR (safe->risky): {max_fpr_binary:.2%}  |  "
+            f"grid: 0.10..0.90 step 0.05"
+        )
+        print(
+            f"\n  Recommended threshold: prob_threshold_risky={float(best['threshold']):.2f}\n"
+            f"    accuracy={float(best['accuracy']):.6f}  precision={float(best['precision']):.6f}  "
+            f"recall={float(best['recall']):.6f}  f1={float(best['f1']):.6f}  fpr={float(best['fpr']):.6f}"
+        )
+
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        out_path = REPORTS_DIR / "threshold_calibration.json"
+        summary = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "calibration_mode": "binary",
+            "max_fpr": float(max_fpr_binary),
+            "selection_rule": selection_rule,
+            "n_val": int(len(labels)),
+            "grid": rows,
+            "recommended": {
+                "prob_threshold_risky": float(best["threshold"]),
+                "accuracy": float(best["accuracy"]),
+                "precision": float(best["precision"]),
+                "recall": float(best["recall"]),
+                "f1": float(best["f1"]),
+                "fpr": float(best["fpr"]),
+            },
+            "note": note,
+        }
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(summary, f, indent=2)
+        print(f"\n  Wrote {out_path}")
+        return
     if nl != 3:
         print(f"Calibration script is for 3-class models; this checkpoint has num_labels={nl}. Exiting.")
         return

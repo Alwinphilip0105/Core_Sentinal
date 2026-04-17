@@ -1,0 +1,21 @@
+{
+  "criteria": {
+    "blind_pass_rate_min": 0.92,
+    "blind_medium_warn_recall_min": 0.85,
+    "blind_risky_block_recall_min": 0.98,
+    "safe_false_positive_rate_max": 0.03
+  },
+  "canary_rollout": {
+    "starting_percent": 0.1,
+    "step_up_percent": 0.1,
+    "canary_duration_hours": 24,
+    "required_consecutive_pass_windows": 2
+  },
+  "rollback_triggers": {
+    "max_block_rate_increase_vs_baseline": 0.2,
+    "max_warn_rate_increase_vs_baseline": 0.25,
+    "min_risky_block_recall_live": 0.97,
+    "max_safe_false_positive_rate_live": 0.05
+  }
+}
+

@@ -119,6 +119,19 @@ _PASSPORT_NEAR_CONTEXT = re.compile(
     r"\b[A-Z]{1,2}\d{6,9}\b(?=.*(?:passport|travel\s*doc))",
     re.IGNORECASE,
 )
+_SIN_CA = re.compile(
+    r"(?i)\b(?:social\s+insurance\s+number|sin)\s*[:#-]?\s*\d{3}[-\s]?\d{3}[-\s]?\d{3}\b"
+)
+_AADHAAR_IN = re.compile(
+    r"(?i)\b(?:aadhaar|aadhar)\s*(?:number|no|#)?\s*[:#-]?\s*\d{4}[-\s]?\d{4}[-\s]?\d{4}\b"
+)
+_NI_UK = re.compile(
+    r"(?i)\b(?:national\s*insurance(?:\s*number)?|ni\s*number)\s*[:#-]?\s*"
+    r"[A-CEGHJ-PR-TW-Z]{2}\s*\d{2}\s*\d{2}\s*\d{2}\s*[A-D]\b"
+)
+_CARD_ENDING_WITH_CVV = re.compile(
+    r"(?i)card\s+ending[^\\n]{0,40}\d{4}[^\\n]{0,40}\bcvv\b[^\\n]{0,20}\d{3,4}"
+)
 
 _CONFIDENTIAL_MARKER = re.compile(
     r"(?i)(confidential|internal\s+only"
@@ -160,6 +173,10 @@ _STRONG_PII_PATTERNS = [
     _IPV6,
     _PASSPORT_EXPLICIT,
     _PASSPORT_NEAR_CONTEXT,
+    _SIN_CA,
+    _AADHAAR_IN,
+    _NI_UK,
+    _CARD_ENDING_WITH_CVV,
 ]
 _STRONG_PII_NAMES = [
     "SSN pattern",
@@ -172,6 +189,10 @@ _STRONG_PII_NAMES = [
     "IP address (IPv6)",
     "Passport number",
     "Passport number",
+    "Social insurance number",
+    "Aadhaar number",
+    "National insurance number",
+    "card ending + CVV",
 ]
 
 assert len(_STRONG_PII_PATTERNS) == len(_STRONG_PII_NAMES)

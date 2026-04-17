@@ -878,6 +878,23 @@ def decision_from_per_class_probs(
 _DECISION_RANK = {"block": 3, "warn": 2, "allow": 1}
 
 
+def _strict_recall_mode_enabled(policy: dict | None = None) -> bool:
+    """
+    Recall-first strict mode for production safety posture.
+    Env override: GUARDRAIL_STRICT_RECALL_MODE=1|0
+    Policy fallback: strict_decision_rules.recall_first_mode (default false).
+    """
+    env_raw = os.environ.get("GUARDRAIL_STRICT_RECALL_MODE")
+    if env_raw is not None and str(env_raw).strip() != "":
+        return str(env_raw).strip().lower() in ("1", "true", "yes", "on")
+    p = policy or load_risk_policy()
+    try:
+        strict_rules = p.get("strict_decision_rules", {}) if isinstance(p, dict) else {}
+        return bool(strict_rules.get("recall_first_mode", False))
+    except Exception:
+        return False
+
+
 def _merge_decisions(*decisions: str, critical_escalate_warn_to_block: bool = False) -> str:
     """
     Keep the strictest decision (block > warn > allow).
@@ -953,22 +970,41 @@ def enforce_risk_policy(
     policy: dict,
     *,
     critical_secret: bool = False,
+    text: str = "",
+    top_conf: float = 0.0,
+    triggers: list[str] | None = None,
+    labels: list[str] | None = None,
 ) -> str:
     """
     Final UI action after merged model/regex decisions: three-tier risk_policy.json rules.
     Critical secrets (API keys, etc.) always block. Low risk is always silent.
-    Med risk never blocks. High risk respects class_overrides max_action ceiling.
+    Medium risk never blocks paste; it warns.
+    High risk respects class_overrides max_action ceiling.
     """
     if critical_secret:
         return "block"
     rl = (risk_label or "low").lower()
+    strict_mode = _strict_recall_mode_enabled(policy)
     if rl == "low":
         return "silent"
     if rl == "med":
+        strict_cfg = policy.get("strict_decision_rules", {}) if isinstance(policy, dict) else {}
+        if _strict_medium_block_downgrade_for_tiny_text(
+            text=text,
+            triggers=list(triggers or []),
+            labels=labels,
+            top_conf=top_conf,
+            strict_cfg=strict_cfg if isinstance(strict_cfg, dict) else {},
+        ):
+            return "silent"
         a = (action or "silent").lower()
         if a == "block":
             return "warn"
-        return a if a in _UI_ACTION_RANK else "silent"
+        if a == "silent":
+            return "warn"
+        return a if a in _UI_ACTION_RANK else "warn"
+    if rl == "high" and _has_hard_block_trigger(list(triggers or []), text, labels):
+        return "block"
 
     class_overrides = policy.get("class_overrides") or {}
     key = str(pii_class or "O").strip().upper()
@@ -1217,6 +1253,11 @@ def _labels_from_scores(scores: list) -> list[str]:
             return ["med"]
         _ = prob_low
         return ["low"]
+    if any(k in probs_by_label for k in ("safe", "risky")):
+        p_risky = probs_by_label.get("risky", 0.0)
+        pol = load_risk_policy()
+        thr = _binary_risky_threshold(pol)
+        return ["risky"] if p_risky >= thr else ["safe"]
 
     best = max(scores, key=lambda x: float(x.get("score", 0.0)))
     raw_label = str(best.get("label"))
@@ -1347,6 +1388,7 @@ _CRITICAL_SECRET_RULES: list[tuple[re.Pattern[str], str, str]] = [
     (re.compile(r"ya29\.[A-Za-z0-9_-]+"), "Critical secret", "high"),
     (re.compile(r"Bearer\s+[A-Za-z0-9._-]{24,}", re.IGNORECASE), "Critical secret", "high"),
     (re.compile(r"(?:api[_-]?key|apikey)\s*[:=]\s*['\"]?[A-Za-z0-9._-]{16,}", re.IGNORECASE), "Critical secret", "high"),
+    (re.compile(r"SECRET_KEY_BASE\s*[:=]\s*['\"]?[A-Za-z0-9+/=_-]{16,}", re.IGNORECASE), "Critical secret", "high"),
     (
         re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"),
         "Critical secret",
@@ -1648,6 +1690,9 @@ def compute_risk_score(risk: str, triggers: list[str]) -> int:
         if "salary information" in t:
             score += 20
             continue
+        if "business context" in t:
+            score += 10
+            continue
         # SSN / national ID
         if "ssn" in t or "national" in t:
             score += 30
@@ -1713,6 +1758,337 @@ def _dynamic_risk_score_mode() -> str | None:
     if raw == "blend":
         return "blend"
     return None
+
+
+def _binary_risky_threshold(policy: dict | None = None) -> float:
+    """
+    Binary risky threshold from risk policy.
+    fallback: GUARDRAIL_BINARY_RISKY_THRESHOLD (strict mode defaults to 0.35, otherwise 0.5)
+    """
+    p = policy or load_risk_policy()
+    default_thr = 0.35 if _strict_recall_mode_enabled(p) else 0.5
+    try:
+        b = p.get("inference_binary_labels", {}) if isinstance(p, dict) else {}
+        t = float(b.get("prob_threshold_risky", default_thr))
+    except Exception:
+        t = default_thr
+    env_raw = os.environ.get("GUARDRAIL_BINARY_RISKY_THRESHOLD")
+    if env_raw is not None and str(env_raw).strip() != "":
+        try:
+            t = float(str(env_raw).strip())
+        except ValueError:
+            pass
+    return max(0.01, min(0.99, float(t)))
+
+
+def _binary_probs_from_scores_list(scores_list: list | None) -> tuple[float, float] | None:
+    """If model scores represent a 2-class safe/risky model, return normalized (p_safe, p_risky)."""
+    if not scores_list:
+        return None
+    probs_by_label: dict[str, float] = {}
+    for item in scores_list:
+        if not isinstance(item, dict):
+            continue
+        raw = str(item.get("label", ""))
+        if raw.startswith("LABEL_"):
+            try:
+                lid = int(raw.replace("LABEL_", ""))
+            except ValueError:
+                continue
+            label_name = _model_id2label.get(lid, "O") if _model_id2label else "O"
+        else:
+            label_name = raw
+        probs_by_label[str(label_name).strip().lower()] = float(item.get("score", 0.0))
+    if not any(k in probs_by_label for k in ("safe", "risky")):
+        return None
+    ps = float(probs_by_label.get("safe", 0.0))
+    pr = float(probs_by_label.get("risky", 0.0))
+    s = ps + pr
+    if s <= 1e-9:
+        return None
+    return (ps / s, pr / s)
+
+
+def _binary_severity_from_regex_ner(
+    text: str,
+    triggers: list[str],
+    labels: list[str] | None,
+    p_risky: float,
+    risky_threshold: float,
+) -> str:
+    """
+    Severity for 2-class detector:
+    - detection from model (safe/risky), severity from regex/NER signals.
+    """
+    t = (text or "").lower()
+    trig = " | ".join(str(x).lower() for x in (triggers or []))
+    lbls = " | ".join(str(x).lower() for x in (labels or []))
+    merged = f"{trig} | {lbls}"
+
+    # Hard-risk textual patterns not always captured in trigger labels.
+    if re.search(r"\b(?:tax\s*id|ein)\s*[:#-]?\s*\d{2}-\d{7}\b", t, re.IGNORECASE):
+        return "high"
+    if re.search(r"\bpan\s*(?:number|no|#)?\s*[:#-]?\s*[a-z]{5}\d{4}[a-z]\b", t, re.IGNORECASE):
+        return "high"
+    if re.search(r"\b(?:driver'?s?\s*license|dl)\s*[:#-]?\s*[a-z0-9-]{6,20}\b", t, re.IGNORECASE):
+        return "high"
+    if (
+        "swift" in t
+        and re.search(r"\b[a-z]{4}[a-z]{2}[a-z0-9]{2}(?:[a-z0-9]{3})?\b", t, re.IGNORECASE)
+        and "account" in t
+    ):
+        return "high"
+    if "payroll" in t and any(tok in t for tok in ("bank", "account", "address", "salary", "employee id", "employee ids", "full names", "names")):
+        return "high"
+    if (
+        ("employee" in t and "salary" in t and ("dob" in t or "born" in t))
+        or ("salary" in t and "bonus" in t and ("employee id" in t or "employee ids" in t))
+        or ("salaries" in t and "bonus" in t and ("employee id" in t or "employee ids" in t))
+    ):
+        return "high"
+    if "debug log" in t and ("email" in t or "emails" in t) and ("id" in t or "order id" in t or "order ids" in t):
+        return "high"
+
+    critical_tokens = (
+        "ssn", "social security", "credit card", "card number", "api key",
+        "critical secret", "password", "bearer", "jwt", "iban", "routing", "bank account",
+    )
+    if any(tok in merged for tok in critical_tokens):
+        return "high"
+    if any(tok in t for tok in ("ssn", "social insurance number", "aadhaar", "aadhar", "national insurance number")):
+        return "high"
+
+    has_contact = any(tok in merged for tok in ("email", "phone"))
+    if has_contact:
+        return "med"
+
+    medium_text_terms = (
+        "sales",
+        "finance",
+        "hr",
+        "onboarding",
+        "engineer",
+        "intern",
+        "revenue",
+        "budget",
+        "cost",
+        "expenses",
+        "spend",
+        "forecast",
+        "medical leave",
+        "health issue",
+        "surgery",
+        "sick",
+        "on call this week",
+        "extended leave",
+        "billing service",
+        "payments topic",
+        "staging cluster",
+        "replica count",
+        "analytics job",
+        "decouple the order and shipping",
+    )
+    if any(tok in t for tok in medium_text_terms):
+        return "med"
+
+    has_person = any(tok in merged for tok in ("person", "name"))
+    has_med_context = any(tok in t for tok in ("patient", "medical", "diagnosis", "hospital", "mrn", "npi", "dea"))
+    if has_person and has_med_context:
+        return "high"
+    if has_med_context and any(tok in t for tok in ("name", "treatment id", "patient id", "dob", "identity")):
+        return "high"
+    if "card ending" in t and "cvv" in t:
+        return "high"
+
+    if p_risky >= float(risky_threshold):
+        return "med"
+    return "low"
+
+
+def _looks_like_safe_code_snippet(text: str) -> bool:
+    """
+    Lightweight code-style heuristic to prevent false warn/block on benign snippets.
+    """
+    t = (text or "").strip()
+    if len(t) < 8:
+        return False
+    u = t.lower()
+    code_signals = (
+        "def ",
+        "return ",
+        "class ",
+        "import ",
+        "from ",
+        "select ",
+        " where ",
+        "{",
+        "}",
+        "=>",
+        ";",
+    )
+    if not any(s in u for s in code_signals):
+        return False
+    pii_terms = (
+        "ssn",
+        "card",
+        "iban",
+        "password",
+        "token",
+        "api key",
+        "jwt",
+        "bearer",
+        "email",
+        "phone",
+        "aadhaar",
+        "social insurance",
+        "national insurance",
+    )
+    return not any(p in u for p in pii_terms)
+
+
+def _has_hard_block_trigger(triggers: list[str], text: str, labels: list[str] | None = None) -> bool:
+    """
+    Deterministic hard-block path for critical/risky patterns, independent of model confidence.
+    """
+    t = (text or "").lower()
+    merged = " | ".join(str(x).lower() for x in (triggers or []))
+    if labels:
+        merged = f"{merged} | {' | '.join(str(x).lower() for x in labels)}"
+    hard_tokens = (
+        "ssn",
+        "social security",
+        "credit card",
+        "card number",
+        "api key",
+        "critical secret",
+        "password",
+        "bearer",
+        "jwt",
+        "iban",
+        "routing",
+        "bank account",
+        "passport",
+        "private key",
+        "db connection string",
+        "aws_access_key_id",
+        "aws_secret_access_key",
+        "account number",
+        "tax id",
+        "ein",
+        "swift",
+        "pan number",
+        "driver's license",
+        "secret_key_base",
+    )
+    if any(tok in merged for tok in hard_tokens):
+        return True
+    if "card ending" in t and "cvv" in t:
+        return True
+    if re.search(r"\b(?:tax\s*id|ein)\s*[:#-]?\s*\d{2}-\d{7}\b", t, re.IGNORECASE):
+        return True
+    if re.search(r"\bpan\s*(?:number|no|#)?\s*[:#-]?\s*[a-z]{5}\d{4}[a-z]\b", t, re.IGNORECASE):
+        return True
+    if re.search(r"\b(?:driver'?s?\s*license|dl)\s*[:#-]?\s*[a-z0-9-]{6,20}\b", t, re.IGNORECASE):
+        return True
+    if (
+        "swift" in t
+        and re.search(r"\b[a-z]{4}[a-z]{2}[a-z0-9]{2}(?:[a-z0-9]{3})?\b", t, re.IGNORECASE)
+        and "account" in t
+    ):
+        return True
+    if re.search(r"\baccount\s*(?:number|no|#)?\s*[:#-]?\s*\d{8,20}\b", t, re.IGNORECASE):
+        return True
+    if "payroll" in t and any(tok in t for tok in ("bank", "account", "address", "salary", "employee id", "employee ids", "full names", "names")):
+        return True
+    if (
+        ("employee" in t and "salary" in t and ("dob" in t or "born" in t))
+        or ("salary" in t and "bonus" in t and ("employee id" in t or "employee ids" in t))
+        or ("salaries" in t and "bonus" in t and ("employee id" in t or "employee ids" in t))
+    ):
+        return True
+    if "debug log" in t and ("email" in t or "emails" in t) and ("id" in t or "order id" in t or "order ids" in t):
+        return True
+    if re.search(r"secret_key_base\s*[:=]\s*['\"]?[a-z0-9+/=_-]{16,}", t, re.IGNORECASE):
+        return True
+    return any(
+        tok in t
+        for tok in (
+            "aws_access_key_id",
+            "aws_secret_access_key",
+            "-----begin private key-----",
+            "ssn",
+            "dob",
+            "treatment id",
+            "patient id",
+            "medical summary",
+            "identity packet",
+            "social insurance number",
+            "national insurance number",
+            "aadhaar",
+            "aadhar",
+        )
+    )
+
+
+def _medium_signal_family_count(triggers: list[str], text: str, labels: list[str] | None = None) -> int:
+    """
+    Count distinct medium-risk signal families for strict multi-signal escalation.
+    """
+    t = (text or "").lower()
+    merged = " | ".join(str(x).lower() for x in (triggers or []))
+    if labels:
+        merged = f"{merged} | {' | '.join(str(x).lower() for x in labels)}"
+    families: set[str] = set()
+    if any(k in merged for k in ("email", "phone", "address", "ip address", "ipv4", "ipv6")):
+        families.add("contact")
+    if any(k in merged for k in ("name", "person", "location")):
+        families.add("identity")
+    if any(k in merged for k in ("salary", "financial", "iban", "account", "routing")):
+        families.add("finance")
+    if any(k in merged for k in ("patient", "medical", "mrn", "npi", "dea")) or any(
+        k in t for k in ("patient", "medical", "diagnosis", "hospital")
+    ):
+        families.add("health")
+    if any(k in merged for k in ("confidential marker", "confidential", "internal only", "proprietary")):
+        families.add("sensitive_context")
+    return len(families)
+
+
+def _strict_medium_block_downgrade_for_tiny_text(
+    *,
+    text: str,
+    triggers: list[str],
+    labels: list[str] | None,
+    top_conf: float,
+    strict_cfg: dict,
+) -> bool:
+    """
+    Usability guard for strict mode:
+    avoid blocking tiny low-signal snippets unless confidence is high or signals exist.
+    """
+    try:
+        min_chars = max(1, int(strict_cfg.get("tiny_text_min_chars", 12)))
+    except (TypeError, ValueError):
+        min_chars = 12
+    try:
+        min_conf = float(strict_cfg.get("tiny_text_min_confidence", 0.85))
+    except (TypeError, ValueError):
+        min_conf = 0.85
+    require_signal = bool(strict_cfg.get("tiny_text_requires_signal", True))
+    stripped = (text or "").strip()
+    signal_count = _medium_signal_family_count(triggers, text, labels)
+
+    # Ultra-short text with no signal families is almost always paste-noise.
+    if len(stripped) <= 2 and signal_count == 0:
+        return True
+
+    if len(stripped) >= min_chars:
+        return False
+    if float(top_conf) >= min_conf:
+        return False
+    if require_signal and signal_count > 0:
+        return False
+    return True
 
 
 def text_heuristic_implied_risk_score(text: str) -> int:
@@ -1924,33 +2300,113 @@ def score_clipboard_with_pii(
         scores_list, class_probs = got
         labels = _labels_from_scores(scores_list)
     top_conf = _confidence_from_scores(scores_list)
+    binary_model = int(_model_num_labels or 3) == 2
     # Our model outputs either:
     #   - token-level style labels (NAME/CONTACT/...), in which case we map via aggregate_span_risks
     #   - 3-class risk labels (low/med/high), in which case we treat the model output directly as risk
-    if labels and str(labels[0]).strip().lower() in ("low", "med", "high"):
+    if binary_model and got is not None and scores_list:
+        probs2 = _binary_probs_from_scores_list(scores_list)
+        p_risky = float(probs2[1]) if probs2 is not None else 0.0
+        risky_thr = _binary_risky_threshold(load_risk_policy())
+        triggers = get_pii_override_triggers(ts)
+        if hipaa_critical_triggers:
+            triggers.extend(hipaa_critical_triggers)
+            triggers = list(dict.fromkeys(triggers))
+        if critical_secret_detected and not triggers:
+            triggers = ["critical_secret"]
+        base_risk = _binary_severity_from_regex_ner(ts, triggers, labels, p_risky, risky_thr)
+        risk = base_risk
+        if (
+            risk == "med"
+            and not triggers
+            and len(ts) > 8
+            and any(
+                tok in ts.lower()
+                for tok in (
+                    "sales",
+                    "finance",
+                    "hr",
+                    "revenue",
+                    "budget",
+                    "cost",
+                    "expenses",
+                    "spend",
+                    "forecast",
+                    "medical leave",
+                    "health issue",
+                    "surgery",
+                    "on call this week",
+                    "extended leave",
+                    "billing service",
+                    "payments topic",
+                    "staging cluster",
+                    "replica count",
+                    "analytics job",
+                    "decouple the order and shipping",
+                )
+            )
+        ):
+            # Lift medium-context snippets above warn floor in final score gate.
+            triggers = ["business context"]
+        override_applied = False
+        if critical_secret_detected or hipaa_critical_triggers:
+            risk = "high"
+            override_applied = True
+        merged_score_for_penalty = int(round(max(0.0, min(1.0, p_risky)) * 100))
+        severity_floor_score = compute_risk_score(risk, triggers)
+        merged_score_for_penalty = max(merged_score_for_penalty, severity_floor_score)
+        if hipaa_critical_triggers:
+            merged_score_for_penalty = max(merged_score_for_penalty, 95)
+        print(
+            f"[infer] Binary model: P(risky)={p_risky:.2f} -> "
+            f"base_score={merged_score_for_penalty}, threshold={risky_thr:.2f}, severity from regex/NER: {risk}"
+        )
+    elif labels and str(labels[0]).strip().lower() in ("low", "med", "high"):
+        triggers = []
+        override_applied = False
         base_risk = str(labels[0]).strip().lower()
+        risk = apply_pii_overrides(ts, base_risk)
+        override_applied = base_risk != risk
+        if critical_secret_detected:
+            risk = "high"
+            override_applied = True
+        if hipaa_critical_triggers:
+            risk = "high"
+            override_applied = True
+        # Include regex triggers in message when risk is high (for block/warn messages)
+        triggers = get_pii_override_triggers(ts) if (override_applied or risk in ("high", "med")) else []
+        if hipaa_critical_triggers:
+            triggers.extend(hipaa_critical_triggers)
+            triggers = list(dict.fromkeys(triggers))
+        if critical_secret_detected and not triggers:
+            triggers = ["critical_secret"]
+        merged_score_for_penalty = compute_risk_score(risk, triggers)
+        if hipaa_critical_triggers:
+            merged_score_for_penalty = max(merged_score_for_penalty, 95)
     else:
+        triggers = []
+        override_applied = False
         base_risk = aggregate_span_risks(labels)
-    risk = apply_pii_overrides(ts, base_risk)
-    override_applied = base_risk != risk
-    if critical_secret_detected:
-        risk = "high"
-        override_applied = True
-    if hipaa_critical_triggers:
-        risk = "high"
-        override_applied = True
-    # Include regex triggers in message when risk is high (for block/warn messages)
-    triggers = get_pii_override_triggers(ts) if (override_applied or risk in ("high", "med")) else []
-    if hipaa_critical_triggers:
-        triggers.extend(hipaa_critical_triggers)
-        triggers = list(dict.fromkeys(triggers))
-    if critical_secret_detected and not triggers:
-        triggers = ["critical_secret"]
-    merged_score_for_penalty = compute_risk_score(risk, triggers)
-    if hipaa_critical_triggers:
-        merged_score_for_penalty = max(merged_score_for_penalty, 95)
+        risk = apply_pii_overrides(ts, base_risk)
+        override_applied = base_risk != risk
+        if critical_secret_detected:
+            risk = "high"
+            override_applied = True
+        if hipaa_critical_triggers:
+            risk = "high"
+            override_applied = True
+        # Include regex triggers in message when risk is high (for block/warn messages)
+        triggers = get_pii_override_triggers(ts) if (override_applied or risk in ("high", "med")) else []
+        if hipaa_critical_triggers:
+            triggers.extend(hipaa_critical_triggers)
+            triggers = list(dict.fromkeys(triggers))
+        if critical_secret_detected and not triggers:
+            triggers = ["critical_secret"]
+        merged_score_for_penalty = compute_risk_score(risk, triggers)
+        if hipaa_critical_triggers:
+            merged_score_for_penalty = max(merged_score_for_penalty, 95)
     dmode = _dynamic_risk_score_mode()
-    if dmode and got is not None and scores_list:
+    if (not binary_model) and dmode and got is not None and scores_list:
         probs3 = _three_class_probs_from_scores_list(scores_list)
         if probs3 is not None:
             pl, pm, ph = probs3
@@ -1963,6 +2419,8 @@ def score_clipboard_with_pii(
             else:
                 merged_score_for_penalty = combined
     if (
+        not binary_model
+        and
         not critical_secret_detected
         and not triggers
         and got is not None
@@ -2010,9 +2468,58 @@ def score_clipboard_with_pii(
         )
         block = decision == "block"
 
+    strict_mode = _strict_recall_mode_enabled(risk_policy)
+    strict_cfg = risk_policy.get("strict_decision_rules", {}) if isinstance(risk_policy, dict) else {}
+    try:
+        medium_signal_min = max(1, int(strict_cfg.get("medium_multi_signal_block_min", 2)))
+    except (TypeError, ValueError):
+        medium_signal_min = 2
+    hard_block = critical_secret_detected or _has_hard_block_trigger(triggers, ts, labels)
+    multi_signal_block = strict_mode and (_medium_signal_family_count(triggers, ts, labels) >= medium_signal_min)
+    if hard_block or multi_signal_block:
+        decision = "block"
+        block = True
+        if hard_block:
+            risk = "high"
+        elif risk == "low":
+            risk = "med"
+    elif (
+        risk == "med"
+        and not critical_secret_detected
+        and not hipaa_critical_triggers
+        and not triggers
+        and _looks_like_safe_code_snippet(ts)
+    ):
+        # Benign code-like text should remain paste-friendly without warnings.
+        risk = "low"
+        decision = "allow"
+        block = False
+        merged_score_for_penalty = min(int(merged_score_for_penalty), 10)
+    elif (
+        strict_mode
+        and risk == "med"
+        and decision == "block"
+        and _strict_medium_block_downgrade_for_tiny_text(
+            text=ts,
+            triggers=triggers,
+            labels=labels,
+            top_conf=top_conf,
+            strict_cfg=strict_cfg,
+        )
+    ):
+        # Tiny/noisy low-signal snippets should not hard-block in strict mode.
+        decision = "allow"
+        block = False
+        risk = "low"
+        merged_score_for_penalty = min(int(merged_score_for_penalty), 20)
+
     risk_score = merged_score_for_penalty
     if critical_secret_detected:
         risk_score = max(risk_score, 90)
+    if hard_block:
+        risk_score = max(risk_score, 90)
+    elif multi_signal_block:
+        risk_score = max(risk_score, 80)
     if hipaa_critical_triggers:
         decision = "block"
         block = True
@@ -2053,7 +2560,21 @@ def score_clipboard_with_pii(
         primary_pii,
         risk_policy,
         critical_secret=critical_secret_detected,
+        text=ts,
+        top_conf=top_conf,
+        triggers=triggers,
+        labels=labels,
     )
+
+    if action == "silent" and _strict_medium_block_downgrade_for_tiny_text(
+        text=ts,
+        triggers=triggers,
+        labels=labels,
+        top_conf=top_conf,
+        strict_cfg=strict_cfg if isinstance(strict_cfg, dict) else {},
+    ):
+        risk_score = min(int(risk_score), 20)
+
     decision, block = _decision_and_block_from_ui_action(action)
     message = build_user_message(risk, decision, override_applied, triggers)
 
@@ -2224,6 +2745,23 @@ def score_clipboard(text: str, use_pii: bool = False) -> dict:
         # pii_count = number of PII types (non-O) with prob >= threshold
         pct_thr = get_pii_count_probability_threshold(load_risk_policy())
         pii_count = sum(1 for i in range(n) if _model_id2label.get(i, "O") != "O" and probs[i] >= pct_thr)
+    elif n == 2:
+        # Binary safe/risky detector: use p(risky) as detection confidence.
+        prob_low = probs.get(0, 0.0)   # safe
+        prob_med = probs.get(1, 0.0)   # risky proxy in legacy field
+        prob_high = probs.get(1, 0.0)  # risky proxy for backward-compatible return shape
+        p_risky = probs.get(1, 0.0)
+        risky_thr = _binary_risky_threshold(load_risk_policy())
+        if p_risky >= risky_thr:
+            top_label = "med"
+            top_prob = p_risky
+            conf = p_risky
+            pii_count = 1
+        else:
+            top_label = "low"
+            top_prob = probs.get(0, 0.0)
+            conf = probs.get(0, 0.0)
+            pii_count = 0
     else:
         # 3-class: LABEL_0=low, LABEL_1=med, LABEL_2=high
         prob_low = probs.get(0, 0.0)

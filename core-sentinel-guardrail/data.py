@@ -112,6 +112,29 @@ def _get_synthetic_cap_multiplier() -> int:
     return max(0, _env_int("GUARDRAIL_SYNTHETIC_CAP_MULTIPLIER", SYNTHETIC_CAP_MULTIPLIER))
 
 
+def _get_binary_safe_pool_target() -> int:
+    """
+    Target safe rows in binary trainable pool before split.
+    Helps avoid severe safe-class undercoverage from real-source skew.
+    """
+    return max(0, _env_int("GUARDRAIL_BINARY_SAFE_POOL_TARGET", 5000))
+
+
+def _get_binary_synthetic_floor() -> int:
+    """
+    Optional floor for synthetic pool in binary mode.
+    Set GUARDRAIL_BINARY_SYNTHETIC_FLOOR to raise data volume in one experiment.
+    """
+    return max(0, _env_int("GUARDRAIL_BINARY_SYNTHETIC_FLOOR", 0))
+
+
+def _get_binary_adv_risky_samples() -> int:
+    """
+    Number of adversarial risky synthetic samples injected into binary pool pre-split.
+    """
+    return max(0, _env_int("GUARDRAIL_BINARY_ADV_RISKY_SAMPLES", 800))
+
+
 def _get_split_ratios() -> tuple[float, float, float]:
     """
     Train/val/test fractions for stratified_split when no source holdout (default SPLIT_RATIOS).
@@ -181,6 +204,54 @@ def _use_multi_real_equal_thirds() -> bool:
     if raw is None:
         return False
     return str(raw).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _binary_mode_enabled() -> bool:
+    """Binary guardrail mode (safe/risky) for multi_real_synthetic; default off."""
+    raw = os.environ.get("GUARDRAIL_BINARY_MODE")
+    if raw is None:
+        return False
+    return str(raw).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _to_binary_risk(risk: str) -> str:
+    """Map low/med/high -> safe/risky."""
+    r = str(risk or "").strip().lower()
+    return "safe" if r == "low" else "risky"
+
+
+def _rebalance_binary_train_equal_halves(
+    train_rows: list[dict],
+    *,
+    seed: int = 91,
+    max_per_class: int = 5000,
+) -> list[dict]:
+    """
+    Rebalance binary train split to 50/50 safe vs risky.
+    Target is min(max(safe_count, risky_count), max_per_class) so we upsample minority
+    and avoid collapsing the train set to the smaller class.
+    """
+    rng = random.Random(seed)
+    safe_rows = [r for r in train_rows if str(r.get("risk", "")).lower() == "safe"]
+    risky_rows = [r for r in train_rows if str(r.get("risk", "")).lower() == "risky"]
+    safe_count = len(safe_rows)
+    risky_count = len(risky_rows)
+    if not safe_rows or not risky_rows:
+        print(
+            "[data] Binary mode rebalance skipped (missing class): "
+            f"safe={safe_count} risky={risky_count}"
+        )
+        return train_rows
+    target = min(max(safe_count, risky_count), int(max_per_class))
+    print(
+        "[data] Binary mode pre-rebalance train pool: "
+        f"safe={safe_count} risky={risky_count} target_per_class={target} cap={int(max_per_class)}"
+    )
+    safe_pick = rng.sample(safe_rows, target) if safe_count >= target else rng.choices(safe_rows, k=target)
+    risky_pick = rng.sample(risky_rows, target) if risky_count >= target else rng.choices(risky_rows, k=target)
+    out = [dict(r) for r in safe_pick] + [dict(r) for r in risky_pick]
+    rng.shuffle(out)
+    return out
 
 
 def _rebalance_multi_real_train_equal_thirds(train_rows: list[dict], *, seed: int = 88) -> list[dict]:
@@ -1573,6 +1644,122 @@ def generate_low_risk_samples(n: int = 3000, seed: int = 42) -> list[dict]:
     return samples
 
 
+def generate_business_safe_negatives(n: int = 3000, seed: int = 99) -> list[dict]:
+    """
+    Safer business-like negatives (no direct PII fields) used to diversify binary safe class.
+    """
+    import random as _random
+    from faker import Faker as _Faker
+
+    _random.seed(seed)
+    fake = _Faker()
+    _Faker.seed(seed)
+
+    verbs = ("review", "approve", "triage", "archive", "summarize", "route", "validate")
+    docs = ("design brief", "runbook", "incident note", "sprint recap", "quarterly summary", "ops checklist")
+    systems = ("billing-service", "analytics-worker", "api-gateway", "etl-orchestrator", "crm-sync")
+    samples: list[dict] = []
+    for i in range(max(0, int(n))):
+        mode = i % 7
+        if mode == 0:
+            text = (
+                f"Project update: {fake.company()} requested { _random.choice(verbs) } of the "
+                f"{ _random.choice(docs) } by {fake.day_of_week()} {fake.time(pattern='%H:%M')}."
+            )
+        elif mode == 1:
+            text = (
+                f"Ops log: deployment for { _random.choice(systems) } completed in "
+                f"{_random.randint(3, 24)} minutes, no customer data attached."
+            )
+        elif mode == 2:
+            text = (
+                f"Finance planning note: budget line {fake.lexify('BUD-????')}-{_random.randint(100,999)} "
+                f"moved to next quarter for vendor consolidation."
+            )
+        elif mode == 3:
+            text = (
+                f"Meeting recap: prioritize regression fixes and release notes; "
+                f"exclude personal identifiers in all shared artifacts."
+            )
+        elif mode == 4:
+            text = (
+                f"Security checklist item: rotate non-production secrets and verify "
+                f"redaction in telemetry dashboards."
+            )
+        elif mode == 5:
+            text = (
+                f"QA handoff: reproduce issue in staging with synthetic fixture set "
+                f"{fake.lexify('SAFE-????')}-{_random.randint(1000,9999)}."
+            )
+        else:
+            text = (
+                f"Documentation task: {fake.bs().capitalize()} for service "
+                f"{_random.choice(systems)} and publish sanitized examples only."
+            )
+        samples.append(
+            {
+                "text": text,
+                "risk": "low",
+                "sap_id": f"safebiz-{seed}-{i}",
+                "source": "synthetic_safe_business",
+            }
+        )
+    return samples
+
+
+def generate_adversarial_risky_samples(n: int = 800, seed: int = 177) -> list[dict]:
+    """
+    Adversarial risky snippets (obfuscated formats) to improve recall on critical/risky edge cases.
+    """
+    import random as _random
+    from faker import Faker as _Faker
+
+    _random.seed(seed)
+    fake = _Faker()
+    _Faker.seed(seed)
+
+    rows: list[dict] = []
+    for i in range(max(0, int(n))):
+        mode = i % 8
+        if mode == 0:
+            text = f"Payroll import: SSN {fake.numerify('### ## ####')} must be verified before sync."
+        elif mode == 1:
+            text = f"Card check: {' '.join(list(fake.numerify('################')))} failed preauth."
+        elif mode == 2:
+            text = f"Security note: Authorization Bearer {fake.pystr(min_chars=36, max_chars=48)}"
+        elif mode == 3:
+            text = (
+                f"Ops paste: AWS_ACCESS_KEY_ID=AKIA{fake.pystr(min_chars=16, max_chars=16).upper()} "
+                f"AWS_SECRET_ACCESS_KEY={fake.pystr(min_chars=40, max_chars=44)}"
+            )
+        elif mode == 4:
+            text = f"Payment fallback route: IBAN GB29 NWBK 6016 1331 9268 19 for vendor payout."
+        elif mode == 5:
+            text = (
+                f"Incident triage: token split sk - live - {fake.pystr(min_chars=24, max_chars=30)} "
+                f"must not leave secure notes."
+            )
+        elif mode == 6:
+            text = (
+                f"Clinical export: Patient {fake.name()} MRN {fake.numerify('#######')} "
+                f"diagnosis summary should be blocked in LLM chat."
+            )
+        else:
+            text = (
+                f"DB handoff: mongodb://admin:{fake.pystr(min_chars=10, max_chars=14)}@"
+                f"{fake.word()}.mongodb.net/prod"
+            )
+        rows.append(
+            {
+                "text": text,
+                "risk": "high",
+                "sap_id": f"adv-risk-{seed}-{i}",
+                "source": "synthetic_adversarial_risky",
+            }
+        )
+    return rows
+
+
 def generate_hard_medium_samples(n: int = 2200, seed: int = 143) -> list[dict]:
     """
     Medium-risk near-boundary samples.
@@ -2026,6 +2213,7 @@ def stratified_split(rows: list[dict], ratios: tuple[float, float, float] | None
 
 
 RISK_TO_ID = {"low": 0, "med": 1, "high": 2}
+BINARY_RISK_TO_ID = {"safe": 0, "risky": 1}
 
 
 def tokenize_dataset(ds: Dataset, tokenizer, text_column: str = "text", max_length: int = 128) -> Dataset:
@@ -2074,6 +2262,7 @@ def build_and_save(
     GUARDRAIL_TRAIN_CAP_LOW/MED/HIGH, GUARDRAIL_BIGCODE_MAX_ROWS (or "none" for full BigCode split).
     """
     nemotron = None
+    binary_mode = _binary_mode_enabled() and data_source == "multi_real_synthetic"
     if data_source in ("nemotron", "both", "patronus"):
         nemotron = load_nemotron_pii()
 
@@ -2223,6 +2412,8 @@ def build_and_save(
         n_real_unlabeled = sum(len(rows) for _, rows in source_lists) - n_real_labeled  # approx; pool has dedup/filter
         cap = max(0, _get_synthetic_cap_multiplier() * n_real_labeled) if n_real_labeled else _get_num_synthetics()
         n_synthetic_target = min(_get_num_synthetics(), cap) if n_real_labeled else _get_num_synthetics()
+        if binary_mode:
+            n_synthetic_target = max(n_synthetic_target, _get_binary_synthetic_floor())
         _syn_raw = generate_faker_synthetics(n_synthetic_target)
         synthetic_rows = [
             {"text": r["text"], "risk": r["risk"], "is_sap": 0, "sap_id": r["sap_id"], "source": "synthetic"}
@@ -2257,6 +2448,55 @@ def build_and_save(
             )
 
         pool = trainable_real_rows + synthetic_rows
+        if binary_mode:
+            for row in pool:
+                row["risk"] = _to_binary_risk(row.get("risk", "low"))
+            for row in source_holdout_rows:
+                row["risk"] = _to_binary_risk(row.get("risk", "low"))
+            adv_n = _get_binary_adv_risky_samples()
+            if adv_n > 0:
+                adv_rows = generate_adversarial_risky_samples(adv_n, seed=719)
+                for i, r in enumerate(adv_rows):
+                    pool.append(
+                        {
+                            "text": r["text"],
+                            "risk": "risky",
+                            "is_sap": 0,
+                            "sap_id": f"bin-adv-risk-{i}",
+                            "source": r.get("source", "synthetic_adversarial_risky"),
+                        }
+                    )
+                print(
+                    "[data] Binary mode adversarial risky injection: "
+                    f"added_risky={adv_n}"
+                )
+            pool_counts_before = Counter(r["risk"] for r in pool)
+            safe_before = int(pool_counts_before.get("safe", 0))
+            risky_before = int(pool_counts_before.get("risky", 0))
+            safe_target_pool = max(0, min(_get_binary_safe_pool_target(), max(safe_before, risky_before)))
+            safe_gap = max(0, safe_target_pool - safe_before)
+            if safe_gap > 0:
+                extra_safe = generate_business_safe_negatives(safe_gap, seed=313)
+                for i, r in enumerate(extra_safe):
+                    pool.append(
+                        {
+                            "text": r["text"],
+                            "risk": "safe",
+                            "is_sap": 0,
+                            "sap_id": f"bin-safe-{i}",
+                            "source": r.get("source", "synthetic_safe_business"),
+                        }
+                    )
+                print(
+                    "[data] Binary mode safe-pool expansion: "
+                    f"pre-split safe={safe_before} risky={risky_before}, "
+                    f"added_safe={safe_gap}, target_safe_pool={safe_target_pool}"
+                )
+            else:
+                print(
+                    "[data] Binary mode safe-pool expansion: "
+                    f"pre-split safe={safe_before} risky={risky_before}, no extra safe rows needed"
+                )
         random.seed(42)
         random.shuffle(pool)
         pool_risks = [r["risk"] for r in pool]
@@ -2362,31 +2602,39 @@ def build_and_save(
 
     # Rebalance splits for better medium-risk coverage and lower template leakage.
     if data_source not in ("ai4privacy_text_only", "ai4privacy_text_plus_real", "ai4privacy_kaggle_en"):
-        train_rows = balance_train_risk_classes(train_rows)
-        train_rows = _rebalance_split_for_med_coverage(train_rows, split_name="train", min_med=1400, seed=42)
-        train_rows = _rebalance_train_for_class_floors(train_rows, seed=55)
-        if data_source == "multi_real_synthetic":
-            if _use_multi_real_equal_thirds():
-                train_rows = _rebalance_multi_real_train_equal_thirds(train_rows, seed=88)
-            else:
-                print(
-                    "[multi_real_synthetic] keeping post-balance train distribution "
-                    "(GUARDRAIL_MULTI_REAL_EQUAL_THIRDS not enabled)"
-                )
-        val_rows = _rebalance_split_for_class_coverage(
-            val_rows,
-            split_name="val",
-            min_counts=DEFAULT_VAL_MIN_COUNTS,
-            max_class_ratio=DEFAULT_EVAL_MAX_CLASS_RATIO,
-            seed=77,
-        )
-        test_rows = _rebalance_split_for_class_coverage(
-            test_rows,
-            split_name="test",
-            min_counts=DEFAULT_TEST_MIN_COUNTS,
-            max_class_ratio=DEFAULT_EVAL_MAX_CLASS_RATIO,
-            seed=99,
-        )
+        if binary_mode:
+            train_rows = _rebalance_binary_train_equal_halves(train_rows, seed=91, max_per_class=5000)
+            bs = Counter(r["risk"] for r in train_rows)
+            print(
+                "[data] Binary mode: merged med+high -> risky. "
+                f"Train: {bs.get('safe', 0)} safe / {bs.get('risky', 0)} risky"
+            )
+        else:
+            train_rows = balance_train_risk_classes(train_rows)
+            train_rows = _rebalance_split_for_med_coverage(train_rows, split_name="train", min_med=1400, seed=42)
+            train_rows = _rebalance_train_for_class_floors(train_rows, seed=55)
+            if data_source == "multi_real_synthetic":
+                if _use_multi_real_equal_thirds():
+                    train_rows = _rebalance_multi_real_train_equal_thirds(train_rows, seed=88)
+                else:
+                    print(
+                        "[multi_real_synthetic] keeping post-balance train distribution "
+                        "(GUARDRAIL_MULTI_REAL_EQUAL_THIRDS not enabled)"
+                    )
+            val_rows = _rebalance_split_for_class_coverage(
+                val_rows,
+                split_name="val",
+                min_counts=DEFAULT_VAL_MIN_COUNTS,
+                max_class_ratio=DEFAULT_EVAL_MAX_CLASS_RATIO,
+                seed=77,
+            )
+            test_rows = _rebalance_split_for_class_coverage(
+                test_rows,
+                split_name="test",
+                min_counts=DEFAULT_TEST_MIN_COUNTS,
+                max_class_ratio=DEFAULT_EVAL_MAX_CLASS_RATIO,
+                seed=99,
+            )
 
         # Keep legacy synthetic eval injection opt-in only (defaults OFF to reduce leakage bias).
         inject_eval_synth = str(os.environ.get("GUARDRAIL_INJECT_SYNTH_EVAL", "0")).strip().lower() in {"1", "true", "yes"}
@@ -2416,7 +2664,10 @@ def build_and_save(
     use_risk_labels = data_source not in ("ai4privacy_text_only", "ai4privacy_text_plus_real", "ai4privacy_kaggle_en")
     if use_risk_labels:
         for row in train_rows + val_rows + test_rows:
-            row["label"] = RISK_TO_ID[row["risk"]]
+            if binary_mode:
+                row["label"] = BINARY_RISK_TO_ID[row["risk"]]
+            else:
+                row["label"] = RISK_TO_ID[row["risk"]]
 
     train_ds = Dataset.from_list(train_rows)
     val_ds = Dataset.from_list(val_rows)
@@ -2456,6 +2707,17 @@ def build_and_save(
         with open(out_path / LABEL_CONFIG_FILENAME, "w", encoding="utf-8") as f:
             json.dump(label_config, f, indent=2)
         print(f"Wrote {out_path / LABEL_CONFIG_FILENAME} (num_labels={label_config['num_labels']})")
+    elif binary_mode:
+        label_config = {
+            "num_labels": 2,
+            "id2label": {"0": "safe", "1": "risky"},
+            "label2id": {"safe": 0, "risky": 1},
+            "source": data_source,
+            "binary_mode": True,
+        }
+        with open(out_path / LABEL_CONFIG_FILENAME, "w", encoding="utf-8") as f:
+            json.dump(label_config, f, indent=2)
+        print(f"Wrote {out_path / LABEL_CONFIG_FILENAME} (num_labels=2, binary safe/risky)")
 
     return combined, nemotron
 
