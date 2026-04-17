@@ -253,6 +253,15 @@ def auto_retrain() -> None:
                 timeout=300,
             )
 
+            website_records = guardrail_root / "publish_website_records.py"
+            if website_records.exists():
+                _run_stage(
+                    "publish_website_records",
+                    [python, str(website_records)],
+                    timeout=120,
+                    required=False,
+                )
+
             # merge_feedback_to_training.py only sets used_for_training when run with --mark-used.
             # Without this, pending correction counts never drop after a successful retrain.
             stats_fb = export_feedback_to_training_jsonl()

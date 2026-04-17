@@ -1097,10 +1097,10 @@ for w in windows:
               <div class="card">
                 <h4 style="margin-bottom:8px;">Validation metrics</h4>
                 <div class="chips">
-                  <span class="metric-chip">Precision 0.976</span>
-                  <span class="metric-chip">Recall 0.987</span>
-                  <span class="metric-chip">AUC 0.998</span>
-                  <span class="metric-chip">FPR 0.0%</span>
+                  <span class="metric-chip" id="landingMetricPrecision">Precision 0.945</span>
+                  <span class="metric-chip" id="landingMetricRecall">Recall 0.959</span>
+                  <span class="metric-chip" id="landingMetricAuprc">AUPRC 0.751</span>
+                  <span class="metric-chip" id="landingMetricFpr">FPR 52.6%</span>
                 </div>
               </div>
             </div>
@@ -1157,7 +1157,7 @@ for w in windows:
             <ul>
               <li>Base model: huawei-noah/TinyBERT_General_4L_312D (~14M params)</li>
               <li>Training data: Multi-source PII corpus with 10,455 training samples across 24 PII categories from 6 sources (NVIDIA Nemotron-PII pool, Enron email pool, Faker business synthetic, safe negatives, Patronus stub set, and user feedback merges). Zero real user clipboard data in base corpus.</li>
-              <li>Performance: Precision 0.976, Recall 0.987, AUC 0.998 (see ML dashboard)</li>
+              <li id="landingModelPerfLine">Performance (current holdout threshold snapshot @0.45): Accuracy 91.21%, risky precision 0.945, risky recall 0.959, risky F1 0.952, safe recall 0.474, FPR 52.6%, macro-F1 0.731, risky-class AUPRC 0.989 (see ML dashboard).</li>
               <li>Active learning: User corrections feed back into weekly fine-tuning cycles</li>
             </ul>
           </aside>
@@ -1317,6 +1317,59 @@ for w in windows:
       });
     });
 
+    function _num(v) {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    async function loadLandingModelRecords() {
+      const candidates = ["./data/model_records.json", "data/model_records.json", "../docs/data/model_records.json"];
+      for (const url of candidates) {
+        try {
+          const r = await fetch(url, { cache: "no-store" });
+          if (!r.ok) continue;
+          const j = await r.json();
+          if (!j || typeof j !== "object") continue;
+          const m = j.metrics || {};
+          const acc = _num(m.accuracy);
+          const prec = _num(m.precision);
+          const rec = _num(m.recall);
+          const f1 = _num(m.f1);
+          const macroF1 = _num(m.macro_f1);
+          const safeRecall = _num(m.safe_recall);
+          const fpr = _num(m.fpr_non_high_as_high);
+          const riskyAuprc = _num(m.risky_auprc);
+          const threshold = _num(m.recommended_threshold);
+          const macroAuprc = _num(m.auc);
+
+          const chipP = document.getElementById("landingMetricPrecision");
+          const chipR = document.getElementById("landingMetricRecall");
+          const chipA = document.getElementById("landingMetricAuprc");
+          const chipF = document.getElementById("landingMetricFpr");
+          const perfLine = document.getElementById("landingModelPerfLine");
+
+          if (chipP && prec !== null) chipP.textContent = `Precision ${prec.toFixed(3)}`;
+          if (chipR && rec !== null) chipR.textContent = `Recall ${rec.toFixed(3)}`;
+          if (chipA && macroAuprc !== null) chipA.textContent = `AUPRC ${macroAuprc.toFixed(3)}`;
+          if (chipF && fpr !== null) chipF.textContent = `FPR ${(fpr * 100).toFixed(1)}%`;
+
+          if (perfLine && acc !== null) {
+            perfLine.textContent =
+              `Performance (current holdout threshold snapshot @${threshold !== null ? threshold.toFixed(2) : "n/a"}): ` +
+              `Accuracy ${(acc * 100).toFixed(2)}%, risky precision ${prec !== null ? prec.toFixed(3) : "n/a"}, ` +
+              `risky recall ${rec !== null ? rec.toFixed(3) : "n/a"}, risky F1 ${f1 !== null ? f1.toFixed(3) : "n/a"}, ` +
+              `safe recall ${safeRecall !== null ? safeRecall.toFixed(3) : "n/a"}, ` +
+              `FPR ${fpr !== null ? (fpr * 100).toFixed(1) + "%" : "n/a"}, ` +
+              `macro-F1 ${macroF1 !== null ? macroF1.toFixed(3) : "n/a"}, ` +
+              `risky-class AUPRC ${riskyAuprc !== null ? riskyAuprc.toFixed(3) : "n/a"} (see ML dashboard).`;
+          }
+          return;
+        } catch {
+          // try next path
+        }
+      }
+    }
+
     const topNav = document.querySelector(".topnav");
     const sectionIds = ["use-cases", "live-demo", "how-it-works", "architecture"];
     const navAnchors = Array.from(document.querySelectorAll(".nav-link"));
@@ -1365,6 +1418,7 @@ for w in windows:
     window.addEventListener("resize", updateNavState);
     onScroll();
     updateNavState();
+    loadLandingModelRecords();
   </script>
 </body>
 </html>

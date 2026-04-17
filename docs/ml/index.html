@@ -558,7 +558,7 @@
         <h3>Model Accuracy</h3>
         <div class="metric-row">
           <div>
-            <div class="metric-val countup" id="accuracyMetric" data-target="97.6" data-decimals="1" data-suffix="%">0.0%</div>
+            <div class="metric-val countup" id="accuracyMetric" data-target="91.2" data-decimals="1" data-suffix="%">0.0%</div>
             <div class="trend up">↑ stable this week</div>
             <div class="mini-note" id="accuracySource">Source: demo baseline</div>
             <div class="mini-note">Dataset split: 10,455 train / 485 val / 2,289 test (~13,229 total, 24 PII categories, 6 data sources)</div>
@@ -576,16 +576,16 @@
       <article class="card">
         <h3>Macro AUPRC</h3>
         <p class="sub" id="aucKpiSub" style="margin:0 0 6px;font-size:11px;color:var(--muted);line-height:1.35;">Mean PR-AUC (low / med / high). This is not ROC-AUC.</p>
-        <div class="metric-val countup" id="aucMetric" data-target="0.998" data-decimals="3">0.000</div>
-        <span class="badge good" id="aucBadge">Excellent</span>
-        <div class="trend up" id="aucTrend">↑ +0.002 vs previous run</div>
+        <div class="metric-val countup" id="aucMetric" data-target="0.751" data-decimals="3">0.000</div>
+        <span class="badge" id="aucBadge">Good</span>
+        <div class="trend up" id="aucTrend">↑ current report snapshot</div>
         <div class="mini-note" id="aucSource">Source: demo baseline</div>
         <svg class="sparkline" id="aucSpark"></svg>
       </article>
 
       <article class="card">
         <h3>False Positive Rate (Label-based)</h3>
-        <div class="metric-val countup" id="fprMetric" data-target="0.0" data-decimals="1" data-suffix="%">0.0%</div>
+        <div class="metric-val countup" id="fprMetric" data-target="52.6" data-decimals="1" data-suffix="%">0.0%</div>
         <span class="badge good" id="fprBadge">Target &lt; 5%</span>
         <div class="trend up" id="fprTrend">↑ within safe band</div>
         <div class="mini-note" id="fprSource">Source: demo events</div>
@@ -594,7 +594,7 @@
 
       <article class="card">
         <h3>Precision</h3>
-        <div class="metric-val countup" id="precisionMetric" data-target="0.976" data-decimals="3">0.000</div>
+        <div class="metric-val countup" id="precisionMetric" data-target="0.945" data-decimals="3">0.000</div>
         <span class="badge good">Operating point</span>
         <div class="trend up" id="precisionTrend">↑ robust on validation sweep</div>
         <div class="mini-note" id="precisionSource">Source: demo baseline</div>
@@ -1070,6 +1070,8 @@
       }
 
       const candidates = [
+        "../data/model_records.json",
+        "../../docs/data/model_records.json",
         "../../core-sentinel-guardrail/reports/retrain_dashboard_summary.json",
         "../core-sentinel-guardrail/reports/retrain_dashboard_summary.json",
         "/core-sentinel-guardrail/reports/retrain_dashboard_summary.json"
@@ -2383,11 +2385,11 @@
       updateKpiSources(metrics);
       updateAucKpiChrome();
 
-      drawSparkline("accuracySpark", [96.8, 97.1, 97.0, 97.3, 97.4, 97.5, 97.6]);
+      drawSparkline("accuracySpark", [89.8, 90.2, 90.6, 90.9, 91.0, 91.1, 91.2]);
       drawSparkline(
         "aucSpark",
         Number.isFinite(METRICS_STATIC.auc)
-          ? [0.991, 0.993, 0.994, 0.995, 0.996, 0.997, METRICS_STATIC.auc]
+          ? [0.701, 0.714, 0.726, 0.733, 0.741, 0.747, METRICS_STATIC.auc]
           : [0, 0, 0, 0, 0, 0, 0],
         Number.isFinite(METRICS_STATIC.auc) ? "var(--accent)" : "rgba(255,255,255,0.12)"
       );
@@ -2396,7 +2398,7 @@
         Number.isFinite(metrics.fpr) ? [1.2, 1.0, 0.8, 0.5, 0.3, 0.1, metrics.fpr] : [0, 0, 0, 0, 0, 0, 0],
         Number.isFinite(metrics.fpr) && metrics.fpr > 5 ? "var(--danger)" : "var(--accent)"
       );
-      drawSparkline("precisionSpark", [0.961, 0.966, 0.969, 0.971, 0.973, 0.975, 0.976]);
+      drawSparkline("precisionSpark", [0.930, 0.934, 0.937, 0.940, 0.942, 0.944, 0.945]);
 
       drawPRChart();
       drawROCChart();

@@ -1,0 +1,58 @@
+{
+  "artifact_version": 1,
+  "generated_at": "2026-04-17T16:00:58.327584+00:00",
+  "source": {
+    "holdout_threshold_check": "core-sentinel-guardrail/reports/binary_threshold_check.json",
+    "calibration": "core-sentinel-guardrail/reports/threshold_calibration.json",
+    "pr_curve": "core-sentinel-guardrail/reports/pr_curve_summary.json",
+    "release_gate_unseen": "core-sentinel-guardrail/reports/release_readiness_report_unseen.json"
+  },
+  "dataset": {
+    "train_samples": 10455,
+    "val_samples": 485,
+    "test_samples": 2289,
+    "total_samples_approx": 13229,
+    "label_balance_train": {
+      "low": 3485,
+      "med": 3485,
+      "high": 3485
+    },
+    "pii_categories": 24,
+    "data_sources": 6,
+    "source_names": [
+      "NVIDIA Nemotron-PII pool",
+      "Enron email pool",
+      "Faker business synthetic",
+      "safe negatives",
+      "Patronus stub set",
+      "user feedback merges"
+    ]
+  },
+  "metrics": {
+    "accuracy": 0.9121203184901209,
+    "precision": 0.9446945337620579,
+    "recall": 0.9588772845953003,
+    "f1": 0.9517330741820538,
+    "macro_f1": 0.7308007476173427,
+    "safe_recall": 0.4740061162079511,
+    "fpr_non_high_as_high": 0.5259938837920489,
+    "auc": 0.7514706327301757,
+    "risky_auprc": 0.9890162341941844,
+    "recommended_threshold": 0.45,
+    "selection_rule": "max macro_f1, then safe_recall, then risky_precision, then min fpr"
+  },
+  "calibration": {
+    "prob_threshold_risky": 0.1,
+    "accuracy": 0.9992138364779874,
+    "precision": 0.9984301412872841,
+    "recall": 1.0,
+    "f1": 0.9992144540455618,
+    "fpr": 0.0015723270440251573,
+    "selection_rule": "max_recall_under_fpr_cap"
+  },
+  "release_gate": {
+    "gate_passed": false,
+    "promote_allowed": false,
+    "recommended_rollout": "canary_10pct"
+  }
+}

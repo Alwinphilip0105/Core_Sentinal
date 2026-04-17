@@ -731,9 +731,9 @@
           <li>Model quality drift and QA snapshot view</li>
         </ul>
         <div class="chips">
-          <span class="chip" id="mlChipAuc">AUC: 0.998</span>
-          <span class="chip" id="mlChipPrecision">Precision: 0.976</span>
-          <span class="chip" id="mlChipFpr">FPR: 0.0%</span>
+          <span class="chip" id="mlChipAuc">AUPRC: 0.751</span>
+          <span class="chip" id="mlChipPrecision">Precision: 0.945</span>
+          <span class="chip" id="mlChipFpr">FPR: 52.6%</span>
         </div>
         <p class="card-note">Why click: verify model reliability before demos, reviews, or releases.</p>
       </a>
@@ -939,9 +939,9 @@
       recallHigh: 0.989
     };
     const ML_CARD_DEFAULT = {
-      auc: 0.998,
-      precision: 0.976,
-      fprPct: 0.0
+      auc: 0.751,
+      precision: 0.945,
+      fprPct: 52.6
     };
     let _lastActivityRows = [];
 
@@ -1181,7 +1181,7 @@
       const precision = _toFiniteNumber(metrics.precision);
       const fpr = _toFiniteNumber(metrics.fpr_non_high_as_high) ?? _parseFprFromCalibration(retrainMeta?.policy);
 
-      aucEl.textContent = `AUC: ${(auc ?? ML_CARD_DEFAULT.auc).toFixed(3)}`;
+      aucEl.textContent = `AUPRC: ${(auc ?? ML_CARD_DEFAULT.auc).toFixed(3)}`;
       precisionEl.textContent = `Precision: ${(precision ?? ML_CARD_DEFAULT.precision).toFixed(3)}`;
       fprEl.textContent = `FPR: ${(((fpr ?? (ML_CARD_DEFAULT.fprPct / 100)) * 100)).toFixed(1)}%`;
     }
@@ -1223,6 +1223,8 @@
       }
 
       const candidates = [
+        "data/model_records.json",
+        "./data/model_records.json",
         "../core-sentinel-guardrail/reports/retrain_dashboard_summary.json",
         "../../core-sentinel-guardrail/reports/retrain_dashboard_summary.json",
         "/core-sentinel-guardrail/reports/retrain_dashboard_summary.json"
