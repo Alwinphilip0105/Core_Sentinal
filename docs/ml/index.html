@@ -2202,16 +2202,16 @@
       svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
       svg.innerHTML = "";
       const ns = "http://www.w3.org/2000/svg";
-      const ch = retrainSummary?.metrics?.confusion_holdout;
+      const holdoutCm = retrainSummary?.metrics?.confusion_holdout;
       if (
-        ch
-        && typeof ch === "object"
-        && [ch.tp, ch.tn, ch.fp, ch.fn].every((v) => Number.isFinite(Number(v)))
+        holdoutCm
+        && typeof holdoutCm === "object"
+        && [holdoutCm.tp, holdoutCm.tn, holdoutCm.fp, holdoutCm.fn].every((v) => Number.isFinite(Number(v)))
       ) {
-        const tp = Number(ch.tp);
-        const tn = Number(ch.tn);
-        const fp = Number(ch.fp);
-        const fn = Number(ch.fn);
+        const tp = Number(holdoutCm.tp);
+        const tn = Number(holdoutCm.tn);
+        const fp = Number(holdoutCm.fp);
+        const fn = Number(holdoutCm.fn);
         const labels = ["Pred: not risky", "Pred: risky"];
         const rows = ["Actual: not risky", "Actual: risky"];
         const data = [
