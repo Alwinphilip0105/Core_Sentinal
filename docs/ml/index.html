@@ -2289,7 +2289,7 @@
       const rows = ["Actual:Low", "Actual:Med", "Actual:High"];
       const data = CONFUSION_MATRIX;
       const max = Math.max(...data.flat());
-      const x0 = 120, y0 = 36, cw = 120, ch = 54;
+      const x0 = 120, y0 = 36, cw = 120, cellH = 54;
 
       labels.forEach((lb, i) => {
         const t = document.createElementNS(ns, "text");
@@ -2304,7 +2304,7 @@
       rows.forEach((rb, r) => {
         const t = document.createElementNS(ns, "text");
         t.setAttribute("x", 10);
-        t.setAttribute("y", y0 + r * ch + ch / 2 + 4);
+        t.setAttribute("y", y0 + r * cellH + cellH / 2 + 4);
         t.setAttribute("fill", "#8e97a8");
         t.setAttribute("font-size", "11");
         t.textContent = rb;
@@ -2320,9 +2320,9 @@
           const fill = isDiag ? `rgba(2,195,154,${Math.min(0.9, alpha + 0.1)})` : `rgba(229,57,53,${Math.min(0.75, alpha + 0.06)})`;
           const rect = document.createElementNS(ns, "rect");
           rect.setAttribute("x", x0 + c * cw + 2);
-          rect.setAttribute("y", y0 + r * ch + 2);
+          rect.setAttribute("y", y0 + r * cellH + 2);
           rect.setAttribute("width", cw - 4);
-          rect.setAttribute("height", ch - 4);
+          rect.setAttribute("height", cellH - 4);
           rect.setAttribute("rx", 7);
           rect.setAttribute("fill", fill);
           rect.setAttribute("stroke", "rgba(255,255,255,0.15)");
@@ -2339,7 +2339,7 @@
 
           const t = document.createElementNS(ns, "text");
           t.setAttribute("x", x0 + c * cw + cw / 2);
-          t.setAttribute("y", y0 + r * ch + ch / 2 + 4);
+          t.setAttribute("y", y0 + r * cellH + cellH / 2 + 4);
           t.setAttribute("text-anchor", "middle");
           t.setAttribute("fill", "#ecf7f3");
           t.setAttribute("font-size", "13");
@@ -2900,14 +2900,14 @@
       drawConfusionMatrix();
       const cmNote = document.getElementById("cmNote");
       if (cmNote) {
-        const ch = retrainSummary?.metrics?.confusion_holdout;
+        const holdoutCmNote = retrainSummary?.metrics?.confusion_holdout;
         const hasBinary =
-          ch
-          && typeof ch === "object"
-          && [ch.tp, ch.tn, ch.fp, ch.fn].every((v) => Number.isFinite(Number(v)));
+          holdoutCmNote
+          && typeof holdoutCmNote === "object"
+          && [holdoutCmNote.tp, holdoutCmNote.tn, holdoutCmNote.fp, holdoutCmNote.fn].every((v) => Number.isFinite(Number(v)));
         const binaryNote =
           hasBinary
-            ? `Binary holdout @ τ: TP=${ch.tp} TN=${ch.tn} FP=${ch.fp} FN=${ch.fn} (n=${ch.n_eval ?? "—"}). Chart = 2×2 (not risky vs risky).`
+            ? `Binary holdout @ τ: TP=${holdoutCmNote.tp} TN=${holdoutCmNote.tn} FP=${holdoutCmNote.fp} FN=${holdoutCmNote.fn} (n=${holdoutCmNote.n_eval ?? "—"}). Chart = 2×2 (not risky vs risky).`
             : "";
         cmNote.innerHTML = hasBinary
           ? `${binaryNote}${
