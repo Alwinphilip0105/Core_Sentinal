@@ -11,14 +11,17 @@ permissions:
 jobs:
   sync-model-records:
     runs-on: ubuntu-latest
+    env:
+      # GitHub Actions: use Node 24 for JS-based actions (Node 20 runner removal Sept 2026)
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
