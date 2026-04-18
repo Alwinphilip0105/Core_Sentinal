@@ -16,6 +16,7 @@ TRAIN_EVAL_SUMMARY_PATH = REPORTS_DIR / "train_eval_summary.json"
 PR_CURVE_SUMMARY_PATH = REPORTS_DIR / "pr_curve_summary.json"
 ROC_CURVE_SUMMARY_PATH = REPORTS_DIR / "roc_curve_summary.json"
 THRESHOLD_CALIBRATION_PATH = REPORTS_DIR / "threshold_calibration.json"
+BINARY_THRESHOLD_CHECK_PATH = REPORTS_DIR / "binary_threshold_check.json"
 RISK_POLICY_PATH = ROOT / "config" / "risk_policy.json"
 MODEL_DIR = ROOT / "models" / "tinybert_guardrail"
 FEEDBACK_EXPORT_PATH = ROOT / "data" / "user_feedback" / "export.jsonl"
@@ -104,6 +105,28 @@ def _roc_auc_from_curve_summaries(pr: dict[str, Any], roc: dict[str, Any]) -> fl
     return _float_or_none(pr.get("roc_auc_macro"))
 
 
+def _confusion_holdout_from_binary_threshold(data: dict[str, Any]) -> dict[str, Any] | None:
+    rec = data.get("recommended") if isinstance(data.get("recommended"), dict) else {}
+    try:
+        tp = int(rec["tp"])
+        tn = int(rec["tn"])
+        fp = int(rec["fp"])
+        fn = int(rec["fn"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    out: dict[str, Any] = {
+        "tp": tp,
+        "tn": tn,
+        "fp": fp,
+        "fn": fn,
+        "positive_class": "risky",
+    }
+    n_test = data.get("n_test")
+    if n_test is not None:
+        out["n_eval"] = n_test
+    return out
+
+
 def _macro_auprc_from_pr_curve(pr: dict[str, Any]) -> float | None:
     """Mean AUPRC across low/med/high from pr_curve_summary.json; dashboard uses as metrics.auc."""
     classes = pr.get("classes")
@@ -134,6 +157,7 @@ def build_retrain_dashboard_summary(
     pr_curve = _load_json(PR_CURVE_SUMMARY_PATH)
     roc_curve = _load_json(ROC_CURVE_SUMMARY_PATH)
     threshold_calibration = _load_json(THRESHOLD_CALIBRATION_PATH)
+    binary_threshold = _load_json(BINARY_THRESHOLD_CHECK_PATH)
     risk_policy = _load_json(RISK_POLICY_PATH)
     best = train_eval.get("best") if isinstance(train_eval.get("best"), dict) else {}
     recommended = (
@@ -149,6 +173,42 @@ def build_retrain_dashboard_summary(
     pipeline_status = "success" if not failed_stage else "failed"
     auc_macro = _macro_auprc_from_pr_curve(pr_curve)
     roc_macro = _roc_auc_from_curve_summaries(pr_curve, roc_curve)
+    confusion_holdout = _confusion_holdout_from_binary_threshold(binary_threshold)
+    holdout_threshold = _float_or_none(
+        (binary_threshold.get("recommended") or {}).get("threshold")
+        if isinstance(binary_threshold.get("recommended"), dict)
+        else None
+    )
+    risky_auprc = None
+    rc = (pr_curve.get("classes") or {}).get("risky") if isinstance(pr_curve.get("classes"), dict) else None
+    if isinstance(rc, dict):
+        risky_auprc = _float_or_none(rc.get("auprc"))
+
+    metrics: dict[str, Any] = {
+        "accuracy": best.get("eval_accuracy"),
+        "precision": best.get("eval_precision"),
+        "recall": best.get("eval_recall"),
+        "f1": best.get("eval_f1"),
+        # Mean of per-class PR-AUC (low/med/high). Dashboard labels this "Macro AUPRC"; not ROC-AUC.
+        "auc": auc_macro,
+        **({"roc_auc": roc_macro} if roc_macro is not None else {}),
+        "fpr_non_high_as_high": recommended.get("fpr_non_high_as_high"),
+        "precision_low": best.get("eval_precision_low"),
+        "recall_low": best.get("eval_recall_low"),
+        "f1_low": best.get("eval_f1_low"),
+        "precision_high": best.get("eval_precision_high"),
+        "recall_high": best.get("eval_recall_high"),
+        "f1_high": best.get("eval_f1_high"),
+        "precision_med": best.get("eval_precision_med"),
+        "recall_med": best.get("eval_recall_med"),
+        "f1_med": best.get("eval_f1_med"),
+    }
+    if confusion_holdout:
+        metrics["confusion_holdout"] = confusion_holdout
+    if holdout_threshold is not None:
+        metrics["recommended_threshold"] = holdout_threshold
+    if risky_auprc is not None:
+        metrics["risky_auprc"] = risky_auprc
 
     summary: dict[str, Any] = {
         "artifact_version": 1,
@@ -170,25 +230,7 @@ def build_retrain_dashboard_summary(
             "version_tag": _model_version_tag(MODEL_DIR),
             "modified_at": _iso_from_timestamp(model_mtime),
         },
-        "metrics": {
-            "accuracy": best.get("eval_accuracy"),
-            "precision": best.get("eval_precision"),
-            "recall": best.get("eval_recall"),
-            "f1": best.get("eval_f1"),
-            # Mean of per-class PR-AUC (low/med/high). Dashboard labels this "Macro AUPRC"; not ROC-AUC.
-            "auc": auc_macro,
-            **({"roc_auc": roc_macro} if roc_macro is not None else {}),
-            "fpr_non_high_as_high": recommended.get("fpr_non_high_as_high"),
-            "precision_low": best.get("eval_precision_low"),
-            "recall_low": best.get("eval_recall_low"),
-            "f1_low": best.get("eval_f1_low"),
-            "precision_high": best.get("eval_precision_high"),
-            "recall_high": best.get("eval_recall_high"),
-            "f1_high": best.get("eval_f1_high"),
-            "precision_med": best.get("eval_precision_med"),
-            "recall_med": best.get("eval_recall_med"),
-            "f1_med": best.get("eval_f1_med"),
-        },
+        "metrics": metrics,
         "evaluation": {
             "train_eval_summary": train_eval,
             "pr_curve_summary": pr_curve,

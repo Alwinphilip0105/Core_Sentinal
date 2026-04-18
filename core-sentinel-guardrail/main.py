@@ -158,8 +158,15 @@ def auto_retrain() -> None:
         timeout_env = "GUARDRAIL_TRAIN_TIMEOUT_SEC"
         default_timeout = 14400
         guardrail_root = Path(__file__).resolve().parent
+        repo_root = guardrail_root.parent
         train_timeout = _train_subprocess_timeout()
         stage_results: list[dict[str, object]] = []
+
+        def _env_bool(name: str, default: bool = False) -> bool:
+            raw = os.environ.get(name)
+            if raw is None:
+                return default
+            return str(raw).strip().lower() in ("1", "true", "yes", "on")
 
         def _emit_partial_or_failure(message: str) -> None:
             train_completed = any(
@@ -284,6 +291,54 @@ def auto_retrain() -> None:
                 publish_status=publish_status,
             )
             publish_ok = bool(publish_status.get("success"))
+
+            auto_commit_records = _env_bool("GUARDRAIL_AUTO_COMMIT_WEBSITE_RECORDS", default=True)
+            auto_push_records = _env_bool("GUARDRAIL_AUTO_PUSH_WEBSITE_RECORDS", default=False)
+            if auto_commit_records:
+                rel_records = "docs/data/model_records.json"
+                # Skip commit stage when model records did not change.
+                diff_check = subprocess.run(
+                    ["git", "-C", str(repo_root), "status", "--porcelain", "--", rel_records],
+                    capture_output=True,
+                    text=True,
+                )
+                if diff_check.returncode == 0 and diff_check.stdout.strip():
+                    _run_stage(
+                        "git_add_model_records",
+                        ["git", "-C", str(repo_root), "add", rel_records],
+                        timeout=30,
+                        required=False,
+                    )
+                    _run_stage(
+                        "git_commit_model_records",
+                        [
+                            "git",
+                            "-C",
+                            str(repo_root),
+                            "commit",
+                            "-m",
+                            "Auto-update website model records after retrain.",
+                        ],
+                        timeout=60,
+                        required=False,
+                    )
+                    if auto_push_records:
+                        branch_result = subprocess.run(
+                            ["git", "-C", str(repo_root), "rev-parse", "--abbrev-ref", "HEAD"],
+                            capture_output=True,
+                            text=True,
+                        )
+                        branch = (
+                            branch_result.stdout.strip()
+                            if branch_result.returncode == 0 and branch_result.stdout.strip()
+                            else "main"
+                        )
+                        _run_stage(
+                            "git_push_model_records",
+                            ["git", "-C", str(repo_root), "push", "origin", branch],
+                            timeout=120,
+                            required=False,
+                        )
 
             print(
                 f"[retrain] pipeline complete. summary={RETRAIN_SUMMARY_PATH.as_posix()} "

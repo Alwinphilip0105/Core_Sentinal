@@ -1,0 +1,42 @@
+name: Sync Website Model Records
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync-model-records:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Sync docs/data/model_records.json from Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GUARDRAIL_RETRAIN_SUPABASE_TABLE: ${{ secrets.GUARDRAIL_RETRAIN_SUPABASE_TABLE }}
+        run: |
+          python "core-sentinel-guardrail/tools/sync_website_records_from_supabase.py"
+
+      - name: Commit and push if changed
+        run: |
+          if git diff --quiet -- "docs/data/model_records.json"; then
+            echo "No model record changes."
+            exit 0
+          fi
+          git add "docs/data/model_records.json"
+          git commit -m "Auto-sync website model records from Supabase"
+          git push
+

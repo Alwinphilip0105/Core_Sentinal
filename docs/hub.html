@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="core-sentinel-supabase-url" content="">
+  <meta name="core-sentinel-model-records-url" content="">
   <title>Core Sentinel — AI Clipboard Guardian | Protect PII from LLM Leaks</title>
   <meta name="description" content="Real-time clipboard monitoring that detects and remediates PII before it reaches ChatGPT, Claude, or any AI. Open-source, privacy-first.">
   <meta property="og:title" content="Core Sentinel — AI Clipboard Guardian | Protect PII from LLM Leaks">
@@ -944,6 +945,9 @@
       fprPct: 52.6
     };
     let _lastActivityRows = [];
+    let hubModelRecordsPollTimer = null;
+    let hubLastModelRecordsToken = "";
+    let hubModelRecordsSourceLabel = "unavailable";
 
     function showToast(msg, color) {
       const el = document.getElementById("toast");
@@ -1168,6 +1172,52 @@
       return _toFiniteNumber(match[1]);
     }
 
+    function isWebsiteRecordsSummary(summary) {
+      if (!summary || typeof summary !== "object") return false;
+      const datasetTrain = Number(summary?.dataset?.train_samples);
+      const hasDataset = Number.isFinite(datasetTrain) && datasetTrain > 0;
+      const sourceMode = String(summary?.source?.mode || "").toLowerCase();
+      const metrics = summary.metrics && typeof summary.metrics === "object" ? summary.metrics : {};
+      const hasRecommendedThreshold = Number.isFinite(Number(metrics.recommended_threshold));
+      const hasKeyMetrics = Number.isFinite(Number(metrics.accuracy)) && Number.isFinite(Number(metrics.precision));
+      return hasDataset || sourceMode.includes("sync") || (hasRecommendedThreshold && hasKeyMetrics);
+    }
+
+    function getModelRecordsCandidates() {
+      const metaEl = document.querySelector('meta[name="core-sentinel-model-records-url"]');
+      const metaUrl = metaEl && metaEl.content ? metaEl.content.trim() : "";
+      const override = (localStorage.getItem("model_records_url") || "").trim();
+      const canonicalGithubRaw = "https://raw.githubusercontent.com/Alwinphilip0105/Core_Sentinal/main/docs/data/model_records.json";
+      const cacheBust = `ts=${Date.now()}`;
+      return Array.from(
+        new Set(
+          [
+            override,
+            metaUrl,
+            `${canonicalGithubRaw}?${cacheBust}`,
+            canonicalGithubRaw,
+            "data/model_records.json",
+            "./data/model_records.json",
+            "/docs/data/model_records.json",
+            (() => {
+              try {
+                return new URL("./data/model_records.json", window.location.href).href;
+              } catch {
+                return "";
+              }
+            })(),
+            (() => {
+              try {
+                return new URL("/docs/data/model_records.json", window.location.href).href;
+              } catch {
+                return "";
+              }
+            })(),
+          ].filter(Boolean)
+        )
+      );
+    }
+
     function updateMlCardChips(retrainMeta) {
       const aucEl = document.getElementById("mlChipAuc");
       const precisionEl = document.getElementById("mlChipPrecision");
@@ -1187,6 +1237,21 @@
     }
 
     async function loadRetrainSummary() {
+      const candidates = getModelRecordsCandidates();
+      for (const url of candidates) {
+        try {
+          const r = await fetch(url, { cache: "no-store" });
+          if (!r.ok) continue;
+          const j = await r.json();
+          if (isWebsiteRecordsSummary(j)) {
+            hubModelRecordsSourceLabel = url;
+            return j;
+          }
+        } catch {
+          // continue
+        }
+      }
+
       const sbUrl = (localStorage.getItem("sb_url") || "").trim().replace(/\/$/, "");
       const sbKey = (localStorage.getItem("sb_key") || "").trim();
       const configuredTable = (localStorage.getItem("retrain_runs_table") || "").trim();
@@ -1202,44 +1267,50 @@
             const rows = await r.json();
             const row = Array.isArray(rows) ? rows[0] : null;
             if (row) {
-              return row.summary_json && typeof row.summary_json === "object"
-                ? row.summary_json
-                : {
-                    generated_at: row.run_at,
-                    model: { version_tag: row.model_version_tag },
-                    metrics: {
-                      precision: row.precision,
-                      recall: row.recall,
-                      f1: row.f1,
-                      recall_high: row.recall_high,
-                      recall_med: row.recall_med
-                    }
-                  };
+              const fromJson = row.summary_json && typeof row.summary_json === "object" ? row.summary_json : null;
+              if (isWebsiteRecordsSummary(fromJson)) {
+                hubModelRecordsSourceLabel = `supabase:${table}`;
+                return fromJson;
+              }
             }
           } catch {
             // keep trying candidate tables
           }
         }
       }
+      hubModelRecordsSourceLabel = "unavailable";
+      return null;
+    }
 
-      const candidates = [
-        "data/model_records.json",
-        "./data/model_records.json",
-        "../core-sentinel-guardrail/reports/retrain_dashboard_summary.json",
-        "../../core-sentinel-guardrail/reports/retrain_dashboard_summary.json",
-        "/core-sentinel-guardrail/reports/retrain_dashboard_summary.json"
-      ];
+    function deriveModelRecordToken(summary) {
+      if (!summary || typeof summary !== "object") return "";
+      const generated = typeof summary.generated_at === "string" ? summary.generated_at : "";
+      const runAt = typeof summary?.source?.run_at === "string" ? summary.source.run_at : "";
+      const version = typeof summary?.model?.version_tag === "string" ? summary.model.version_tag : "";
+      if (generated || runAt || version) {
+        return `${generated}|${runAt}|${version}`;
+      }
+      try {
+        return JSON.stringify(summary.metrics || {});
+      } catch {
+        return "";
+      }
+    }
+
+    async function fetchModelRecordsToken() {
+      const candidates = ["data/model_records.json", "./data/model_records.json"];
       for (const url of candidates) {
         try {
           const r = await fetch(url, { cache: "no-store" });
           if (!r.ok) continue;
           const j = await r.json();
-          if (j && typeof j === "object") return j;
+          const token = deriveModelRecordToken(j);
+          if (token) return token;
         } catch {
-          // continue
+          // try next candidate
         }
       }
-      return null;
+      return "";
     }
 
     function _deriveLocalMiniStatsFromRows(rows) {
@@ -1305,6 +1376,7 @@
 
       retrainMeta = await loadRetrainSummary();
       if (retrainMeta && typeof retrainMeta === "object") {
+        hubLastModelRecordsToken = deriveModelRecordToken(retrainMeta) || hubLastModelRecordsToken;
         const metrics = retrainMeta.metrics || {};
         kpi = {
           macroF1: Number(metrics.f1 ?? kpi.macroF1 ?? 0),
@@ -1322,7 +1394,9 @@
       sub.textContent = `Recall (L/M/H): ${Number(kpi.recallLow || 0).toFixed(2)} / ${Number(kpi.recallMed || 0).toFixed(2)} / ${Number(kpi.recallHigh || 0).toFixed(2)}`;
       if (meta) {
         const versionTag = retrainMeta?.model?.version_tag ? ` • ${retrainMeta.model.version_tag}` : "";
-        const sourceHint = retrainMeta ? "" : ` • source=${kpiSource}`;
+        const sourceHint = retrainMeta
+          ? ` • source=${hubModelRecordsSourceLabel}`
+          : ` • source=${kpiSource}`;
         meta.textContent = `${formatRetrainTime(retrainMeta?.generated_at)}${versionTag}${sourceHint}`;
       }
       updateMlCardChips(retrainMeta);
@@ -1705,6 +1779,22 @@
       }
     }
 
+    function startHubModelRecordsPolling() {
+      if (hubModelRecordsPollTimer) clearInterval(hubModelRecordsPollTimer);
+      hubModelRecordsPollTimer = window.setInterval(async () => {
+        if (document.visibilityState !== "visible") return;
+        const token = await fetchModelRecordsToken();
+        if (!token) return;
+        if (!hubLastModelRecordsToken) {
+          hubLastModelRecordsToken = token;
+          return;
+        }
+        if (token === hubLastModelRecordsToken) return;
+        hubLastModelRecordsToken = token;
+        await loadModelKpis();
+      }, 60000);
+    }
+
     function handleKBDrop(e) {
   e.preventDefault();
       document.getElementById("dropZone").style.borderColor = "rgba(255,255,255,0.15)";
@@ -1891,6 +1981,7 @@
       await loadModelKpis();
   applyAdminState(!!getAdminSession());
       await refreshHubData();
+      startHubModelRecordsPolling();
 })();
 </script>
 </body>

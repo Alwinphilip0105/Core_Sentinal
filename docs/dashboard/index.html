@@ -3,6 +3,7 @@
 <head><meta charset="UTF-8">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="core-sentinel-supabase-url" content="">
 <title>My Privacy Dashboard — Core Sentinel</title>
 <link rel="icon" type="image/svg+xml" href="../favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1026,7 +1027,7 @@ function _renderRecentRows(events){
   }).join("");
 }
 
-function _applyLiveDashboard(events){
+function _applyLiveDashboard(events, sourceLabel = "Supabase"){
   const now = Date.now();
   const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
   const weekEvents = events.filter((e) => {
@@ -1138,31 +1139,77 @@ function _applyLiveDashboard(events){
     piiChart.data.datasets[0].data = piiValues;
     piiChart.update();
   }
-  setDemoStatus(`Live mode: synced ${events.length} events from Supabase`, "live");
+  setDemoStatus(`Live mode: synced ${events.length} events from ${sourceLabel}`, "live");
   return true;
 }
 
-async function _loadLiveDashboard(){
-  const url = (localStorage.getItem("sb_url") || "").trim().replace(/\/$/, "");
+function _resolveSupabaseConfig(){
+  const meta = document.querySelector('meta[name="core-sentinel-supabase-url"]');
+  const metaUrl = meta && meta.content ? meta.content.trim() : "";
+  const url = ((localStorage.getItem("sb_url") || metaUrl || "").trim()).replace(/\/$/, "");
   const key = (localStorage.getItem("sb_key") || "").trim();
-  if (!url || !key) {
-    setDemoStatus("Demo mode: configure sb_url/sb_key in Hub for live dashboard", "muted");
-    return false;
-  }
+  return { url, key, hasMetaUrl: Boolean(metaUrl) };
+}
+
+function _loadLocalCachedEvents(){
   try {
-    const r = await fetch(
-      `${url}/rest/v1/guardrail_events?select=timestamp,risk_score,action,pii_classes,llm_name,triggers&order=timestamp.desc.nullslast&limit=1200`,
-      { headers: { apikey: key, Authorization: `Bearer ${key}` }, cache: "no-store" }
-    );
-    if (!r.ok) throw new Error(`Supabase fetch failed: ${r.status}`);
-    const rows = await r.json();
-    if (!Array.isArray(rows) || rows.length === 0) throw new Error("No guardrail_events rows");
-    return _applyLiveDashboard(rows.map(_toEvent));
-  } catch (err) {
-    console.warn("[privacy-dashboard] live fetch failed:", err);
-    setDemoStatus("Demo mode: live sync failed, showing scenario data", "muted");
-    return false;
+    const raw = localStorage.getItem("sentinel_recent_events");
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr.map(_toEvent).filter((e) => Number.isFinite(new Date(e.ts).getTime()));
+  } catch {
+    return [];
   }
+}
+
+async function _loadLiveDashboard(){
+  const { url, key, hasMetaUrl } = _resolveSupabaseConfig();
+  let supabaseErr = "";
+  try {
+    if (url && key) {
+      const r = await fetch(
+        `${url}/rest/v1/guardrail_events?select=timestamp,risk_score,action,pii_classes,llm_name,triggers&order=timestamp.desc.nullslast&limit=1200`,
+        { headers: { apikey: key, Authorization: `Bearer ${key}` }, cache: "no-store" }
+      );
+      if (!r.ok) throw new Error(`Supabase fetch failed: ${r.status}`);
+      const rows = await r.json();
+      if (!Array.isArray(rows) || rows.length === 0) throw new Error("No guardrail_events rows");
+      try {
+        localStorage.setItem("sentinel_recent_events", JSON.stringify(rows.slice(0, 500)));
+      } catch {
+        // ignore localStorage quota/serialization issues
+      }
+      return _applyLiveDashboard(rows.map(_toEvent), "Supabase");
+    }
+  } catch (err) {
+    supabaseErr = err && err.message ? String(err.message) : String(err);
+    console.warn("[privacy-dashboard] live fetch failed:", err);
+  }
+
+  const cachedEvents = _loadLocalCachedEvents();
+  if (cachedEvents.length) {
+    _applyLiveDashboard(cachedEvents, "local cache");
+    if (supabaseErr) {
+      setDemoStatus(`Live mode: using local cache (Supabase unavailable: ${supabaseErr.slice(0, 80)})`, "warn");
+    } else {
+      setDemoStatus(`Live mode: using local cache (${cachedEvents.length} recent events)`, "live");
+    }
+    return true;
+  }
+
+  if (!url && !key) {
+    setDemoStatus("Demo mode: configure sb_url/sb_key in Hub for live dashboard", "muted");
+  } else if (url && !key) {
+    setDemoStatus("Demo mode: Supabase URL found but anon key missing in this browser", "muted");
+  } else if (!url && key) {
+    setDemoStatus("Demo mode: Supabase key found but URL missing in this browser", "muted");
+  } else if (hasMetaUrl && !key) {
+    setDemoStatus("Demo mode: default Supabase URL set, but anon key still missing", "muted");
+  } else {
+    setDemoStatus("Demo mode: live sync failed, showing scenario data", "muted");
+  }
+  return false;
 }
 
 async function runDashboardWalkthrough(){

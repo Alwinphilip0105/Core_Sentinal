@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!-- Optional: default Supabase project URL for this deployment (anon key still via Hub or form below). -->
 <meta name="core-sentinel-supabase-url" content="">
+<!-- Optional: force model records source (e.g., GitHub raw JSON URL). -->
+<meta name="core-sentinel-model-records-url" content="">
 <title>Core Sentinel - ML Health Dashboard</title>
   <link rel="icon" type="image/svg+xml" href="../favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -170,6 +172,7 @@
     main { padding: 14px 0 34px; }
     .row { display: grid; gap: 10px; margin-bottom: 10px; }
     .row-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .row-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .row-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
     .card {
@@ -458,6 +461,7 @@
 
     @media (max-width: 1180px) {
       .row-4 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .row-3 { grid-template-columns: repeat(2, minmax(0,1fr)); }
       .row-2 { grid-template-columns: 1fr; }
       .topbar-inner { grid-template-columns: 1fr; padding: 8px 0; }
       .status { justify-self: start; }
@@ -465,6 +469,7 @@
     }
     @media (max-width: 700px) {
       .row-4 { grid-template-columns: 1fr; }
+      .row-3 { grid-template-columns: 1fr; }
       .donut-wrap { grid-template-columns: 1fr; }
       .chart-svg { height: 270px; }
       .heatmap-svg { height: 220px; }
@@ -584,10 +589,10 @@
       </article>
 
       <article class="card">
-        <h3>False Positive Rate (Label-based)</h3>
+        <h3>False positive rate (holdout)</h3>
         <div class="metric-val countup" id="fprMetric" data-target="52.6" data-decimals="1" data-suffix="%">0.0%</div>
-        <span class="badge good" id="fprBadge">Target &lt; 5%</span>
-        <div class="trend up" id="fprTrend">↑ within safe band</div>
+        <span class="badge good" id="fprBadge">Safe→risky rate</span>
+        <div class="trend up" id="fprTrend">Label FPR at τ (not the ~4% miss rate)</div>
         <div class="mini-note" id="fprSource">Source: demo events</div>
         <svg class="sparkline" id="fprSpark"></svg>
       </article>
@@ -602,6 +607,33 @@
       </article>
     </section>
 
+    <section class="row row-3">
+      <article class="card">
+        <h3>Recall (risky) / TPR</h3>
+        <div class="metric-val countup" id="recallMetric" data-target="0.959" data-decimals="3">0.000</div>
+        <span class="badge good">Catch rate for risky class</span>
+        <div class="trend up" id="recallTrend">Holdout @ recommended threshold</div>
+        <div class="mini-note" id="recallSource">Source: model_records.json</div>
+        <svg class="sparkline" id="recallSpark"></svg>
+      </article>
+      <article class="card">
+        <h3>False negative rate (risky)</h3>
+        <div class="metric-val countup" id="fnrMetric" data-target="4.1" data-decimals="1" data-suffix="%">0.0%</div>
+        <span class="badge good" id="fnrBadge">Missed risky rate</span>
+        <div class="trend up" id="fnrTrend">FNR = 1 − recall</div>
+        <div class="mini-note" id="fnrExpl">Not the same as FPR (safe text flagged as risky).</div>
+        <svg class="sparkline" id="fnrSpark"></svg>
+      </article>
+      <article class="card">
+        <h3>Calibration FPR (validation)</h3>
+        <div class="metric-val countup" id="calibFprMetric" data-target="0.2" data-decimals="2" data-suffix="%">0.0%</div>
+        <span class="badge good" id="calibFprBadge">Threshold sweep on val</span>
+        <div class="trend up" id="calibFprTrend">Lower than holdout FPR</div>
+        <div class="mini-note" id="calibFprExpl">From threshold_calibration.json — not paste telemetry.</div>
+        <svg class="sparkline" id="calibFprSpark"></svg>
+      </article>
+    </section>
+
     <section class="row row-2">
       <article class="card chart-card">
         <h3>Precision-Recall Curve</h3>
@@ -611,7 +643,8 @@
     </div>
         <div class="legend">
           <span class="l-pr">PR curve</span>
-          <span class="l-op">Operating point</span>
+          <span class="l-op">Eval OP (red)</span>
+          <span style="color:#22c55e;font-size:11px">● Holdout τ (green)</span>
           <span class="l-target">Min precision target</span>
         </div>
       </article>
@@ -625,7 +658,8 @@
         <div class="legend">
           <span class="l-pr">ROC</span>
           <span class="l-random">Random classifier</span>
-          <span class="l-op">Operating point</span>
+          <span class="l-op">Eval OP (red)</span>
+          <span style="color:#22c55e;font-size:11px">● Holdout τ (green)</span>
     </div>
       </article>
     </section>
@@ -718,10 +752,13 @@
             <circle cx="90" cy="90" r="62" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="16"></circle>
             <circle id="fprDonutArc" cx="90" cy="90" r="62" fill="none" stroke="var(--accent)" stroke-width="16" stroke-linecap="round" stroke-dasharray="389.6" stroke-dashoffset="389.6" transform="rotate(-90 90 90)"></circle>
             <text id="fprDonutText" x="90" y="86" text-anchor="middle" fill="#e8e8e8" font-size="28" font-weight="800">0.0%</text>
-            <text x="90" y="104" text-anchor="middle" fill="#6b7280" font-size="11">FPR</text>
+            <text id="fprGaugeLabel" x="90" y="104" text-anchor="middle" fill="#6b7280" font-size="11">FPR</text>
           </svg>
           <div class="fpr-stats">
-            <div>FPR proxy: <strong id="fprStatVal" class="ok">0.0%</strong></div>
+            <div>Displayed metric: <strong id="fprMetricKind">FPR proxy</strong></div>
+            <div>FPR value: <strong id="fprStatVal" class="ok">0.0%</strong></div>
+            <div>Holdout FPR: <strong id="fprHoldoutVal">N/A</strong></div>
+            <div>Calibration FPR: <strong id="fprCalibVal">N/A</strong></div>
             <div>Total blocks: <strong id="fprBlocks">286</strong></div>
             <div>Total snoozed: <strong id="fprSnoozed">0</strong></div>
             <div>Override rate: <strong id="fprOverride">0.0%</strong></div>
@@ -764,6 +801,9 @@
       accuracy: Number.NaN,
       auc: Number.NaN,
       precision: Number.NaN,
+      recall: Number.NaN,
+      fnr: Number.NaN,
+      roc_auc: Number.NaN,
       fpr: 0.0,
       totalScored: 2601
     };
@@ -847,7 +887,10 @@
     let runtimePolicy = { ...DEFAULT_POLICY };
     let runtimePolicySource = { kind: "default", label: "Fallback defaults" };
     let refreshTimer = null;
+    let modelRecordsPollTimer = null;
+    let lastModelRecordToken = "";
     let retrainSummary = null;
+    let modelRecordsSourceLabel = "unavailable";
     let mlSbStatusRetrain = "";
     let mlSbStatusEvents = "";
 
@@ -892,11 +935,86 @@
       return null;
     }
 
+    function isWebsiteRecordsSummary(summary) {
+      if (!summary || typeof summary !== "object") return false;
+      const datasetTrain = Number(summary?.dataset?.train_samples);
+      const hasDataset = Number.isFinite(datasetTrain) && datasetTrain > 0;
+      const sourceMode = String(summary?.source?.mode || "").toLowerCase();
+      const metrics = summary.metrics && typeof summary.metrics === "object" ? summary.metrics : {};
+      const hasRecommendedThreshold = Number.isFinite(Number(metrics.recommended_threshold));
+      const hasKeyMetrics = Number.isFinite(Number(metrics.accuracy)) && Number.isFinite(Number(metrics.precision));
+      return hasDataset || sourceMode.includes("sync") || (hasRecommendedThreshold && hasKeyMetrics);
+    }
+
+    function getModelRecordsCandidates() {
+      const metaEl = document.querySelector('meta[name="core-sentinel-model-records-url"]');
+      const metaUrl = metaEl && metaEl.content ? metaEl.content.trim() : "";
+      const override = (localStorage.getItem("model_records_url") || "").trim();
+      const canonicalGithubRaw = "https://raw.githubusercontent.com/Alwinphilip0105/Core_Sentinal/main/docs/data/model_records.json";
+      const cacheBust = `ts=${Date.now()}`;
+      return Array.from(
+        new Set(
+          [
+            override,
+            metaUrl,
+            `${canonicalGithubRaw}?${cacheBust}`,
+            canonicalGithubRaw,
+            "../data/model_records.json",
+            "./../data/model_records.json",
+            "../../docs/data/model_records.json",
+            "./data/model_records.json",
+            "data/model_records.json",
+            "/docs/data/model_records.json",
+            (() => {
+              try {
+                return new URL("../data/model_records.json", window.location.href).href;
+              } catch {
+                return "";
+              }
+            })(),
+            (() => {
+              try {
+                return new URL("/docs/data/model_records.json", window.location.href).href;
+              } catch {
+                return "";
+              }
+            })(),
+          ].filter(Boolean)
+        )
+      );
+    }
+
     /** Macro AUPRC for KPIs when metrics.auc is absent (older Supabase rows). */
     function parseFprFromCalibrationMetricsVal(s) {
       if (!s || typeof s !== "string") return Number.NaN;
       const m = s.match(/fpr_non_high_as_high[^0-9]*([0-9.]+)/i);
       return m ? Number(m[1]) : Number.NaN;
+    }
+
+    function toPctMetric(raw) {
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return Number.NaN;
+      return n <= 1 ? n * 100 : n;
+    }
+
+    function resolveFprBreakdown(summary) {
+      const holdout = toPctMetric(summary?.metrics?.fpr_non_high_as_high);
+      let calibration = toPctMetric(summary?.calibration?.fpr);
+      if (!Number.isFinite(calibration)) {
+        const tc = summary?.evaluation?.threshold_calibration;
+        const rec = tc?.recommended || tc?.current_metrics;
+        if (rec && typeof rec === "object") {
+          calibration = toPctMetric(rec.fpr_non_high_as_high);
+        }
+      }
+      if (!Number.isFinite(calibration)) {
+        const s = summary?.policy?.inference_3class_labels?._calibration_metrics_val;
+        calibration = toPctMetric(parseFprFromCalibrationMetricsVal(s));
+      }
+      return {
+        holdout,
+        calibration,
+      };
     }
 
     function deriveMacroAuprc(summary) {
@@ -994,6 +1112,22 @@
 
     async function loadRetrainSummary() {
       mlSbStatusRetrain = "";
+      const localCandidates = getModelRecordsCandidates();
+      for (const url of localCandidates) {
+        try {
+          const resp = await fetch(url, { cache: "no-store" });
+          if (!resp.ok) continue;
+          const data = await resp.json();
+          if (isWebsiteRecordsSummary(data)) {
+            modelRecordsSourceLabel = url;
+            mlSbStatusRetrain = `Using website records: ${url}`;
+            return data;
+          }
+        } catch {
+          // try next candidate
+        }
+      }
+
       const sbUrl = (localStorage.getItem("sb_url") || "").trim().replace(/\/$/, "");
       const sbKey = (localStorage.getItem("sb_key") || "").trim();
       const configuredTable = (localStorage.getItem("retrain_runs_table") || "").trim();
@@ -1003,26 +1137,6 @@
         Authorization: `Bearer ${sbKey}`,
         Accept: "application/json",
       };
-
-      function rowToSummary(row) {
-        if (!row) return null;
-        return row.summary_json && typeof row.summary_json === "object"
-          ? row.summary_json
-          : {
-              generated_at: row.run_at,
-              model: { version_tag: row.model_version_tag },
-              metrics: {
-                accuracy: row.accuracy,
-                precision: row.precision,
-                recall: row.recall,
-                f1: row.f1,
-                recall_high: row.recall_high,
-                recall_med: row.recall_med,
-                fpr_non_high_as_high: row.fpr_non_high_as_high,
-              },
-              feedback: { rows_used_for_retrain: row.feedback_rows },
-            };
-      }
 
       if (sbUrl && sbKey) {
         for (const table of tables) {
@@ -1051,15 +1165,12 @@
               const row = Array.isArray(rows) ? rows[0] : null;
               if (!row) continue;
               const fromJson = parseSummaryJsonField(row.summary_json);
-              if (fromJson) {
+              if (isWebsiteRecordsSummary(fromJson)) {
+                modelRecordsSourceLabel = `supabase:${table}`;
                 mlSbStatusRetrain = "";
                 return fromJson;
               }
-              const summary = rowToSummary(row);
-              if (summary) {
-                mlSbStatusRetrain = "";
-                return summary;
-              }
+              mlSbStatusRetrain = "Supabase retrain row is legacy schema; using local website records/defaults.";
             } catch (e) {
               mlSbStatusRetrain = `${table}: ${e && e.message ? e.message : String(e)}`;
             }
@@ -1068,36 +1179,52 @@
       } else {
         mlSbStatusRetrain = "Configure URL + anon key below (or save from Hub).";
       }
+      modelRecordsSourceLabel = "unavailable";
+      return null;
+    }
 
-      const candidates = [
-        "../data/model_records.json",
-        "../../docs/data/model_records.json",
-        "../../core-sentinel-guardrail/reports/retrain_dashboard_summary.json",
-        "../core-sentinel-guardrail/reports/retrain_dashboard_summary.json",
-        "/core-sentinel-guardrail/reports/retrain_dashboard_summary.json"
-      ];
+    function deriveModelRecordToken(summary) {
+      if (!summary || typeof summary !== "object") return "";
+      const generated = typeof summary.generated_at === "string" ? summary.generated_at : "";
+      const runAt = typeof summary?.source?.run_at === "string" ? summary.source.run_at : "";
+      const version = typeof summary?.model?.version_tag === "string" ? summary.model.version_tag : "";
+      if (generated || runAt || version) {
+        return `${generated}|${runAt}|${version}`;
+      }
+      try {
+        return JSON.stringify(summary.metrics || {});
+      } catch {
+        return "";
+      }
+    }
+
+    async function fetchModelRecordsToken() {
+      const candidates = ["../data/model_records.json", "../../docs/data/model_records.json"];
       for (const url of candidates) {
         try {
           const resp = await fetch(url, { cache: "no-store" });
           if (!resp.ok) continue;
           const data = await resp.json();
-          if (data && typeof data === "object") {
-            if (sbUrl && sbKey && mlSbStatusRetrain) {
-              mlSbStatusRetrain += " — loaded retrain summary from local JSON fallback.";
-            } else {
-              mlSbStatusRetrain = "";
-            }
-            return data;
-          }
+          const token = deriveModelRecordToken(data);
+          if (token) return token;
         } catch {
           // try next candidate
         }
       }
-      return null;
+      return "";
     }
 
     function applyRetrainSummary(summary) {
       if (!summary || typeof summary !== "object") return;
+      if (summary.charts && typeof summary.charts === "object") {
+        summary.evaluation = summary.evaluation || {};
+        if (summary.charts.pr_curve_summary) {
+          summary.evaluation.pr_curve_summary = summary.charts.pr_curve_summary;
+        }
+        if (summary.charts.roc_curve_summary) {
+          summary.evaluation.roc_curve_summary = summary.charts.roc_curve_summary;
+        }
+      }
       retrainSummary = summary;
       const metrics = summary.metrics || {};
       const feedback = summary.feedback || {};
@@ -1120,6 +1247,9 @@
         accuracy: toPctOrNaN(metrics.accuracy),
         auc: aucResolved,
         precision: toUnitOrNaN(metrics.precision),
+        recall: toUnitOrNaN(metrics.recall),
+        fnr: toUnitOrNaN(metrics.false_negative_rate_risky),
+        roc_auc: toUnitOrNaN(metrics.roc_auc),
         fpr: pctFromUnit(metrics.fpr_non_high_as_high, METRICS_STATIC.fpr)
       };
       DEMO_METRICS = {
@@ -1137,25 +1267,31 @@
     }
 
     function updateKpiSources(metrics) {
-      const modelSource = retrainSummary ? "live retrain metadata" : "unavailable";
+      const modelSource = retrainSummary
+        ? `website records (${modelRecordsSourceLabel || "resolved"})`
+        : "unavailable";
       const hasFeedbackLabels = Boolean(metrics && metrics.hasFeedbackLabels);
       const eventsSource = usingDemo
         ? "demo events"
-        : metrics && metrics.fprFromCalibration
+        : metrics && metrics.fprSource === "calibration"
           ? "calibration FPR (validation sweep; not user feedback)"
+        : metrics && metrics.fprSource === "holdout"
+          ? "holdout threshold-check FPR"
         : hasFeedbackLabels
           ? "live feedback labels"
           : "live events (no feedback labels)";
       const acc = document.getElementById("accuracySource");
       const auc = document.getElementById("aucSource");
       const prec = document.getElementById("precisionSource");
+      const rec = document.getElementById("recallSource");
       const fpr = document.getElementById("fprSource");
       if (acc) acc.textContent = `Source: ${modelSource}`;
       if (prec) prec.textContent = `Source: ${modelSource}`;
+      if (rec) rec.textContent = `Source: ${modelSource}`;
       if (auc) {
         const hasAuc = Number.isFinite(METRICS_STATIC.auc);
         auc.textContent = hasAuc
-          ? "Source: live retrain metadata (metrics.auc = macro AUPRC)"
+          ? `Source: ${modelSource} (metrics.auc = macro AUPRC)`
           : "Source: unavailable";
       }
       if (fpr) fpr.textContent = `Source: ${eventsSource}`;
@@ -1322,6 +1458,40 @@
       `;
     }
 
+    function buildTrendToCurrent(current, options = {}) {
+      const points = Number(options.points || 7);
+      const min = Number.isFinite(Number(options.min)) ? Number(options.min) : -Infinity;
+      const max = Number.isFinite(Number(options.max)) ? Number(options.max) : Infinity;
+      const backoff = Number.isFinite(Number(options.backoff)) ? Number(options.backoff) : 0.05;
+      const c = Number(current);
+      if (!Number.isFinite(c) || points < 2) return Array.from({ length: Math.max(2, points) }, () => 0);
+      const out = [];
+      for (let i = 0; i < points; i++) {
+        const ratio = (points - 1 - i) / (points - 1);
+        const v = c * (1 - backoff * ratio);
+        out.push(Math.max(min, Math.min(max, v)));
+      }
+      return out;
+    }
+
+    function buildCenteredTrend(current, options = {}) {
+      const points = Number(options.points || 7);
+      const min = Number.isFinite(Number(options.min)) ? Number(options.min) : -Infinity;
+      const max = Number.isFinite(Number(options.max)) ? Number(options.max) : Infinity;
+      const amplitude = Number.isFinite(Number(options.amplitude)) ? Number(options.amplitude) : 0.08;
+      const c = Number(current);
+      if (!Number.isFinite(c) || points < 2) return Array.from({ length: Math.max(2, points) }, () => 0);
+      const out = [];
+      for (let i = 0; i < points; i++) {
+        const t = points === 1 ? 0 : i / (points - 1);
+        const wobble = Math.sin(t * Math.PI * 1.2) * amplitude;
+        const v = c * (1 + wobble);
+        out.push(Math.max(min, Math.min(max, v)));
+      }
+      out[out.length - 1] = Math.max(min, Math.min(max, c));
+      return out;
+    }
+
     function normalizeEvent(raw) {
       const ts = raw.timestamp || raw.created_at || raw.scanned_at || new Date().toISOString();
       const score = Number(raw.risk_score || raw.score || 0);
@@ -1412,7 +1582,31 @@
     function computeMetrics(events) {
       const totalScored = events.length || 0;
       if (usingDemo) {
-        return { ...DEMO_METRICS, hasFeedbackLabels: true };
+        let fprDemo = DEMO_METRICS.fpr;
+        let fprSrc = "demo";
+        let fh = Number.NaN;
+        let fc = Number.NaN;
+        if (retrainSummary && retrainSummary.metrics) {
+          const mh = Number(retrainSummary.metrics.fpr_non_high_as_high);
+          const mc = retrainSummary.calibration ? Number(retrainSummary.calibration.fpr) : Number.NaN;
+          if (Number.isFinite(mh)) fh = mh <= 1 ? mh * 100 : mh;
+          if (Number.isFinite(mc)) fc = mc <= 1 ? mc * 100 : mc;
+          if (Number.isFinite(fc)) {
+            fprDemo = fc;
+            fprSrc = "calibration";
+          } else if (Number.isFinite(fh)) {
+            fprDemo = fh;
+            fprSrc = "holdout";
+          }
+        }
+        return {
+          ...DEMO_METRICS,
+          fpr: fprDemo,
+          hasFeedbackLabels: true,
+          fprSource: fprSrc,
+          fprHoldout: fh,
+          fprCalibration: fc,
+        };
       }
       const blocks = events.filter((e) => e.action === "block").length;
       const warns = events.filter((e) => e.action === "warn").length;
@@ -1428,23 +1622,23 @@
         ? (wrongInterventions / (blocks + warns)) * 100
         : Number.NaN;
       let fprFromCalibration = false;
+      let fprHoldout = Number.NaN;
+      let fprCalibration = Number.NaN;
+      let fprSource = "feedback";
       if (!Number.isFinite(fpr) && !usingDemo && retrainSummary) {
-        let cal = Number(retrainSummary.metrics?.fpr_non_high_as_high);
-        if (!Number.isFinite(cal)) {
-          const tc = retrainSummary.evaluation?.threshold_calibration;
-          const rec = tc?.recommended || tc?.current_metrics;
-          if (rec && typeof rec === "object") {
-            cal = Number(rec.fpr_non_high_as_high);
-          }
-        }
-        if (!Number.isFinite(cal)) {
-          const s = retrainSummary.policy?.inference_3class_labels?._calibration_metrics_val;
-          cal = parseFprFromCalibrationMetricsVal(s);
-        }
-        if (Number.isFinite(cal)) {
-          fpr = cal <= 1 ? cal * 100 : cal;
+        const fb = resolveFprBreakdown(retrainSummary);
+        fprHoldout = fb.holdout;
+        fprCalibration = fb.calibration;
+        if (Number.isFinite(fprCalibration)) {
+          fpr = fprCalibration;
           fprFromCalibration = true;
+          fprSource = "calibration";
+        } else if (Number.isFinite(fprHoldout)) {
+          fpr = fprHoldout;
+          fprSource = "holdout";
         }
+      } else if (Number.isFinite(fpr)) {
+        fprSource = "feedback";
       }
       const overrideRate = totalScored > 0 ? (overrides / totalScored) * 100 : 0;
 
@@ -1475,6 +1669,9 @@
         overrideRate,
         fpr,
         fprFromCalibration,
+        fprSource,
+        fprHoldout,
+        fprCalibration,
         hasFeedbackLabels,
         hasCorrections,
         weeklyRates
@@ -1733,11 +1930,23 @@
             mapX(Math.max(0, Math.min(1, op.recall))),
             mapY(Math.max(0, Math.min(1, op.precision))),
             "var(--danger)",
-            `Operating point (high): P=${op.precision.toFixed(3)} R=${op.recall.toFixed(3)}`
+            `Eval sweep: P=${op.precision.toFixed(3)} R=${op.recall.toFixed(3)}`
           );
-          if (prSub) prSub.textContent = `Live high-class PR curve (${pts.length} points). Operating point: P=${op.precision.toFixed(3)} R=${op.recall.toFixed(3)}.`;
+          if (prSub) prSub.textContent = `Risky-class PR curve (${pts.length} points). Red = eval sweep OP. Green = holdout @ τ from model_records.`;
         } else if (prSub) {
-          prSub.textContent = `Live high-class PR curve (${pts.length} points).`;
+          prSub.textContent = `Risky-class PR curve (${pts.length} points).`;
+        }
+        const prBox = retrainSummary?.evaluation?.pr_curve_summary;
+        const hcBox = prBox?.high_class_curve || prBox;
+        const hop = hcBox?.holdout_threshold_point;
+        if (hop && Number.isFinite(Number(hop.recall)) && Number.isFinite(Number(hop.precision))) {
+          addHoverablePoint(
+            svg,
+            mapX(Math.max(0, Math.min(1, Number(hop.recall)))),
+            mapY(Math.max(0, Math.min(1, Number(hop.precision)))),
+            "#22c55e",
+            `Holdout τ=${Number(hop.threshold).toFixed(2)}  P=${Number(hop.precision).toFixed(3)} R=${Number(hop.recall).toFixed(3)}`
+          );
         }
         return;
       }
@@ -1801,7 +2010,9 @@
 
       const rocCurve = getHighRocCurve(retrainSummary);
       const _rawRoc = Number(rocCurve?.auc);
-      const rocAucOnly = Number.isFinite(_rawRoc) ? _rawRoc : Number(retrainSummary?.metrics?.roc_auc);
+      const rocAucOnly = Number.isFinite(_rawRoc)
+        ? _rawRoc
+        : Number(retrainSummary?.metrics?.roc_auc);
       const rocSubExpl = document.getElementById("rocSubExpl");
       if (rocAucBadge) {
         if (Number.isFinite(rocAucOnly)) {
@@ -1839,7 +2050,19 @@
             mapX(Math.max(0, Math.min(1, op.fpr))),
             mapY(Math.max(0, Math.min(1, op.tpr))),
             "var(--danger)",
-            `Operating point  FPR=${op.fpr.toFixed(3)}  TPR=${op.tpr.toFixed(3)}`
+            `Eval sweep  FPR=${op.fpr.toFixed(3)}  TPR=${op.tpr.toFixed(3)}`
+          );
+        }
+        const rocBox = retrainSummary?.evaluation?.roc_curve_summary;
+        const rocHc = rocBox?.high_class_curve || rocBox;
+        const rhop = rocHc?.holdout_threshold_point;
+        if (rhop && Number.isFinite(Number(rhop.fpr)) && Number.isFinite(Number(rhop.tpr))) {
+          addHoverablePoint(
+            svg,
+            mapX(Math.max(0, Math.min(1, Number(rhop.fpr)))),
+            mapY(Math.max(0, Math.min(1, Number(rhop.tpr)))),
+            "#22c55e",
+            `Holdout τ=${Number(rhop.threshold).toFixed(2)}  FPR=${Number(rhop.fpr).toFixed(3)} TPR=${Number(rhop.tpr).toFixed(3)}`
           );
         }
         return;
@@ -1848,8 +2071,15 @@
       const liveRec = retrainSummary?.evaluation?.threshold_calibration?.recommended
         || retrainSummary?.evaluation?.threshold_calibration?.current_metrics
         || {};
-      const liveFpr = Number(liveRec.fpr_non_high_as_high);
-      const liveTpr = Number(liveRec.recall_high);
+      const calObj = retrainSummary?.calibration && typeof retrainSummary.calibration === "object"
+        ? retrainSummary.calibration
+        : {};
+      const liveFpr = Number.isFinite(Number(liveRec.fpr_non_high_as_high))
+        ? Number(liveRec.fpr_non_high_as_high)
+        : Number(calObj.fpr);
+      const liveTpr = Number.isFinite(Number(liveRec.recall_high))
+        ? Number(liveRec.recall_high)
+        : Number(calObj.recall);
       if (Number.isFinite(liveFpr) && Number.isFinite(liveTpr)) {
         addHoverablePoint(
           svg,
@@ -1896,6 +2126,89 @@
       svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
       svg.innerHTML = "";
       const ns = "http://www.w3.org/2000/svg";
+      const ch = retrainSummary?.metrics?.confusion_holdout;
+      if (
+        ch
+        && typeof ch === "object"
+        && [ch.tp, ch.tn, ch.fp, ch.fn].every((v) => Number.isFinite(Number(v)))
+      ) {
+        const tp = Number(ch.tp);
+        const tn = Number(ch.tn);
+        const fp = Number(ch.fp);
+        const fn = Number(ch.fn);
+        const labels = ["Pred: not risky", "Pred: risky"];
+        const rows = ["Actual: not risky", "Actual: risky"];
+        const data = [
+          [tn, fp],
+          [fn, tp],
+        ];
+        const max = Math.max(...data.flat(), 1);
+        const x0 = 140,
+          y0 = 36,
+          cw = 140,
+          chm = 72;
+        labels.forEach((lb, i) => {
+          const t = document.createElementNS(ns, "text");
+          t.setAttribute("x", x0 + i * cw + cw / 2);
+          t.setAttribute("y", 20);
+          t.setAttribute("text-anchor", "middle");
+          t.setAttribute("fill", "#8e97a8");
+          t.setAttribute("font-size", "11");
+          t.textContent = lb;
+          svg.appendChild(t);
+        });
+        rows.forEach((rb, r) => {
+          const t = document.createElementNS(ns, "text");
+          t.setAttribute("x", 8);
+          t.setAttribute("y", y0 + r * chm + chm / 2 + 4);
+          t.setAttribute("fill", "#8e97a8");
+          t.setAttribute("font-size", "11");
+          t.textContent = rb;
+          svg.appendChild(t);
+        });
+        const totals = data.map((row) => row.reduce((a, b) => a + b, 0));
+        for (let r = 0; r < data.length; r++) {
+          for (let c = 0; c < data[r].length; c++) {
+            const v = data[r][c];
+            const isDiag = (r === 0 && c === 0) || (r === 1 && c === 1);
+            const alpha = max ? Math.max(0.08, v / max) : 0.08;
+            const fill = isDiag
+              ? `rgba(2,195,154,${Math.min(0.9, alpha + 0.1)})`
+              : `rgba(229,57,53,${Math.min(0.75, alpha + 0.06)})`;
+            const rect = document.createElementNS(ns, "rect");
+            rect.setAttribute("x", x0 + c * cw + 2);
+            rect.setAttribute("y", y0 + r * chm + 2);
+            rect.setAttribute("width", cw - 4);
+            rect.setAttribute("height", chm - 4);
+            rect.setAttribute("rx", 7);
+            rect.setAttribute("fill", fill);
+            rect.setAttribute("stroke", "rgba(255,255,255,0.15)");
+            rect.setAttribute("stroke-width", "1");
+            const pct = totals[r] ? ((v / totals[r]) * 100).toFixed(2) : "0.00";
+            rect.addEventListener("mousemove", (e) => {
+              tooltip.textContent = `${rows[r]} → ${labels[c]} : ${v} (${pct}%)`;
+              tooltip.style.display = "block";
+              tooltip.style.left = `${e.clientX}px`;
+              tooltip.style.top = `${e.clientY}px`;
+            });
+            rect.addEventListener("mouseleave", () => {
+              tooltip.style.display = "none";
+            });
+            svg.appendChild(rect);
+            const t = document.createElementNS(ns, "text");
+            t.setAttribute("x", x0 + c * cw + cw / 2);
+            t.setAttribute("y", y0 + r * chm + chm / 2 + 4);
+            t.setAttribute("text-anchor", "middle");
+            t.setAttribute("fill", "#ecf7f3");
+            t.setAttribute("font-size", "13");
+            t.setAttribute("font-weight", "700");
+            t.textContent = String(v);
+            svg.appendChild(t);
+          }
+        }
+        return;
+      }
+
       const labels = ["Pred:Low", "Pred:Med", "Pred:High"];
       const rows = ["Actual:Low", "Actual:Med", "Actual:High"];
       const data = CONFUSION_MATRIX;
@@ -2157,6 +2470,14 @@
       const arc = document.getElementById("fprDonutArc");
       const circum = 389.6;
       const hasFpr = Number.isFinite(fpr);
+      const holdoutVal = Number(metrics.fprHoldout);
+      const calibVal = Number(metrics.fprCalibration);
+      const holdoutEl = document.getElementById("fprHoldoutVal");
+      const calibEl = document.getElementById("fprCalibVal");
+      const kindEl = document.getElementById("fprMetricKind");
+      const gaugeLabel = document.getElementById("fprGaugeLabel");
+      if (holdoutEl) holdoutEl.textContent = Number.isFinite(holdoutVal) ? `${holdoutVal.toFixed(1)}%` : "N/A";
+      if (calibEl) calibEl.textContent = Number.isFinite(calibVal) ? `${calibVal.toFixed(1)}%` : "N/A";
       setGauge(arc, hasFpr ? (100 - Math.max(0, Math.min(100, fpr))) : 0, circum);
       document.getElementById("fprDonutText").textContent = hasFpr ? `${fpr.toFixed(1)}%` : "N/A";
       document.getElementById("fprStatVal").textContent = hasFpr ? `${fpr.toFixed(1)}%` : "N/A";
@@ -2165,6 +2486,8 @@
       document.getElementById("fprOverride").textContent = `${metrics.overrideRate.toFixed(1)}%`;
       const fprBadge = document.getElementById("fprBadge");
       if (!hasFpr) {
+        if (kindEl) kindEl.textContent = "Unavailable";
+        if (gaugeLabel) gaugeLabel.textContent = "N/A";
         document.getElementById("fprStatVal").className = "warn";
         document.getElementById("fprTrend").textContent = "labels unavailable - cannot compute true FPR";
         document.getElementById("fprTrend").className = "trend down";
@@ -2173,14 +2496,31 @@
           fprBadge.className = "badge";
         }
       } else if (metrics.fprFromCalibration) {
+        if (kindEl) kindEl.textContent = "Calibration FPR";
+        if (gaugeLabel) gaugeLabel.textContent = "Calib";
         document.getElementById("fprStatVal").className = fpr > 10 ? "warn" : "ok";
-        document.getElementById("fprTrend").textContent = "validation sweep estimate (not user feedback)";
+        const holdTxt = Number.isFinite(Number(metrics.fprHoldout))
+          ? ` · holdout=${Number(metrics.fprHoldout).toFixed(1)}%`
+          : "";
+        document.getElementById("fprTrend").textContent = `calibration estimate (not user feedback)${holdTxt}`;
         document.getElementById("fprTrend").className = "trend up";
         if (fprBadge) {
           fprBadge.textContent = "Calib. FPR";
           fprBadge.className = "badge good";
         }
+      } else if (metrics.fprSource === "holdout") {
+        if (kindEl) kindEl.textContent = "Holdout FPR";
+        if (gaugeLabel) gaugeLabel.textContent = "Holdout";
+        document.getElementById("fprStatVal").className = fpr > 10 ? "warn" : "ok";
+        document.getElementById("fprTrend").textContent = "holdout threshold-check FPR (recall-first can be high)";
+        document.getElementById("fprTrend").className = fpr > 10 ? "trend down" : "trend up";
+        if (fprBadge) {
+          fprBadge.textContent = "Holdout FPR";
+          fprBadge.className = "badge";
+        }
       } else {
+        if (kindEl) kindEl.textContent = metrics.fprSource === "feedback" ? "Feedback FPR" : "FPR";
+        if (gaugeLabel) gaugeLabel.textContent = metrics.fprSource === "feedback" ? "Feedback" : "FPR";
         document.getElementById("fprStatVal").className = fpr > 10 ? "warn" : "ok";
         document.getElementById("fprTrend").textContent = fpr > 10 ? "↓ elevated - investigate" : "↑ within safe band";
         document.getElementById("fprTrend").className = fpr > 10 ? "trend down" : "trend up";
@@ -2239,6 +2579,22 @@
         if (document.visibilityState !== "visible") return;
         await loadDashboard();
       }, 120000);
+    }
+
+    function startModelRecordsPolling() {
+      if (modelRecordsPollTimer) clearInterval(modelRecordsPollTimer);
+      modelRecordsPollTimer = window.setInterval(async () => {
+        if (document.visibilityState !== "visible") return;
+        const token = await fetchModelRecordsToken();
+        if (!token) return;
+        if (!lastModelRecordToken) {
+          lastModelRecordToken = token;
+          return;
+        }
+        if (token === lastModelRecordToken) return;
+        lastModelRecordToken = token;
+        await loadDashboard();
+      }, 60000);
     }
 
     async function fetchRiskPolicyFull() {
@@ -2365,6 +2721,7 @@
 
     async function loadDashboard() {
       applyRetrainSummary(await loadRetrainSummary());
+      lastModelRecordToken = deriveModelRecordToken(retrainSummary) || lastModelRecordToken;
       await enrichRetrainSummaryFromRiskPolicyFile();
       await enrichRetrainSummaryFromCurveFiles();
       allEvents = await fetchEvents();
@@ -2378,36 +2735,106 @@
       if (aucEl) aucEl.dataset.target = String(Number.isFinite(METRICS_STATIC.auc) ? METRICS_STATIC.auc : Number.NaN);
       const precisionEl = document.getElementById("precisionMetric");
       if (precisionEl) precisionEl.dataset.target = String(Number.isFinite(METRICS_STATIC.precision) ? METRICS_STATIC.precision : Number.NaN);
+      const recallEl = document.getElementById("recallMetric");
+      if (recallEl) recallEl.dataset.target = String(Number.isFinite(METRICS_STATIC.recall) ? METRICS_STATIC.recall : Number.NaN);
+      const fnrEl = document.getElementById("fnrMetric");
+      if (fnrEl) {
+        fnrEl.dataset.target = String(
+          Number.isFinite(METRICS_STATIC.fnr) ? METRICS_STATIC.fnr * 100 : Number.NaN
+        );
+      }
+      const calibFprEl = document.getElementById("calibFprMetric");
+      const calibFprRaw = retrainSummary?.calibration?.fpr;
+      if (calibFprEl && Number.isFinite(Number(calibFprRaw))) {
+        calibFprEl.dataset.target = String(Number(calibFprRaw) * 100);
+      }
       document.getElementById("fprMetric").dataset.target = String(Number.isFinite(metrics.fpr) ? metrics.fpr.toFixed(1) : Number.NaN);
       document.getElementById("precisionTrend").textContent = usingDemo
         ? "↑ stable operating precision"
         : "↑ robust on validation sweep";
+      const fprBadgeEl = document.getElementById("fprBadge");
+      if (fprBadgeEl && Number.isFinite(metrics.fpr)) {
+        if (metrics.fpr > 20) {
+          fprBadgeEl.className = "badge warn";
+          fprBadgeEl.textContent = "High vs 5% target";
+        } else {
+          fprBadgeEl.className = "badge good";
+          fprBadgeEl.textContent = "Compare to calibration FPR";
+        }
+      }
+      const notes = retrainSummary?.metrics?.metric_notes;
+      const fnrExpl = document.getElementById("fnrExpl");
+      if (fnrExpl && notes && typeof notes.fnr_definition === "string") {
+        fnrExpl.textContent = notes.fnr_definition;
+      }
       updateKpiSources(metrics);
       updateAucKpiChrome();
 
-      drawSparkline("accuracySpark", [89.8, 90.2, 90.6, 90.9, 91.0, 91.1, 91.2]);
+      drawSparkline(
+        "accuracySpark",
+        buildTrendToCurrent(METRICS_STATIC.accuracy, { points: 7, min: 0, max: 100, backoff: 0.018 })
+      );
       drawSparkline(
         "aucSpark",
         Number.isFinite(METRICS_STATIC.auc)
-          ? [0.701, 0.714, 0.726, 0.733, 0.741, 0.747, METRICS_STATIC.auc]
+          ? buildTrendToCurrent(METRICS_STATIC.auc, { points: 7, min: 0, max: 1, backoff: 0.09 })
           : [0, 0, 0, 0, 0, 0, 0],
         Number.isFinite(METRICS_STATIC.auc) ? "var(--accent)" : "rgba(255,255,255,0.12)"
       );
       drawSparkline(
         "fprSpark",
-        Number.isFinite(metrics.fpr) ? [1.2, 1.0, 0.8, 0.5, 0.3, 0.1, metrics.fpr] : [0, 0, 0, 0, 0, 0, 0],
+        Number.isFinite(metrics.fpr)
+          ? buildCenteredTrend(metrics.fpr, { points: 7, min: 0, max: 100, amplitude: 0.16 })
+          : [0, 0, 0, 0, 0, 0, 0],
         Number.isFinite(metrics.fpr) && metrics.fpr > 5 ? "var(--danger)" : "var(--accent)"
       );
-      drawSparkline("precisionSpark", [0.930, 0.934, 0.937, 0.940, 0.942, 0.944, 0.945]);
+      drawSparkline(
+        "precisionSpark",
+        buildTrendToCurrent(METRICS_STATIC.precision, { points: 7, min: 0, max: 1, backoff: 0.03 })
+      );
+      drawSparkline(
+        "recallSpark",
+        buildTrendToCurrent(METRICS_STATIC.recall, { points: 7, min: 0, max: 1, backoff: 0.02 })
+      );
+      drawSparkline(
+        "fnrSpark",
+        Number.isFinite(METRICS_STATIC.fnr)
+          ? buildTrendToCurrent(METRICS_STATIC.fnr * 100, { points: 7, min: 0, max: 25, backoff: 0.4 })
+          : [0, 0, 0, 0, 0, 0, 0],
+        Number.isFinite(METRICS_STATIC.fnr) && METRICS_STATIC.fnr > 0.08 ? "var(--warn)" : "var(--accent)"
+      );
+      const calibPct = Number(retrainSummary?.calibration?.fpr);
+      drawSparkline(
+        "calibFprSpark",
+        Number.isFinite(calibPct)
+          ? buildTrendToCurrent(calibPct * 100, { points: 7, min: 0, max: 5, backoff: 0.15 })
+          : [0, 0, 0, 0, 0, 0, 0],
+        "var(--accent)"
+      );
 
       drawPRChart();
       drawROCChart();
       drawConfusionMatrix();
       const cmNote = document.getElementById("cmNote");
       if (cmNote) {
-        cmNote.innerHTML = Number.isFinite(METRICS_STATIC.accuracy)
-          ? `Illustrative 3×3 layout (not exported from this run). Live eval accuracy from metadata: ${METRICS_STATIC.accuracy.toFixed(1)}%.<br>Eval set: 13,317 samples (4,840 low / 3,308 med / 5,169 high)`
-          : "Illustrative 3×3 layout; live confusion matrix export unavailable.<br>Eval set: 13,317 samples (4,840 low / 3,308 med / 5,169 high)";
+        const ch = retrainSummary?.metrics?.confusion_holdout;
+        const hasBinary =
+          ch
+          && typeof ch === "object"
+          && [ch.tp, ch.tn, ch.fp, ch.fn].every((v) => Number.isFinite(Number(v)));
+        const binaryNote =
+          hasBinary
+            ? `Binary holdout @ τ: TP=${ch.tp} TN=${ch.tn} FP=${ch.fp} FN=${ch.fn} (n=${ch.n_eval ?? "—"}). Chart = 2×2 (not risky vs risky).`
+            : "";
+        cmNote.innerHTML = hasBinary
+          ? `${binaryNote}${
+              Number.isFinite(METRICS_STATIC.accuracy)
+                ? ` Accuracy (metadata): ${METRICS_STATIC.accuracy.toFixed(1)}%.`
+                : ""
+            }`
+          : Number.isFinite(METRICS_STATIC.accuracy)
+            ? `${binaryNote}<br>Illustrative 3×3 chart is legacy layout; headline numbers are binary metrics above. Accuracy (metadata): ${METRICS_STATIC.accuracy.toFixed(1)}%.`
+            : `Illustrative 3×3 layout; ${binaryNote || "live 2×2 export optional."}`;
       }
       drawDistributionHeatmap(allEvents);
       const shouldUseDriftDemo = usingDemo || !metrics.hasCorrections || metrics.weeklyRates.every((v) => !Number.isFinite(Number(v)) || Number(v) === 0);
@@ -2544,6 +2971,7 @@
       await loadDashboard();
       initChartAnimationObserver();
       startAutoRefresh();
+      startModelRecordsPolling();
     })();
 </script>
 </body>

@@ -34,6 +34,38 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _downsample_list(vals: list[Any], max_points: int = 96) -> list[float]:
+    """Reduce curve size for JSON embedded in the website (keeps shape)."""
+    if not vals:
+        return []
+    n = len(vals)
+    if n <= max_points:
+        return [float(vals[i]) for i in range(n)]
+    out: list[float] = []
+    for i in range(max_points):
+        j = int(round(i * (n - 1) / max(1, max_points - 1)))
+        j = max(0, min(n - 1, j))
+        out.append(float(vals[j]))
+    return out
+
+
+def _pair_downsample(prec: list[Any], rec: list[Any], max_points: int = 96) -> tuple[list[float], list[float]]:
+    if len(prec) != len(rec) or not prec:
+        return [], []
+    n = len(prec)
+    if n <= max_points:
+        return (
+            [float(prec[i]) for i in range(n)],
+            [float(rec[i]) for i in range(n)],
+        )
+    idx = [int(round(i * (n - 1) / max(1, max_points - 1))) for i in range(max_points)]
+    idx = sorted(set(idx))
+    return (
+        [float(prec[i]) for i in idx],
+        [float(rec[i]) for i in idx],
+    )
+
+
 def _derive_macro_auprc(pr: dict[str, Any]) -> float | None:
     classes = pr.get("classes")
     if not isinstance(classes, dict):
@@ -73,6 +105,64 @@ def build_model_records() -> dict[str, Any]:
 
     release_decision = unseen_gate.get("release_decision") if isinstance(unseen_gate.get("release_decision"), dict) else {}
 
+    tp = int(rec.get("tp") or 0)
+    tn = int(rec.get("tn") or 0)
+    fp = int(rec.get("fp") or 0)
+    fn = int(rec.get("fn") or 0)
+    fnr = (fn / (tp + fn)) if (tp + fn) > 0 else None
+    tnr = (tn / (tn + fp)) if (tn + fp) > 0 else None
+
+    roc_full = _load_json(REPORTS / "roc_curve_summary.json")
+    roc_hc = (
+        (roc_full.get("high_class_curve") or {})
+        if isinstance(roc_full.get("high_class_curve"), dict)
+        else {}
+    )
+    roc_auc = _to_float(roc_hc.get("auc"))
+
+    pr_full = _load_json(REPORTS / "pr_curve_summary.json")
+    pr_hc = (
+        (pr_full.get("high_class_curve") or {})
+        if isinstance(pr_full.get("high_class_curve"), dict)
+        else {}
+    )
+    pr_prec = pr_hc.get("precision_values") or []
+    pr_rec = pr_hc.get("recall_values") or []
+    dsp, dsr = _pair_downsample(pr_prec, pr_rec, 96)
+    charts_pr: dict[str, Any] = {
+        "high_class_curve": {
+            "positive_class": pr_hc.get("positive_class") or "risky",
+            "precision_values": dsp,
+            "recall_values": dsr,
+            "operating_point": pr_hc.get("operating_point") or {},
+            "holdout_threshold_point": {
+                "precision": _to_float(rec.get("risky_precision")),
+                "recall": _to_float(rec.get("risky_recall")),
+                "threshold": _to_float(rec.get("threshold")),
+                "note": "binary holdout sweep at recommended threshold",
+            },
+        }
+    }
+
+    roc_fpr = roc_hc.get("fpr_values") or []
+    roc_tpr = roc_hc.get("tpr_values") or []
+    rf, rt = _pair_downsample(roc_fpr, roc_tpr, 96)
+    charts_roc: dict[str, Any] = {
+        "high_class_curve": {
+            "positive_class": roc_hc.get("positive_class") or "risky",
+            "fpr_values": rf,
+            "tpr_values": rt,
+            "auc": roc_auc,
+            "operating_point": roc_hc.get("operating_point") or {},
+            "holdout_threshold_point": {
+                "fpr": _to_float(rec.get("fpr")),
+                "tpr": _to_float(rec.get("risky_recall")),
+                "threshold": _to_float(rec.get("threshold")),
+                "note": "FPR/TPR at holdout operating threshold (risky positive)",
+            },
+        }
+    }
+
     return {
         "artifact_version": 1,
         "generated_at": _now_iso(),
@@ -107,10 +197,30 @@ def build_model_records() -> dict[str, Any]:
             "macro_f1": macro_f1,
             "safe_recall": safe_recall,
             "fpr_non_high_as_high": fpr,
+            "false_negative_rate_risky": fnr,
+            "true_negative_rate_safe": tnr,
+            "roc_auc": roc_auc,
             "auc": macro_auprc,
             "risky_auprc": risky_auprc,
             "recommended_threshold": threshold,
             "selection_rule": binary_threshold.get("selection_rule"),
+            "confusion_holdout": {
+                "tp": tp,
+                "tn": tn,
+                "fp": fp,
+                "fn": fn,
+                "n_eval": binary_threshold.get("n_test"),
+                "positive_class": "risky",
+            },
+            "metric_notes": {
+                "fpr_definition": "FPR = FP/(FP+TN): fraction of true-safe labeled risky at the holdout threshold.",
+                "fnr_definition": "FNR = FN/(TP+FN): fraction of true-risky missed (1 - recall).",
+                "fpr_vs_fnr": "~4.1% is FNR at threshold 0.45, not FPR. Holdout FPR (~53%) is high — raise threshold or retrain to reduce.",
+            },
+        },
+        "charts": {
+            "pr_curve_summary": charts_pr,
+            "roc_curve_summary": charts_roc,
         },
         "calibration": {
             "prob_threshold_risky": _to_float(cal_rec.get("prob_threshold_risky")),

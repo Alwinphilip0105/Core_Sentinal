@@ -335,6 +335,15 @@
         <article class="card"><h3>Override Rate (24h)</h3><div class="metric-val" id="mOverride">1.2%</div><span class="badge b-green" id="mOverrideBadge">Below 5% target</span><div class="metric-sub" id="mOverrideNote" style="margin-top:6px"></div></article>
       </section>
 
+      <section class="row row-2" id="publishedModelSection" style="display:none;">
+        <article class="card" style="grid-column:1/-1;">
+          <h3>Published model metrics (docs/data/model_records.json)</h3>
+          <p class="sub" style="margin-bottom:10px;">Synced with ML dashboard. FPR below = holdout safe→risky rate; FNR = missed risky (not the same as FPR).</p>
+          <div class="metric-list" id="publishedModelMetrics" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;"></div>
+          <p class="sub" id="publishedModelUpdated" style="margin-top:8px;font-size:11px;"></p>
+        </article>
+      </section>
+
       <section class="row row-2">
         <article class="card">
           <h3>Organization Risk Timeline (Last 30 Days)</h3>
@@ -1416,6 +1425,51 @@
       renderHeatmap(state.deptHeatmap);
     }
 
+    async function loadPublishedModelMetrics() {
+      const sec = document.getElementById("publishedModelSection");
+      const box = document.getElementById("publishedModelMetrics");
+      const upd = document.getElementById("publishedModelUpdated");
+      if (!sec || !box) return;
+      const candidates = [
+        "../data/model_records.json",
+        "./data/model_records.json",
+        "data/model_records.json",
+        "/docs/data/model_records.json",
+      ];
+      for (const path of candidates) {
+        try {
+          const r = await fetch(path, { cache: "no-store" });
+          if (!r.ok) continue;
+          const j = await r.json();
+          const m = j.metrics || {};
+          const cal = j.calibration || {};
+          const pct = (u) => (Number.isFinite(Number(u)) ? `${(Number(u) <= 1 ? Number(u) * 100 : Number(u)).toFixed(1)}%` : "—");
+          const u3 = (u) => (Number.isFinite(Number(u)) ? Number(u).toFixed(3) : "—");
+          const acc = Number(m.accuracy);
+          box.innerHTML = [
+            `<div><strong>Holdout accuracy</strong><br>${Number.isFinite(acc) ? (acc <= 1 ? acc * 100 : acc).toFixed(2) + "%" : "—"}</div>`,
+            `<div><strong>Precision (risky)</strong><br>${u3(m.precision)}</div>`,
+            `<div><strong>Recall (risky) / TPR</strong><br>${u3(m.recall)}</div>`,
+            `<div><strong>F1</strong><br>${u3(m.f1)}</div>`,
+            `<div><strong>Holdout FPR</strong><br>${pct(m.fpr_non_high_as_high)} <span class="muted">(safe→risky)</span></div>`,
+            `<div><strong>FNR (missed risky)</strong><br>${pct(m.false_negative_rate_risky)}</div>`,
+            `<div><strong>ROC-AUC (risky)</strong><br>${u3(m.roc_auc)}</div>`,
+            `<div><strong>Macro AUPRC</strong><br>${u3(m.auc)}</div>`,
+            `<div><strong>Risky AUPRC</strong><br>${u3(m.risky_auprc)}</div>`,
+            `<div><strong>τ (holdout sweep)</strong><br>${u3(m.recommended_threshold)}</div>`,
+            `<div><strong>Calibration FPR (val)</strong><br>${pct(cal.fpr)} @ τ=${u3(cal.prob_threshold_risky)}</div>`,
+          ].join("");
+          if (upd) upd.textContent = `generated_at: ${j.generated_at || "—"}`;
+          sec.style.display = "grid";
+          return;
+        } catch {
+          /* try next path */
+        }
+      }
+      if (box) box.innerHTML = '<div class="muted">Could not load model_records.json (open admin from site root or deploy with docs/data/).</div>';
+      sec.style.display = "grid";
+    }
+
     function renderAll() {
       const rows = state.events;
       renderMetrics(rows);
@@ -1449,6 +1503,7 @@
           : "No valid timestamps in the current event batch.";
       } else if (hw) hw.textContent = "";
       updateLiveMeta();
+      void loadPublishedModelMetrics();
     }
 
     function bindSorters() {
