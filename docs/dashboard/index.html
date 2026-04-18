@@ -1169,7 +1169,7 @@ async function _loadLiveDashboard(){
   try {
     if (url && key) {
       const r = await fetch(
-        `${url}/rest/v1/guardrail_events?select=timestamp,risk_score,action,pii_classes,llm_name,triggers&order=timestamp.desc.nullslast&limit=1200`,
+        `${url}/rest/v1/guardrail_events?select=timestamp,risk_score,action,pii_classes,llm_name,text_hash&order=timestamp.desc.nullslast&limit=1200`,
         { headers: { apikey: key, Authorization: `Bearer ${key}` }, cache: "no-store" }
       );
       if (!r.ok) throw new Error(`Supabase fetch failed: ${r.status}`);

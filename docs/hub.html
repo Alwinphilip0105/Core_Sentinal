@@ -1348,11 +1348,21 @@
         // ignore malformed cache
       }
 
-      const candidates = [
+      const candidates = [];
+      try {
+        candidates.push(new URL("./data/train_eval_summary.json", window.location.href).href);
+      } catch {
+        /* ignore */
+      }
+      try {
+        candidates.push(new URL("../data/train_eval_summary.json", window.location.href).href);
+      } catch {
+        /* ignore */
+      }
+      candidates.push(
         "../core-sentinel-guardrail/reports/train_eval_summary.json",
-        "../../core-sentinel-guardrail/reports/train_eval_summary.json",
-        "/core-sentinel-guardrail/reports/train_eval_summary.json"
-      ];
+        "../../core-sentinel-guardrail/reports/train_eval_summary.json"
+      );
       for (const url of candidates) {
         try {
           const r = await fetch(url, { cache: "no-store" });
@@ -1687,7 +1697,8 @@
       }
       try {
         const r = await fetch(
-          url.replace(/\/$/, "") + "/rest/v1/guardrail_events?select=user_id,user_email,device_id,risk_score,pii_classes,triggers&order=timestamp.desc.nullslast&limit=400",
+          url.replace(/\/$/, "")
+            + "/rest/v1/guardrail_events?select=text_hash,llm_name,risk_score,pii_classes&order=timestamp.desc.nullslast&limit=400",
           { headers: { apikey: key, Authorization: "Bearer " + key } }
         );
         if (!r.ok) throw new Error("fetch failed");
@@ -1696,10 +1707,16 @@
         let alerts = 0;
         const cats = {};
         for (const row of rows) {
-          const id = row.user_id || row.user_email || row.device_id || "unknown";
+          const id = row.text_hash || row.llm_name || "unknown";
           identities.add(String(id));
           if (Number(row.risk_score || 0) >= 70) alerts += 1;
-          const firstCat = Array.isArray(row.pii_classes) ? row.pii_classes[0] : (Array.isArray(row.triggers) ? row.triggers[0] : "");
+          const raw = row.pii_classes;
+          const firstCat = Array.isArray(raw)
+            ? raw[0]
+            : String(raw || "")
+                .split(/[,;/|]/)
+                .map((s) => s.trim())
+                .filter(Boolean)[0] || "";
           if (firstCat) cats[firstCat] = (cats[firstCat] || 0) + 1;
         }
         const topCat = Object.entries(cats).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";

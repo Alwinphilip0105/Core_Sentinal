@@ -1,0 +1,8 @@
+{
+  "best": {
+    "eval_f1": 0.826,
+    "eval_recall_low": 1.0,
+    "eval_recall_med": 0.413,
+    "eval_recall_high": 0.989
+  }
+}

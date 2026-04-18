@@ -870,8 +870,11 @@
     async function loadFeedbackOverrideHashes(url) {
       const out = new Set();
       try {
+        const base = String(url || "").replace(/\/$/, "");
+        const sel = encodeURIComponent('text_hash,feedback_type,"timestamp",recorded_at');
+        const ord = encodeURIComponent('"timestamp".desc.nullslast');
         const resp = await fetch(
-          `${url}/rest/v1/feedback_corrections?select=text_hash,feedback_type,timestamp,recorded_at&order=timestamp.desc.nullslast&limit=1500`,
+          `${base}/rest/v1/feedback_corrections?select=${sel}&order=${ord}&limit=1500`,
           { headers: authHeaders(), cache: "no-store" }
         );
         if (!resp.ok) return out;
