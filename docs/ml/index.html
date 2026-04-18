@@ -557,6 +557,11 @@
     </details>
   </div>
 
+  <!-- If all network fetches for model_records fail, loadRetrainSummary() parses this (keep in sync when republishing docs/data/model_records.json). -->
+  <script type="application/json" id="ml-model-records-fallback">
+{"artifact_version":1,"generated_at":"2026-04-18T20:33:10.433713+00:00","dataset":{"train_samples":10455,"val_samples":485,"test_samples":2289},"metrics":{"accuracy":0.9121203184901209,"precision":0.9446945337620579,"recall":0.9588772845953003,"auc":0.7514706327301757,"fpr_non_high_as_high":0.5259938837920489,"false_negative_rate_risky":0.041122715404699736,"roc_auc":0.9144344703411822},"calibration":{"fpr":0.0015723270440251573},"charts":{"pr_curve_summary":{"high_class_curve":{"precision_values":[1,0.94],"recall_values":[0,1],"thresholds":[0,1],"operating_point":{},"holdout_threshold_point":{}}},"roc_curve_summary":{"high_class_curve":{"fpr_values":[0,1],"tpr_values":[0,1],"auc":0.9144344703411822,"operating_point":{},"holdout_threshold_point":{}}}}}
+  </script>
+
   <main class="container">
     <section class="row row-4">
       <article class="card">
@@ -1229,6 +1234,19 @@
         mlSbStatusRetrain =
           "Could not load docs/data/model_records.json (404/CORS/offline). KPIs stay at 0 or — until the file is reachable.";
       }
+      const emb = document.getElementById("ml-model-records-fallback");
+      if (emb && emb.textContent) {
+        try {
+          const data = JSON.parse(emb.textContent.trim());
+          if (isWebsiteRecordsSummary(data)) {
+            modelRecordsSourceLabel = "embedded-fallback";
+            mlSbStatusRetrain = `${mlSbStatusRetrain} Using embedded KPI snapshot.`;
+            return data;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
       return null;
     }
 
@@ -1263,7 +1281,10 @@
     }
 
     function applyRetrainSummary(summary) {
-      if (!summary || typeof summary !== "object") return;
+      if (!summary || typeof summary !== "object") {
+        retrainSummary = null;
+        return;
+      }
       if (summary.charts && typeof summary.charts === "object") {
         summary.evaluation = summary.evaluation || {};
         if (summary.charts.pr_curve_summary) {
@@ -1462,7 +1483,12 @@
 
     function animateCounters(metrics) {
       document.querySelectorAll(".countup").forEach((el) => {
-        const target = Number(el.dataset.target || 0);
+        const raw = el.dataset.target;
+        let target = Number.NaN;
+        if (raw !== undefined && raw !== "") {
+          const n = Number(raw);
+          if (Number.isFinite(n)) target = n;
+        }
         const dec = Number(el.dataset.decimals || 0);
         const suffix = el.dataset.suffix || "";
         countUp(el, target, dec, suffix);
@@ -2770,6 +2796,7 @@
     }
 
     async function loadDashboard() {
+      try {
       applyRetrainSummary(await loadRetrainSummary());
       lastModelRecordToken = deriveModelRecordToken(retrainSummary) || lastModelRecordToken;
       await enrichRetrainSummaryFromRiskPolicyFile();
@@ -2798,10 +2825,16 @@
       if (calibFprEl && Number.isFinite(Number(calibFprRaw))) {
         calibFprEl.dataset.target = String(Number(calibFprRaw) * 100);
       }
-      document.getElementById("fprMetric").dataset.target = String(Number.isFinite(metrics.fpr) ? metrics.fpr.toFixed(1) : Number.NaN);
-      document.getElementById("precisionTrend").textContent = usingDemo
-        ? "↑ stable operating precision"
-        : "↑ robust on validation sweep";
+      const fprMetricEl = document.getElementById("fprMetric");
+      if (fprMetricEl) {
+        fprMetricEl.dataset.target = String(Number.isFinite(metrics.fpr) ? metrics.fpr.toFixed(1) : Number.NaN);
+      }
+      const precisionTrendEl = document.getElementById("precisionTrend");
+      if (precisionTrendEl) {
+        precisionTrendEl.textContent = usingDemo
+          ? "↑ stable operating precision"
+          : "↑ robust on validation sweep";
+      }
       const fprBadgeEl = document.getElementById("fprBadge");
       if (fprBadgeEl && Number.isFinite(metrics.fpr)) {
         if (metrics.fpr > 20) {
@@ -2889,18 +2922,45 @@
       drawDistributionHeatmap(allEvents);
       const shouldUseDriftDemo = usingDemo || !metrics.hasCorrections || metrics.weeklyRates.every((v) => !Number.isFinite(Number(v)) || Number(v) === 0);
       drawDriftChart(shouldUseDriftDemo ? DEMO_DRIFT : metrics.weeklyRates);
-      document.getElementById("driftNote").textContent = shouldUseDriftDemo
-        ? "Demo drift trend — no live corrections yet."
-        : "Trend derived from live correction telemetry";
+      const driftNoteEl = document.getElementById("driftNote");
+      if (driftNoteEl) {
+        driftNoteEl.textContent = shouldUseDriftDemo
+          ? "Demo drift trend — no live corrections yet."
+          : "Trend derived from live correction telemetry";
+      }
 
       renderClassPerfTable();
       renderFalsePositiveLog(allEvents);
       renderActiveLearning(allEvents);
       renderThresholdSimulator(metrics);
       renderFprDonut(metrics);
-      setGauge(document.getElementById("accGaugeArc"), METRICS_STATIC.accuracy, 188.5);
+      const accGaugeArc = document.getElementById("accGaugeArc");
+      if (accGaugeArc) setGauge(accGaugeArc, METRICS_STATIC.accuracy, 188.5);
       animateCounters(metrics);
       updateMlSbStatusLine();
+      } catch (err) {
+        console.error(err);
+        const st = document.getElementById("mlSbStatus");
+        if (st) {
+          st.textContent = `Dashboard load error: ${err && err.message ? err.message : String(err)}`;
+          st.style.color = "var(--warn)";
+        }
+        try {
+          const emb = document.getElementById("ml-model-records-fallback");
+          if (emb && emb.textContent && !retrainSummary) {
+            const data = JSON.parse(emb.textContent.trim());
+            if (isWebsiteRecordsSummary(data)) applyRetrainSummary(data);
+          }
+        } catch {
+          /* ignore */
+        }
+        try {
+          animateCounters({ fpr: Number.NaN, hasFeedbackLabels: false, hasCorrections: false, weeklyRates: [] });
+        } catch {
+          /* ignore */
+        }
+        updateMlSbStatusLine();
+      }
     }
 
     function updateMlSbStatusLine() {
