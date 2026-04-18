@@ -26,4 +26,4 @@ Dataset placeholders and READMEs under `core-sentinel-guardrail/data/` (e.g. Pat
 
 ## Root README
 
-The [repository root README](../README.md) is the main landing page for GitHub.
+The [repository root README](../README.md) is the main landing page for GitHub. It documents **GitHub Pages** assets under `docs/` (hub, ML health, privacy dashboard, admin), **`docs/data/*.json`** published metrics, and **Supabase** table/query expectations for live dashboards.

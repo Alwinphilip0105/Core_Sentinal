@@ -23,6 +23,7 @@ Core Sentinel is a desktop-first, privacy-focused guardrail that intercepts clip
 - [Start Here (New Users)](#start-here-new-users)
 - [Model Card](#model-card)
 - [Dashboards](#dashboards)
+- [Website data and Supabase](#website-data-and-supabase)
 - [Interactive Widget Demo](#-interactive-widget-demo)
 - [Quick Start](#quick-start)
 - [Project Structure](#project-structure)
@@ -70,7 +71,7 @@ If you're new to Core Sentinel, use this order:
 
 1. Launch the **interactive demo**: [▶ Demo](https://alwinphilip0105.github.io/Core_Sentinal/demo/)
 2. Open the **website guided walkthrough**: [Landing page](https://alwinphilip0105.github.io/Core_Sentinal/)
-3. Explore dashboards from the **hub**: [Dashboard hub](https://alwinphilip0105.github.io/Core_Sentinal/hub.html)
+3. Explore dashboards from the **hub**: [Dashboard hub](https://alwinphilip0105.github.io/Core_Sentinal/hub.html) (custom domain: [hub](https://alwinphilip.online/Core_Sentinal/hub.html))
 4. For local setup, continue to [Quick Start](#quick-start).
 
 > **Current platform:** Windows 10/11 only. Linux and iOS support are planned in future releases.
@@ -96,15 +97,18 @@ Numbers change with each train/eval run. After `python evaluate_test.py`, open:
 
 **Product priority:** a guardrail should not optimize headline accuracy at the expense of letting **high/critical** content look “safe” while **low-risk** text is over-penalized. Evaluation and threshold calibration treat **high recall** and **missed-high-as-low** errors as first-class; macro-F1 remains a summary, not the sole objective.
 
+**Published site metrics:** the GitHub Pages bundle includes `docs/data/model_records.json` (binary holdout + calibration snapshots used by the ML Health page). Headline numbers are **not** interchangeable with validation-only sweeps—read `metric_notes` in that file for FPR vs FNR definitions at the chosen threshold.
+
 ## Dashboards
 
-Core Sentinel ships with multiple dashboards for users, operators, and admins.
+Core Sentinel ships with multiple dashboards for users, operators, and admins. Static HTML under **`docs/`** is what GitHub Pages serves (`/` on Pages maps to the `docs` folder on `main`).
 
 ### Privacy Dashboard
 
 - Risk timeline and score trends
 - Streak tracking
 - Recent event history
+- Live Supabase mode retries several `guardrail_events` query shapes so minor schema drift does not break the page
 
 ![Privacy Dashboard Preview](docs/hub-preview-top.png)
 
@@ -113,6 +117,7 @@ Core Sentinel ships with multiple dashboards for users, operators, and admins.
 - Precision/Recall views
 - Confusion matrix
 - Drift and threshold simulation
+- Loads **`docs/data/model_records.json`** from the same origin when possible, with an embedded JSON fallback if fetches fail (hard refresh after deploy if you see stale zeros)
 
 ![ML Dashboard Preview](docs/ml-health-preview-final.png)
 
@@ -123,6 +128,16 @@ Core Sentinel ships with multiple dashboards for users, operators, and admins.
 - Risk category rollups
 
 ![Admin Dashboard Preview](docs/admin-preview-redesign-demo.png)
+
+## Website data and Supabase
+
+| Asset | Role |
+|--------|------|
+| `docs/data/model_records.json` | ML Health KPIs, PR/ROC summaries, calibration snippets—regenerate or sync from training outputs when you publish a new model. |
+| `docs/data/train_eval_summary.json` | Hub “model KPI” card seed (macro-style `best` block); retrain / `model_records` data overrides when available. |
+| `docs/ml/risk_policy.json` | Optional policy snapshot for the ML page. |
+
+**Supabase REST must match your tables.** Apply the SQL under `core-sentinel-guardrail/supabase/` (e.g. `guardrail_events.sql`, `feedback_corrections.sql`, `retrain_runs.sql`). The stock `guardrail_events` table exposes fields such as `timestamp`, `text_hash`, `action`, `risk_score`, `pii_classes`, and `llm_name`—do not select columns that do not exist in your project or PostgREST will return **400**. The `feedback_corrections` table uses a reserved **`"timestamp"`** column; clients should quote it in `select` / `order` parameters. Grant anon **select** where dashboards read live data.
 
 Additional UI previews:
 
@@ -217,6 +232,7 @@ Core_Sentinal/
 |- docs/
 |  |- index.html
 |  |- hub.html
+|  |- data/
 |  |- dashboard/
 |  |- ml/
 |- core-sentinel-guardrail/
@@ -310,4 +326,4 @@ MIT License. See [LICENSE](LICENSE).
 
 ---
 
-Built as an ML systems capstone project with production-oriented guardrail engineering.
+Core Sentinel combines local inference, optional Supabase sync, and static documentation dashboards so operators can inspect metrics and policy without running the desktop app.
