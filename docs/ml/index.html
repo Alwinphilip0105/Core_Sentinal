@@ -971,32 +971,48 @@
       );
     }
 
+    /** Absolute /.../data/model_records.json for sites hosted under a path (e.g. /Core_Sentinal/ml/). */
+    function pathPrefixModelRecordsUrl() {
+      try {
+        const p = window.location.pathname || "";
+        const i = p.indexOf("/ml");
+        if (i === -1) return "";
+        const base = p.slice(0, i).replace(/\/$/, "");
+        const rel = base ? `${base}/data/model_records.json` : "/data/model_records.json";
+        return new URL(rel, window.location.origin).href;
+      } catch {
+        return "";
+      }
+    }
+
     function getModelRecordsCandidates() {
       const metaEl = document.querySelector('meta[name="core-sentinel-model-records-url"]');
       const metaUrl = metaEl && metaEl.content ? metaEl.content.trim() : "";
       const override = (localStorage.getItem("model_records_url") || "").trim();
       const canonicalGithubRaw = "https://raw.githubusercontent.com/Alwinphilip0105/Core_Sentinal/main/docs/data/model_records.json";
       const cacheBust = `ts=${Date.now()}`;
+      let sameOriginResolved = "";
+      try {
+        sameOriginResolved = new URL("../data/model_records.json", window.location.href).href;
+      } catch {
+        sameOriginResolved = "";
+      }
+      const pathPrefixResolved = pathPrefixModelRecordsUrl();
       return Array.from(
         new Set(
           [
             override,
             metaUrl,
-            `${canonicalGithubRaw}?${cacheBust}`,
-            canonicalGithubRaw,
+            pathPrefixResolved,
+            sameOriginResolved,
             "../data/model_records.json",
             "./../data/model_records.json",
             "../../docs/data/model_records.json",
             "./data/model_records.json",
             "data/model_records.json",
+            `${canonicalGithubRaw}?${cacheBust}`,
+            canonicalGithubRaw,
             "/docs/data/model_records.json",
-            (() => {
-              try {
-                return new URL("../data/model_records.json", window.location.href).href;
-              } catch {
-                return "";
-              }
-            })(),
             (() => {
               try {
                 return new URL("/docs/data/model_records.json", window.location.href).href;
@@ -1232,8 +1248,7 @@
     }
 
     async function fetchModelRecordsToken() {
-      const candidates = ["../data/model_records.json", "../../docs/data/model_records.json"];
-      for (const url of candidates) {
+      for (const url of getModelRecordsCandidates()) {
         try {
           const resp = await fetch(url, { cache: "no-store" });
           if (!resp.ok) continue;
