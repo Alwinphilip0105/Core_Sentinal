@@ -1168,12 +1168,28 @@ async function _loadLiveDashboard(){
   let supabaseErr = "";
   try {
     if (url && key) {
-      const r = await fetch(
-        `${url}/rest/v1/guardrail_events?select=timestamp,risk_score,action,pii_classes,llm_name,text_hash&order=timestamp.desc.nullslast&limit=1200`,
-        { headers: { apikey: key, Authorization: `Bearer ${key}` }, cache: "no-store" }
-      );
-      if (!r.ok) throw new Error(`Supabase fetch failed: ${r.status}`);
-      const rows = await r.json();
+      const base = String(url).replace(/\/$/, "");
+      const opts = { headers: { apikey: key, Authorization: `Bearer ${key}` }, cache: "no-store" };
+      const candidates = [
+        "/rest/v1/guardrail_events?select=timestamp,risk_score,action,pii_classes,llm_name,text_hash&order=timestamp.desc.nullslast&limit=1200",
+        "/rest/v1/guardrail_events?select=created_at,risk_score,action,pii_classes,llm_name,text_hash&order=created_at.desc.nullslast&limit=1200",
+        "/rest/v1/guardrail_events?select=timestamp,risk_score,action,pii_class,llm_name&order=timestamp.desc.nullslast&limit=1200",
+        "/rest/v1/guardrail_events?select=*&order=id.desc&limit=1200"
+      ];
+      let rows = null;
+      let lastHttpErr = "";
+      for (const q of candidates) {
+        const r = await fetch(`${base}${q}`, opts);
+        if (r.ok) {
+          rows = await r.json();
+          break;
+        }
+        const body = (await r.text()).slice(0, 220).replace(/\s+/g, " ").trim();
+        lastHttpErr = `HTTP ${r.status}${body ? `: ${body}` : ""}`;
+      }
+      if (!Array.isArray(rows)) {
+        throw new Error(`Supabase fetch failed: ${lastHttpErr || "no compatible query"}`);
+      }
       if (!Array.isArray(rows) || rows.length === 0) throw new Error("No guardrail_events rows");
       try {
         localStorage.setItem("sentinel_recent_events", JSON.stringify(rows.slice(0, 500)));
