@@ -935,15 +935,40 @@
       return null;
     }
 
+    /** JSON null / "" coerce to 0 with Number(); treat those as missing metrics. */
+    function isPresentMetric(v) {
+      if (v === null || v === undefined) return false;
+      if (typeof v === "string" && v.trim() === "") return false;
+      return true;
+    }
+
     function isWebsiteRecordsSummary(summary) {
       if (!summary || typeof summary !== "object") return false;
       const datasetTrain = Number(summary?.dataset?.train_samples);
       const hasDataset = Number.isFinite(datasetTrain) && datasetTrain > 0;
       const sourceMode = String(summary?.source?.mode || "").toLowerCase();
       const metrics = summary.metrics && typeof summary.metrics === "object" ? summary.metrics : {};
-      const hasRecommendedThreshold = Number.isFinite(Number(metrics.recommended_threshold));
-      const hasKeyMetrics = Number.isFinite(Number(metrics.accuracy)) && Number.isFinite(Number(metrics.precision));
-      return hasDataset || sourceMode.includes("sync") || (hasRecommendedThreshold && hasKeyMetrics);
+      const hasRecommendedThreshold =
+        isPresentMetric(metrics.recommended_threshold)
+        && Number.isFinite(Number(metrics.recommended_threshold));
+      const hasKeyMetrics =
+        isPresentMetric(metrics.accuracy)
+        && isPresentMetric(metrics.precision)
+        && Number.isFinite(Number(metrics.accuracy))
+        && Number.isFinite(Number(metrics.precision));
+      const hasCurves = !!(
+        summary.charts?.pr_curve_summary
+        || summary.evaluation?.pr_curve_summary
+        || summary.charts?.roc_curve_summary
+        || summary.evaluation?.roc_curve_summary
+      );
+      const hasStamp = typeof summary.generated_at === "string" && summary.generated_at.length > 4;
+      return (
+        hasDataset
+        || sourceMode.includes("sync")
+        || (hasRecommendedThreshold && hasKeyMetrics)
+        || (hasDataset && hasCurves && hasStamp)
+      );
     }
 
     function getModelRecordsCandidates() {
@@ -992,6 +1017,7 @@
     }
 
     function toPctMetric(raw) {
+      if (!isPresentMetric(raw)) return Number.NaN;
       const n = Number(raw);
       if (!Number.isFinite(n)) return Number.NaN;
       return n <= 1 ? n * 100 : n;
@@ -1019,8 +1045,10 @@
 
     function deriveMacroAuprc(summary) {
       if (!summary || typeof summary !== "object") return Number.NaN;
-      const m = Number(summary.metrics?.auc);
-      if (Number.isFinite(m)) return m;
+      if (isPresentMetric(summary.metrics?.auc)) {
+        const m = Number(summary.metrics.auc);
+        if (Number.isFinite(m)) return m;
+      }
       const cls = summary.evaluation?.pr_curve_summary?.classes;
       if (cls && typeof cls === "object") {
         const vals = [];
@@ -1105,6 +1133,7 @@
     }
 
     function pctFromUnit(value, fallback) {
+      if (!isPresentMetric(value)) return fallback;
       const n = Number(value);
       if (!Number.isFinite(n)) return fallback;
       return n <= 1 ? n * 100 : n;
@@ -1180,6 +1209,10 @@
         mlSbStatusRetrain = "Configure URL + anon key below (or save from Hub).";
       }
       modelRecordsSourceLabel = "unavailable";
+      if (!mlSbStatusRetrain) {
+        mlSbStatusRetrain =
+          "Could not load docs/data/model_records.json (404/CORS/offline). KPIs stay at 0 or — until the file is reachable.";
+      }
       return null;
     }
 
@@ -1229,11 +1262,13 @@
       const metrics = summary.metrics || {};
       const feedback = summary.feedback || {};
       const toPctOrNaN = (v) => {
+        if (!isPresentMetric(v)) return Number.NaN;
         const n = Number(v);
         if (!Number.isFinite(n)) return Number.NaN;
         return n <= 1 ? n * 100 : n;
       };
       const toUnitOrNaN = (v) => {
+        if (!isPresentMetric(v)) return Number.NaN;
         const n = Number(v);
         return Number.isFinite(n) ? n : Number.NaN;
       };

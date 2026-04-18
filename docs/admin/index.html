@@ -1212,12 +1212,13 @@
         host.appendChild(rowLabel);
         CAT_KEYS.forEach((k) => {
           const n = r[k] || 0;
-          const alpha = n === 0 ? 0.06 : Math.min(0.86, (n / max) * 0.9);
+          const alpha = n === 0 ? 0.1 : Math.min(0.86, (n / max) * 0.9);
           const bg = `rgba(229,57,53,${alpha})`;
           const el = document.createElement("button");
           el.type = "button";
           el.className = "hm-cell";
           el.style.background = bg;
+          el.style.boxShadow = n === 0 ? "inset 0 0 0 1px rgba(255,255,255,0.08)" : "none";
           el.textContent = String(n);
           el.title = `${r.department} · ${CAT_HEADER_LABELS[k] || k} = ${n}`;
           el.onclick = () => {
@@ -1497,9 +1498,13 @@
           else if (pr === "med") tm += 1;
           else if (pr === "high") th += 1;
         });
-        const tierLine = tl + tm + th ? ` Model tier-only labels in pii_class: low ${tl}, med ${tm}, high ${th} (see bar chart for exact strings).` : "";
+        const tierLine = tl + tm + th ? ` Tier-only labels in pii_class: low ${tl}, med ${tm}, high ${th} (see PII frequency bars for exact strings).` : "";
+        const tierExplain =
+          tl + tm + th > rows.length * 0.4
+            ? " SSN/Email/Phone/API Key/Address/Medical stay at 0 when events do not include entity-level tags (NER labels or keyword-matched classes): low/med/high are sensitivity tiers, not entity types, so the heatmap assigns those events to Other."
+            : "";
         hw.textContent = minT && maxT
-          ? `Event time range in current load: ${minT.toLocaleDateString()}–${maxT.toLocaleDateString()} · ${rows.length} events.${tierLine}`
+          ? `Event time range in current load: ${minT.toLocaleDateString()}–${maxT.toLocaleDateString()} · ${rows.length} events.${tierLine}${tierExplain}`
           : "No valid timestamps in the current event batch.";
       } else if (hw) hw.textContent = "";
       updateLiveMeta();
