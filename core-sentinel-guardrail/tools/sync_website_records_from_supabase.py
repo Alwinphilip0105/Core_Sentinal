@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -212,7 +213,15 @@ def main() -> None:
 
     row = _fetch_latest_retrain_row(url, key, table)
     if not row:
-        raise SystemExit("No retrain row found in Supabase table.")
+        msg = (
+            f"No retrain row found in Supabase table {table!r}. "
+            "Publish at least one row (auto-retrain) or check RLS/policies for SELECT."
+        )
+        strict = os.environ.get("GUARDRAIL_SYNC_STRICT", "").strip().lower() in ("1", "true", "yes")
+        if strict:
+            raise SystemExit(msg)
+        print(f"::warning::{msg}", file=sys.stderr)
+        raise SystemExit(0)
 
     payload = build_records_from_row(row)
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)

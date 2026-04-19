@@ -8,6 +8,8 @@
 #   GUARDRAIL_RETRAIN_SUPABASE_TABLE    — default retrain_runs
 #
 # If URL or any key is missing, the sync step exits 0 with a warning (does not fail CI).
+# If the retrain table is empty or unreadable, sync exits 0 with ::warning:: unless
+# GUARDRAIL_SYNC_STRICT=1 is set on the job.
 
 name: Sync Website Model Records
 

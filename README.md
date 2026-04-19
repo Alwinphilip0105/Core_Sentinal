@@ -215,7 +215,7 @@ For retrain metadata publishing, create the table in Supabase SQL Editor:
 
 Paste the contents of `core-sentinel-guardrail/supabase/retrain_runs.sql` directly.
 
-**GitHub Actions (`Sync Website Model Records`):** add repository **Actions** secrets `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_ANON_KEY` if PostgREST can read `retrain_runs`). Local `.env` values are not available to CI; without these secrets the scheduled workflow skips sync with a warning instead of failing.
+**GitHub Actions (`Sync Website Model Records`):** add repository **Actions** secrets `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_ANON_KEY` if PostgREST can read `retrain_runs`). Local `.env` values are not available to CI; without these secrets the scheduled workflow skips sync with a warning instead of failing. If `retrain_runs` has **no rows** yet, the sync script exits successfully with a warning—ensure at least one retrain publish has run, or set job env `GUARDRAIL_SYNC_STRICT=1` to fail the step when empty.
 
 ### Run
 
