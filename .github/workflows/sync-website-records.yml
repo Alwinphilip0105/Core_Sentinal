@@ -1,3 +1,14 @@
+# Publishes docs/data/model_records.json from the latest Supabase retrain row.
+#
+# Repository secrets (Settings → Secrets and variables → Actions):
+#   SUPABASE_URL                        — project URL (https://….supabase.co)
+#   SUPABASE_SERVICE_ROLE_KEY           — preferred (server-side sync)
+#   SUPABASE_ANON_KEY                   — optional fallback if RLS allows SELECT on retrain_runs
+# Optional:
+#   GUARDRAIL_RETRAIN_SUPABASE_TABLE    — default retrain_runs
+#
+# If URL or any key is missing, the sync step exits 0 with a warning (does not fail CI).
+
 name: Sync Website Model Records
 
 on:
@@ -29,8 +40,17 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           GUARDRAIL_RETRAIN_SUPABASE_TABLE: ${{ secrets.GUARDRAIL_RETRAIN_SUPABASE_TABLE }}
         run: |
+          if [ -z "${SUPABASE_URL:-}" ]; then
+            echo "::warning::SUPABASE_URL is not set. Add repository secret SUPABASE_URL (and a key) to enable sync."
+            exit 0
+          fi
+          if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ] && [ -z "${SUPABASE_ANON_KEY:-}" ]; then
+            echo "::warning::No Supabase key: set SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY in repository secrets."
+            exit 0
+          fi
           python "core-sentinel-guardrail/tools/sync_website_records_from_supabase.py"
 
       - name: Commit and push if changed
