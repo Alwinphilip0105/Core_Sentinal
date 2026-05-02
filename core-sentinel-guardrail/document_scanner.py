@@ -1,5 +1,5 @@
 """
-Full document scan: extract text, local PII scoring, optional Gemini, SQLite + HTML report.
+Full document scan: extract text, local PII scoring, SQLite + HTML report.
 """
 
 from __future__ import annotations
@@ -28,9 +28,9 @@ _GUARDRAIL_ROOT = Path(__file__).resolve().parent
 if str(_GUARDRAIL_ROOT) not in sys.path:
     sys.path.insert(0, str(_GUARDRAIL_ROOT))
 
-from gemini_scanner import merge_local_and_gemini, scan_with_gemini  # noqa: E402
 from infer import score_clipboard_with_pii  # noqa: E402
 from risk_mapping import strong_regex_pii_spans  # noqa: E402
+from sentinel_sync_daemon import is_placeholder_supabase_url  # noqa: E402
 from text_extractor import extract  # noqa: E402
 
 DB_PATH = _GUARDRAIL_ROOT / "logs" / "scan_results.db"
@@ -231,7 +231,6 @@ def _init_db() -> None:
             risk_score  INTEGER,
             issue_count INTEGER,
             pii_classes TEXT,
-            gemini_used INTEGER,
             report_path TEXT,
             findings    TEXT
         )
@@ -243,7 +242,6 @@ def _init_db() -> None:
 
 def scan_document(
     file_path: str,
-    use_gemini: bool = True,
     progress_cb=None,
 ) -> dict:
     """
@@ -295,13 +293,7 @@ def scan_document(
             result["text_preview"] = page_text[:200]
             page_results.append(result)
 
-        gemini_findings: list = []
-        if use_gemini and os.environ.get("GEMINI_API_KEY"):
-            _progress(65, "Running Gemini AI analysis...")
-            full_text = extracted.get("text", "")
-            gemini_findings = scan_with_gemini(full_text)
-
-        _progress(80, "Merging findings...")
+        _progress(65, "Aggregating findings...")
 
         overall_risk = "low"
         if any(r.get("action") == "block" for r in page_results):
@@ -309,21 +301,10 @@ def scan_document(
         elif any(r.get("action") == "warn" for r in page_results):
             overall_risk = "med"
 
-        if gemini_findings:
-            merged_doc = merge_local_and_gemini(
-                {
-                    "risk": overall_risk,
-                    "spans": [s for r in page_results for s in r.get("spans", [])],
-                },
-                gemini_findings,
-            )
-            overall_risk = merged_doc.get("risk", overall_risk)
-
         flagged_pages = [r for r in page_results if r.get("action") in ("warn", "block")]
 
         all_classes = list(
             {s.get("class", "") for r in page_results for s in r.get("spans", [])}
-            | {f.get("type", "") for f in gemini_findings}
         )
         all_classes = [c for c in all_classes if c]
 
@@ -339,11 +320,9 @@ def scan_document(
             "method": extracted.get("method", "unknown"),
             "overall_risk": overall_risk,
             "risk_score": max_score,
-            "issue_count": total_span_issues + len(gemini_findings),
+            "issue_count": total_span_issues,
             "pii_classes": all_classes,
             "flagged_pages": flagged_pages,
-            "gemini_findings": gemini_findings,
-            "gemini_used": bool(gemini_findings),
             "scanned_at": datetime.now().isoformat(),
             "summary": (
                 f"{total_span_issues} PII span(s); {len(flagged_pages)} of {len(pages)} page(s) flagged"
@@ -381,9 +360,9 @@ def _save_to_db(result: dict) -> int:
         INSERT INTO scans
         (scanned_at, file_name, file_path, file_size,
          page_count, method, overall_risk, risk_score,
-         issue_count, pii_classes, gemini_used,
+         issue_count, pii_classes,
          report_path, findings)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
             result["scanned_at"],
@@ -396,7 +375,6 @@ def _save_to_db(result: dict) -> int:
             result["risk_score"],
             result["issue_count"],
             ",".join(result["pii_classes"]),
-            1 if result["gemini_used"] else 0,
             result.get("report_path", ""),
             json.dumps(result["flagged_pages"]),
         ),
@@ -415,9 +393,11 @@ def _update_db_report_path(row_id: int, report_path: str) -> None:
 
 
 def _sync_to_supabase(result: dict) -> None:
-    url = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_ANON_KEY")
+    url = (os.environ.get("SUPABASE_URL") or "").strip()
+    key = (os.environ.get("SUPABASE_ANON_KEY") or "").strip()
     if not url or not key:
+        return
+    if is_placeholder_supabase_url(url):
         return
     try:
         from supabase import create_client
@@ -428,15 +408,21 @@ def _sync_to_supabase(result: dict) -> None:
                 "scanned_at": result["scanned_at"],
                 "file_name": result["file_name"],
                 "overall_risk": result["overall_risk"],
-                "risk_score": result["risk_score"],
-                "issue_count": result["issue_count"],
+                "risk_score": int(result["risk_score"] or 0),
+                "issue_count": int(result["issue_count"] or 0),
                 "pii_classes": ",".join(result["pii_classes"]),
-                "gemini_used": result["gemini_used"],
             }
         ).execute()
-        print("[supabase] scan synced")
+        print("[supabase] document_scans insert OK")
     except Exception as e:
-        print(f"[supabase] sync failed (ok): {e}")
+        msg = str(e).lower()
+        hint = ""
+        if "document_scans" in msg or "pgrst205" in msg or "schema cache" in msg:
+            hint = (
+                " Create the table: run core-sentinel-guardrail/supabase/document_scans.sql "
+                "in the Supabase SQL Editor."
+            )
+        print(f"[supabase] document_scans sync failed: {e}{hint}")
 
 
 def _generate_html_report(result: dict, *, file_path: str | None = None) -> str:
@@ -492,25 +478,6 @@ def _generate_html_report(result: dict, *, file_path: str | None = None) -> str:
           </div>
           <div style="margin-top:6px;">{spans_html}</div>
           {section_warnings_html}
-        </div>"""
-
-    gemini_cards = ""
-    for f in result.get("gemini_findings", []):
-        t = html.escape(str(f.get("type", "")))
-        tx = html.escape(str(f.get("text", ""))[:50])
-        rs = html.escape(str(f.get("reason", "")))
-        gemini_cards += f"""
-        <div style="border:1px solid #e3f2fd;border-radius:8px;
-                    padding:10px;margin:6px 0;
-                    border-left:4px solid #1565C0;">
-          <b style="color:#1565C0;">{t}</b>
-          <span style="background:#e3f2fd;padding:1px 6px;
-                       border-radius:3px;margin-left:8px;">
-            {tx}
-          </span>
-          <div style="color:#888;font-size:11px;margin-top:4px;">
-            {rs}
-          </div>
         </div>"""
 
     file_stem = path.stem if path.name else "report"
@@ -572,12 +539,6 @@ def _generate_html_report(result: dict, *, file_path: str | None = None) -> str:
       <div class="stat-val">{method_u}</div>
       <div class="stat-lbl">METHOD</div>
     </div>
-    <div class="stat">
-      <div class="stat-val">
-        {'✓' if result['gemini_used'] else '—'}
-      </div>
-      <div class="stat-lbl">GEMINI AI</div>
-    </div>
   </div>
   <div style="margin-top:12px;color:#666;font-size:13px;">
     {summary}
@@ -585,9 +546,8 @@ def _generate_html_report(result: dict, *, file_path: str | None = None) -> str:
 </div>
 
 {f'<h2>Local model findings</h2>{cards}' if cards else ''}
-{f'<h2>Gemini AI findings</h2>{gemini_cards}' if gemini_cards else ''}
 
-{'<div style="background:#e8f5e9;padding:16px;border-radius:8px;color:#2E7D32;font-weight:600;">✓ No PII detected in this document</div>' if not cards and not gemini_cards else ''}
+{'<div style="background:#e8f5e9;padding:16px;border-radius:8px;color:#2E7D32;font-weight:600;">✓ No PII detected in this document</div>' if not cards else ''}
 
 <div style="margin-top:32px;color:#aaa;
             font-size:11px;text-align:center;">

@@ -631,7 +631,6 @@
             <div class="preview" id="safePreview">No changes yet.</div>
             <div class="foot-actions">
               <button class="foot-btn" id="redactBtn">Redact</button>
-              <button class="foot-btn" id="rephraseBtn">Rephrase</button>
               <button class="foot-btn primary" id="fixAllBtn">Fix All</button>
               <button class="foot-btn" id="skipAllBtn">Skip All</button>
               <button class="foot-btn" id="copyBtn">Copy</button>
@@ -723,7 +722,6 @@
       skipAll: document.getElementById("skipAllBtn"),
       copy: document.getElementById("copyBtn"),
       redact: document.getElementById("redactBtn"),
-      rephrase: document.getElementById("rephraseBtn"),
       proceed: document.getElementById("proceedBtn"),
       preview: document.getElementById("safePreview"),
       maskRow: document.getElementById("maskRow"),
@@ -1111,16 +1109,10 @@
       el.maskRow.classList.add("show");
       updatePreview();
     };
-    el.rephrase.onclick = () => {
-      if (!state.lastRaw) return;
-      state.lastSafe = `Sanitized summary: ${maskByMode(state.lastRaw, 3)}`;
-      el.preview.textContent = state.lastSafe;
-      toast("Rephrased to safe summary");
-    };
     el.proceed.onclick = () => {
       if (el.proceed.classList.contains("dim")) return;
       appendMsg("user", state.lastSafe || maskByMode(state.lastRaw, 0));
-      appendMsg("ai", "Safe paste accepted. Continuing with remediation-compliant content.");
+      appendMsg("ai", "Safe paste accepted. Continuing with remediation-aligned content.");
       closePanel();
       toast("Auto-pasted safe version");
     };

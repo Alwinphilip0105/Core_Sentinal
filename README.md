@@ -20,6 +20,7 @@ Core Sentinel is a desktop-first, privacy-focused guardrail that intercepts clip
 ## Table of Contents
 
 - [Architecture](#architecture)
+- [ML Architecture](#ml-architecture)
 - [Start Here (New Users)](#start-here-new-users)
 - [Model Card](#model-card)
 - [Dashboards](#dashboards)
@@ -64,6 +65,10 @@ flowchart TD
 6. Aggregate into final 0-100 risk score.
 7. Route to silent, warn, or block.
 8. Capture optional correction feedback for retraining.
+
+## ML Architecture
+
+For a detailed technical analysis of the machine learning architecture, the three-layer detection pipeline, threshold calibration, metrics, dataset composition, HIPAA coverage, and comparative trade-offs, see **[ML Architecture Analysis](core-sentinel-guardrail/docs/ML_ANALYSIS.md)**.
 
 ## Start Here (New Users)
 
@@ -137,7 +142,7 @@ Core Sentinel ships with multiple dashboards for users, operators, and admins. S
 | `docs/data/train_eval_summary.json` | Hub “model KPI” card seed (macro-style `best` block); retrain / `model_records` data overrides when available. |
 | `docs/ml/risk_policy.json` | Optional policy snapshot for the ML page. |
 
-**Supabase REST must match your tables.** Apply the SQL under `core-sentinel-guardrail/supabase/` (e.g. `guardrail_events.sql`, `feedback_corrections.sql`, `retrain_runs.sql`). The stock `guardrail_events` table exposes fields such as `timestamp`, `text_hash`, `action`, `risk_score`, `pii_classes`, and `llm_name`—do not select columns that do not exist in your project or PostgREST will return **400**. The `feedback_corrections` table uses a reserved **`"timestamp"`** column; clients should quote it in `select` / `order` parameters. Grant anon **select** where dashboards read live data.
+**Supabase REST must match your tables.** Apply the SQL under `core-sentinel-guardrail/supabase/` (e.g. `guardrail_events.sql`, `feedback_corrections.sql`, `retrain_runs.sql`, `document_scans.sql` for local file scan telemetry). The stock `guardrail_events` table exposes fields such as `timestamp`, `text_hash`, `action`, `risk_score`, `pii_classes`, and `llm_name`—do not select columns that do not exist in your project or PostgREST will return **400**. The `feedback_corrections` table uses a reserved **`"timestamp"`** column; clients should quote it in `select` / `order` parameters. Grant anon **select** where dashboards read live data.
 
 Additional UI previews:
 

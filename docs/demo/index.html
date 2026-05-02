@@ -1015,7 +1015,6 @@
       cursor: pointer;
     }
     .fab.redact { background: #ffe3a9; border-color: #ffd179; color: #724d00; }
-    .fab.rephrase { background: #dbe9ff; border-color: #adc8ff; color: #18479b; }
     .fab.fixall { background: #02c39a; border-color: rgba(2,195,154,.65); color: #04241e; }
     .fab.proceed {
       background: transparent;
@@ -1359,9 +1358,6 @@ Summary: Need safer prompt before sharing externally.
             </div>
           </div>
           <div class="toolbar" id="toolbar">
-            <button class="tb" data-action="rewrite">✏
-              <span class="tb-tip"><b>Rewrite text without PII</b><span>[Alt+R]</span></span>
-            </button>
             <button class="tb amber" data-action="redact">▓
               <span class="tb-tip"><b>Mask PII (partial digits, masked email/IP, asterisks elsewhere)</b><span>[Alt+D]</span></span>
             </button>
@@ -1434,7 +1430,6 @@ Summary: Need safer prompt before sharing externally.
         <div class="p-foot">
           <div class="fa">
             <button class="fab redact" id="redactBtn">Redact</button>
-            <button class="fab rephrase" id="rephraseBtn">Rephrase</button>
             <button class="fab" id="snoozeBtn">Snooze ▾</button>
             <button class="fab fixall" id="fixAllBtn">Fix all</button>
             <button class="fab" id="skipAllBtn">Skip all</button>
@@ -2439,7 +2434,6 @@ Issues found: 7
     q("toolbar").querySelectorAll(".tb").forEach((b) => {
       b.onclick = () => {
         const a = b.dataset.action;
-        if (a === "rewrite") showToast("Rewritten and copied");
         if (a === "redact") showToast("Masked and copied");
         if (a === "encrypt") showToast("Encrypted and copied", "#c0d9ff", "rgba(66,165,245,.2)", "rgba(66,165,245,.45)");
         if (a === "scan") openPicker();
@@ -2451,11 +2445,6 @@ Issues found: 7
     q("panelMin").onclick = closePanel;
     q("panelSettings").onclick = openSettings;
     q("redactBtn").onclick = () => updatePreview();
-    q("rephraseBtn").onclick = () => {
-      q("previewTitle").textContent = "Rephrased version:";
-      q("previewText").textContent = maskText(state.raw, 3);
-      q("previewBox").classList.add("show");
-    };
     q("fixAllBtn").onclick = fixAll;
     q("skipAllBtn").onclick = () => {
       state.issues.forEach((i) => i.skipped = true);

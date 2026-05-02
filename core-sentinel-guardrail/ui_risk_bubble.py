@@ -25,7 +25,6 @@ from pii_remediation import encrypt_pii, encrypt_text, hash_pii, mask_pii, mask_
 
 import user_settings
 from character_widget import CharacterWidget
-from infer import score_clipboard_with_pii
 from toast import show_toast
 from traffic_light_indicator import COLOR_HOUSING, H_TL, TrafficLightIndicator, W_TL
 from ui_bubble_toolbar import BubbleToolbar, ToolbarTooltip
@@ -910,12 +909,10 @@ class RiskBubble(QtWidgets.QWidget):
         if self._toolbar is not None:
             return self._toolbar
         self._toolbar = BubbleToolbar(self)
-        self._toolbar.rephrase_clicked.connect(self._on_toolbar_rephrase)
         self._toolbar.redact_clicked.connect(self._on_toolbar_redact)
         self._toolbar.encrypt_clicked.connect(self._on_toolbar_encrypt)
         self._toolbar.scan_file_clicked.connect(self._on_toolbar_scan_file)
         self._toolbar.settings_clicked.connect(self._on_toolbar_settings)
-        self._toolbar.rephrase_clicked.connect(self._hide_toolbar_immediately)
         self._toolbar.redact_clicked.connect(self._hide_toolbar_immediately)
         self._toolbar.encrypt_clicked.connect(self._hide_toolbar_immediately)
         self._toolbar.scan_file_clicked.connect(self._hide_toolbar_immediately)
@@ -1042,9 +1039,6 @@ class RiskBubble(QtWidgets.QWidget):
     def _toggle_monitoring(self) -> None:
         self._on_toolbar_power()
 
-    def _do_rephrase(self) -> None:
-        self._on_toolbar_rephrase()
-
     def _do_redact(self) -> None:
         self._on_toolbar_redact()
 
@@ -1135,28 +1129,6 @@ class RiskBubble(QtWidgets.QWidget):
         self._apply_opacity_target()
         self.update()
         self._restart_toolbar_idle_timer()
-
-    def _on_toolbar_rephrase(self) -> None:
-        self._restart_toolbar_idle_timer()
-        cb = QtGui.QGuiApplication.clipboard()
-        text = (cb.text() or "").strip() or (self._last_text or "").strip()
-        if not text:
-            show_toast("No clipboard text to rephrase.", color="#757575", parent=self)
-            return
-        try:
-            result = score_clipboard_with_pii(text)
-            msg = str(result.get("message") or "").strip()
-            if not msg:
-                sug = result.get("suggestions")
-                if isinstance(sug, list) and sug:
-                    msg = str(sug[0])
-            if not msg:
-                msg = "Analysis complete."
-            if len(msg) > 500:
-                msg = msg[:500] + "…"
-            show_toast(msg, color="#02C39A", duration=3500, parent=self)
-        except Exception as e:
-            show_toast(f"Rephrase failed: {e}", color="#E53935", parent=self)
 
     def _on_toolbar_redact(self) -> None:
         self._restart_toolbar_idle_timer()
@@ -2479,50 +2451,10 @@ class RiskBubble(QtWidgets.QWidget):
                 3500,
             )
             return
-        if action == "rephrase":
-            self._show_rephrase_card(text)
-        elif action == "encrypt":
+        if action == "encrypt":
             self._show_encrypt_card(text)
         elif action == "redact":
             self._show_redact_all_card(text)
-
-    def _show_rephrase_card(self, text: str) -> None:
-        self._dismiss_action_card()
-        rephrased = mask_pii(text)
-        frame = self._ensure_action_card_frame()
-        lay = frame.layout()
-        if lay is None:
-            lay = QtWidgets.QVBoxLayout(frame)
-        lay.setContentsMargins(10, 10, 10, 10)
-        lay.setSpacing(6)
-        lay.addWidget(QtWidgets.QLabel("Original"))
-        orig = QtWidgets.QPlainTextEdit()
-        orig.setReadOnly(True)
-        orig.setPlainText(text)
-        orig.setFixedHeight(72)
-        lay.addWidget(orig)
-        lay.addWidget(QtWidgets.QLabel("Rephrased (PII removed / replaced)"))
-        rep = QtWidgets.QPlainTextEdit()
-        rep.setReadOnly(True)
-        rep.setPlainText(rephrased)
-        rep.setFixedHeight(72)
-        lay.addWidget(rep)
-        row = QtWidgets.QHBoxLayout()
-        row.addStretch(1)
-        cancel = QtWidgets.QPushButton("Cancel")
-        cancel.clicked.connect(self._dismiss_action_card)
-        use_btn = QtWidgets.QPushButton("Use this")
-        use_btn.setObjectName("primary")
-
-        def _use() -> None:
-            QtGui.QGuiApplication.clipboard().setText(rephrased)
-            self._dismiss_action_card()
-
-        use_btn.clicked.connect(_use)
-        row.addWidget(cancel)
-        row.addWidget(use_btn)
-        lay.addLayout(row)
-        self._mount_action_card(frame)
 
     def _show_encrypt_card(self, text: str) -> None:
         self._dismiss_action_card()

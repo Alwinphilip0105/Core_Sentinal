@@ -1,6 +1,5 @@
 """Clamp font sizes so Qt never receives 0/negative pixel or point sizes."""
 
-from __future__ import annotations
 
 import sys
 

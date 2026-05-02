@@ -29,7 +29,6 @@ from pii_remediation import (
     mask_pii_spans,
     redact_for_clipboard,
     remediate_text,
-    rephrase_text,
 )
 from feedback_store import count_pending_wrong_feedback, record_feedback
 from sentinel_sync_daemon import is_placeholder_supabase_url
@@ -492,7 +491,6 @@ class RemediationDialog(QtWidgets.QDialog):
 
     monitoring_toggled = QtCore.pyqtSignal(bool)
     remediation_finished = QtCore.pyqtSignal(bool)
-    _rephrase_finished = QtCore.pyqtSignal(str)
 
     def __init__(
         self,
@@ -967,7 +965,7 @@ class RemediationDialog(QtWidgets.QDialog):
         self._issues_scroll_area = scroll
         root.addWidget(scroll, 1)
 
-        # --- Single result preview (Redact / Rephrase / Fix all); between scroll and footer ---
+        # --- Single result preview (Redact / Fix all); between scroll and footer ---
         self._preview_box = QtWidgets.QWidget()
         self._preview_box.setObjectName("previewBox")
         self._preview_box.setMaximumHeight(0)
@@ -1046,7 +1044,7 @@ class RemediationDialog(QtWidgets.QDialog):
 
         root.addWidget(preview_wrap)
 
-        # --- Footer: Redact | Rephrase | Snooze | Fix all + undo link ---
+        # --- Footer: Redact | Snooze | Fix all + undo link ---
         footer = QtWidgets.QWidget()
         self._footer_widget = footer
         footer.setStyleSheet("background: #FFFFFF; border-top: 1px solid #F0F0F0;")
@@ -1071,17 +1069,6 @@ class RemediationDialog(QtWidgets.QDialog):
         )
         self._redact_btn.clicked.connect(self._on_redact_all)
         fh.addWidget(self._redact_btn)
-
-        self._rephrase_btn = QtWidgets.QPushButton("Rephrase")
-        self._rephrase_btn.setFixedSize(84, 36)
-        self._rephrase_btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        self._rephrase_btn.setStyleSheet(
-            "QPushButton { background: #1565C0; color: white; font-size: 12px; font-weight: bold; "
-            "border: none; border-radius: 8px; }"
-            "QPushButton:hover { background: #0D47A1; }"
-        )
-        self._rephrase_btn.clicked.connect(self._on_rephrase)
-        fh.addWidget(self._rephrase_btn)
 
         snooze_wrap = QtWidgets.QWidget()
         snooze_wrap.setFixedSize(96 + 28, 36)
@@ -1204,11 +1191,6 @@ class RemediationDialog(QtWidgets.QDialog):
         fl.addWidget(self._undo_skip_link)
 
         root.addWidget(footer)
-
-        self._rephrase_finished.connect(
-            self._on_rephrase_done,
-            QtCore.Qt.ConnectionType.QueuedConnection,
-        )
 
         self._setup_shortcuts()
 
@@ -1920,7 +1902,7 @@ class RemediationDialog(QtWidgets.QDialog):
             if sys.platform == "win32":
                 from win_paste_hook import replay_suppressed_paste
 
-                replay_suppressed_paste()
+                replay_suppressed_paste(force=True)
                 return
         except Exception:
             pass
@@ -2350,7 +2332,6 @@ class RemediationDialog(QtWidgets.QDialog):
 
     def _set_footer_actions_enabled(self, enabled: bool) -> None:
         self._redact_btn.setEnabled(enabled)
-        self._rephrase_btn.setEnabled(enabled)
         self._snooze_main_btn.setEnabled(enabled)
         self._snooze_drop_btn.setEnabled(enabled)
         self._fix_all_btn.setEnabled(enabled)
@@ -2380,43 +2361,6 @@ class RemediationDialog(QtWidgets.QDialog):
             self._hold_complete_safe_flow(t, "Fixed — safe version ready to paste")
             return
         self._show_preview(t, "Masked version (partial):")
-
-    def _on_rephrase(self) -> None:
-        if self._fix_all_running:
-            return
-        text = self._last_text or ""
-        spans = self._last_spans if isinstance(self._last_spans, list) else []
-        if not str(text).strip():
-            show_toast("No text to rephrase", color="#999")
-            return
-        try:
-            log_remediation_event("rephrase_and_copy", {}, text=text)
-        except Exception:
-            pass
-        self._rephrase_btn.setText("...")
-        self._rephrase_btn.setEnabled(False)
-
-        def _run() -> None:
-            try:
-                result = rephrase_text(text, spans)
-            except Exception as e:
-                print(f"[rephrase] {e}")
-                result = ""
-            self._rephrase_finished.emit(result or "")
-
-        import threading
-
-        threading.Thread(target=_run, daemon=True).start()
-
-    @QtCore.pyqtSlot(str)
-    def _on_rephrase_done(self, result: str) -> None:
-        self._rephrase_btn.setText("Rephrase")
-        self._rephrase_btn.setEnabled(True)
-        if not result.strip():
-            show_toast("Rephrase failed", color="#E53935")
-            return
-        self._show_preview(result, "Rephrased version:")
-        show_toast("Rephrase ready — use Copy to copy", color="#1565C0")
 
     def _show_preview(self, text: str, label: str = "Result:") -> None:
         self._preview_copy_text = text or ""
@@ -2556,9 +2500,6 @@ class RemediationDialog(QtWidgets.QDialog):
 
     def _redact_and_copy(self) -> None:
         self._on_redact_all()
-
-    def _rephrase_and_copy(self) -> None:
-        self._on_rephrase()
 
     def _do_snooze(self, minutes: float, label: str) -> None:
         snooze_guard_minutes(minutes)

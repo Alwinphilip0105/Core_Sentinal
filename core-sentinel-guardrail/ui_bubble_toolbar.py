@@ -184,7 +184,6 @@ class BubbleToolbar(QtWidgets.QWidget):
     Monitoring on/off is only on the main pill (and Alt+G) — no duplicate power row here.
     """
 
-    rephrase_clicked = QtCore.pyqtSignal()
     redact_clicked = QtCore.pyqtSignal()
     encrypt_clicked = QtCore.pyqtSignal()
     scan_file_clicked = QtCore.pyqtSignal()
@@ -220,16 +219,6 @@ class BubbleToolbar(QtWidgets.QWidget):
         white = QtGui.QColor("#ffffff")
         amber = QtGui.QColor("#FFD740")
         blue = QtGui.QColor("#42A5F5")
-
-        self._btn_rephrase = ToolbarIconButton(
-            "✏",
-            white,
-            self._bubble,
-            "Rewrite text without PII",
-            "[Alt+R]",
-        )
-        self._btn_rephrase.clicked.connect(self.rephrase_clicked.emit)
-        lay.addWidget(self._btn_rephrase)
 
         self._btn_redact = ToolbarIconButton(
             "▓",

@@ -1284,8 +1284,6 @@ def main():
 
     _s = QShortcut(QKeySequence("Alt+G"), bubble)
     _s.activated.connect(bubble._toggle_monitoring)
-    _s = QShortcut(QKeySequence("Alt+R"), bubble)
-    _s.activated.connect(bubble._do_rephrase)
     _s = QShortcut(QKeySequence("Alt+D"), bubble)
     _s.activated.connect(bubble._do_redact)
     _s = QShortcut(QKeySequence("Alt+E"), bubble)

@@ -90,11 +90,11 @@
   "critical_secret": {
     "min_token_entropy_bits": 4.2
   },
-  "_calibrated_at": "2026-04-17T14:52:28.326488+00:00",
+  "_calibrated_at": "2026-04-20T17:18:06.720602+00:00",
   "_calibration_source": "reports/threshold_calibration.json",
   "inference_binary_labels": {
     "prob_threshold_risky": 0.1,
-    "max_fpr": 0.6,
+    "max_fpr": 0.05,
     "selected_by": "max_recall_under_fpr_cap",
     "metrics": {
       "accuracy": 0.9992138364779874,

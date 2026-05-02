@@ -393,20 +393,20 @@
 
       <section class="row row-2">
         <article class="card">
-          <h3>Policy Compliance Report</h3>
+          <h3>Policy Detection Report</h3>
           <div class="gauge">
-            <svg viewBox="0 0 180 180" aria-label="compliance gauge">
+            <svg viewBox="0 0 180 180" aria-label="detection criteria gauge">
               <circle cx="90" cy="90" r="62" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="16"></circle>
               <circle id="compArc" cx="90" cy="90" r="62" fill="none" stroke="var(--accent)" stroke-width="16" stroke-linecap="round" stroke-dasharray="389.6" stroke-dashoffset="389.6" transform="rotate(-90 90 90)"></circle>
               <text id="compPct" x="90" y="90" text-anchor="middle" fill="#e8e8e8" font-size="27" font-weight="800">94%</text>
-              <text x="90" y="108" text-anchor="middle" fill="#6b7280" font-size="11">compliant</text>
+              <text x="90" y="108" text-anchor="middle" fill="#6b7280" font-size="11">meets criteria</text>
             </svg>
             <div class="metric-list">
               <div>Events properly handled: <strong id="cHandled">94%</strong></div>
               <div>Overrides within policy: <strong id="cOverrides">98%</strong></div>
               <div>Critical items remediated: <strong id="cCritical">100%</strong></div>
               <div>Average response time: <strong id="cLatency">2.3s</strong></div>
-              <button class="btn" id="exportComplianceBtn">Export Compliance Report (PDF)</button>
+              <button class="btn" id="exportComplianceBtn">Export Detection Report (PDF)</button>
     </div>
     </div>
         </article>
@@ -418,7 +418,7 @@
             <div class="toggle"><span>Alert when override rate exceeds 5%</span><span class="switch" data-key="ovr5"></span></div>
             <div class="toggle"><span>Alert when critical confidential data is detected</span><span class="switch" data-key="critPii"></span></div>
             <div class="toggle"><span>Daily risk summary email</span><span class="switch" data-key="dailyMail"></span></div>
-            <div class="toggle"><span>Weekly compliance report</span><span class="switch" data-key="weeklyReport"></span></div>
+            <div class="toggle"><span>Weekly detection report</span><span class="switch" data-key="weeklyReport"></span></div>
             <label class="sub" for="recipientInput" style="margin:2px 0 0">Alert recipients</label>
             <input class="input" id="recipientInput" placeholder="security@org.com, soc@org.com">
             <div class="recipient-wrap" id="recipientChips"></div>
@@ -430,7 +430,7 @@
       <section class="row">
         <article class="card">
           <h3>Audit Trail (Last 100 Events)</h3>
-          <p class="sub">Fleet-wide event evidence for compliance and incident response.</p>
+          <p class="sub">Fleet-wide event evidence for detection quality and incident response.</p>
           <div class="filters">
             <select class="input" id="auditType"></select>
             <input class="input" type="date" id="auditStart">

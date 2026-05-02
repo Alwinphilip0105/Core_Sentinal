@@ -265,7 +265,7 @@ Canary: start 10%, step 10%, 24 h windows, 2 consecutive passes. Rollback thresh
 2. `merged = round(p_risky × 100)` clipped to [0, 100].
 3. `severity_floor = compute_risk_score(risk, triggers)` from regex/NER + policy.
 4. **`merged_score_for_penalty = max(merged, severity_floor)`** so rules can raise the score when the model is underconfident.
-5. Further adjustments (caps/floors): e.g. HIPAA/critical paths may force high scores; contact-only cap; tiny-text downgrades; strict multi-signal block rules — see `infer.py` around `risk_score = merged_score_for_penalty`.
+5. Further adjustments (caps/floors): e.g. HIPAA-derived critical-label paths may force high scores; contact-only cap; tiny-text downgrades; strict multi-signal block rules — see `infer.py` around `risk_score = merged_score_for_penalty`.
 
 ### 10.3 UI action vs score
 

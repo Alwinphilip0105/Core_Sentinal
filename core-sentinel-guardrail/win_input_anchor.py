@@ -14,6 +14,12 @@ if sys.platform != "win32":
     def get_focused_text_surface_rect_screen() -> Optional[Tuple[int, int, int, int]]:
         return None
 
+    def get_foreground_window_hwnd() -> Optional[int]:
+        return None
+
+    def get_foreground_focus_hwnd() -> Optional[int]:
+        return None
+
 else:
     from ctypes import wintypes
 
@@ -27,6 +33,13 @@ else:
             ("right", wintypes.LONG),
             ("bottom", wintypes.LONG),
         ]
+
+    def get_foreground_window_hwnd() -> Optional[int]:
+        fg = user32.GetForegroundWindow()
+        return int(fg) if fg else None
+
+    def get_foreground_focus_hwnd() -> Optional[int]:
+        return _foreground_focus_hwnd()
 
     def _foreground_focus_hwnd() -> Optional[int]:
         fg = user32.GetForegroundWindow()

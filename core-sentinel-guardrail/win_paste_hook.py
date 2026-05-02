@@ -38,7 +38,7 @@ if sys.platform != "win32":
     def uninstall_paste_hook() -> None:
         pass
 
-    def replay_suppressed_paste() -> bool:
+    def replay_suppressed_paste(*, force: bool = False) -> bool:
         return False
 
 else:
@@ -105,18 +105,49 @@ else:
     _hook_loop_thread: threading.Thread | None = None
     _stop_score_worker = threading.Event()
 
+    _replay_fg_hwnd: int | None = None
+    _replay_focus_hwnd: int | None = None
+
     def configure_paste_hook(emit_scored, emit_replay) -> None:
         """Set callbacks: emit_scored(text, result_dict, agent, url, title), emit_replay() for snooze/duplicate/fail-safe."""
         global _emit_scored, _emit_replay
         _emit_scored = emit_scored
         _emit_replay = emit_replay
 
-    def replay_suppressed_paste() -> bool:
+    def replay_suppressed_paste(*, force: bool = False) -> bool:
         """
         Replay the suppressed Ctrl+V.
-        Returns True if replay was sent, False if already replaying (prevents double paste).
+        Returns True if replay was sent, False if already replaying (prevents double paste)
+        or if replay was skipped because foreground/focus moved (avoids pasting into omnibox/search).
+
+        Use force=True when the user explicitly requests paste (e.g. remediation dialog) so
+        we always send Ctrl+V to whatever is focused now.
         """
-        global _suppress_next_v
+        global _suppress_next_v, _replay_fg_hwnd, _replay_focus_hwnd
+
+        if not force:
+            try:
+                from win_input_anchor import get_foreground_focus_hwnd, get_foreground_window_hwnd
+
+                sf = _replay_fg_hwnd
+                sk = _replay_focus_hwnd
+                fg_now = get_foreground_window_hwnd()
+                focus_now = get_foreground_focus_hwnd()
+                if sf is not None and fg_now != sf:
+                    print("[hook] replay skipped: foreground window changed", flush=True)
+                    _replay_fg_hwnd = None
+                    _replay_focus_hwnd = None
+                    return False
+                if sk is not None and focus_now is not None and focus_now != sk:
+                    print("[hook] replay skipped: keyboard focus moved", flush=True)
+                    _replay_fg_hwnd = None
+                    _replay_focus_hwnd = None
+                    return False
+            except Exception:
+                pass
+        else:
+            _replay_fg_hwnd = None
+            _replay_focus_hwnd = None
 
         if not _replay_lock.acquire(blocking=False):
             print("[hook] replay already in progress — skipping", flush=True)
@@ -134,10 +165,12 @@ else:
             return True
         finally:
             time.sleep(0.2)
+            _replay_fg_hwnd = None
+            _replay_focus_hwnd = None
             _replay_lock.release()
 
     def _keyboard_hook(nCode, wParam, lParam):
-        global _hook_handle, _suppress_next_v
+        global _hook_handle, _suppress_next_v, _job_inflight, _last_captured_text, _replay_fg_hwnd, _replay_focus_hwnd
         _lp = ctypes.c_void_p(lParam)
         if nCode < HC_ACTION:
             return _user32.CallNextHookEx(_hook_handle, nCode, wParam, _lp)
@@ -206,17 +239,26 @@ else:
             # Coalesce repeated Ctrl+V presses while one paste decision is in-flight.
             # This avoids queueing duplicate jobs from key repeat / long key holds.
             with _capture_lock:
-                global _job_inflight, _last_captured_text
                 if _job_inflight:
                     print("[hook] paste already in-flight — coalescing duplicate Ctrl+V", flush=True)
                     return 1
                 _job_inflight = True
                 _last_captured_text = text
+                try:
+                    from win_input_anchor import get_foreground_focus_hwnd, get_foreground_window_hwnd
+
+                    _replay_fg_hwnd = get_foreground_window_hwnd()
+                    _replay_focus_hwnd = get_foreground_focus_hwnd()
+                except Exception:
+                    _replay_fg_hwnd = None
+                    _replay_focus_hwnd = None
             try:
                 _score_queue.put_nowait((text, agent_name or "", url, cleaned_title))
             except Exception:
                 with _capture_lock:
                     _job_inflight = False
+                    _replay_fg_hwnd = None
+                    _replay_focus_hwnd = None
                 return _user32.CallNextHookEx(
                     _hook_handle, nCode, wParam, ctypes.c_void_p(lParam)
                 )
