@@ -132,60 +132,21 @@
       margin: 0 auto;
       padding: 28px 0 44px;
     }
-    .welcome {
-      background: linear-gradient(160deg, rgba(2, 195, 154, 0.12), rgba(255, 255, 255, 0.02));
-      border: 1px solid rgba(2, 195, 154, 0.22);
-      border-radius: 18px;
-      padding: 22px;
-      box-shadow: var(--shadow);
-      margin-bottom: 18px;
-      display: grid;
-      grid-template-columns: 1.1fr 0.9fr;
-      gap: 18px;
-      align-items: center;
+    .hub-page-head {
+      margin-bottom: 22px;
     }
-    .welcome h1 {
-      font-size: clamp(1.6rem, 3.2vw, 2.2rem);
-      letter-spacing: -0.02em;
+    .hub-page-head h1 {
+      font-size: clamp(1.75rem, 3.4vw, 2.35rem);
+      letter-spacing: -0.03em;
+      font-weight: 800;
+      line-height: 1.15;
       margin-bottom: 8px;
     }
-    .welcome p {
+    .hub-page-head .lead {
       color: var(--muted);
-      max-width: 680px;
-      font-size: 14px;
-    }
-    .pill-demo {
-      justify-self: end;
-      min-width: 260px;
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      border-radius: 999px;
-      padding: 8px 12px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: rgba(11, 14, 20, 0.86);
-    }
-    .traffic {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--accent);
-      box-shadow: 0 0 0 rgba(2, 195, 154, 0.5);
-      animation: pulseDot 1.8s ease-in-out infinite;
-    }
-    .pill-core {
-      width: 34px;
-      height: 34px;
-      border-radius: 50%;
-      background: radial-gradient(circle at 35% 30%, #02C39A, #0a4a3e);
-      display: grid;
-      place-items: center;
-      font-size: 16px;
-    }
-    .pill-text {
-      font-size: 12px;
-      color: rgba(245,247,255,0.86);
-      white-space: nowrap;
+      font-size: 15px;
+      max-width: 640px;
+      line-height: 1.5;
     }
     @keyframes pulseDot {
       0%, 100% { box-shadow: 0 0 0 0 rgba(2, 195, 154, 0.42); }
@@ -196,38 +157,7 @@
       display: grid;
       grid-template-columns: repeat(4, 1fr);
       gap: 12px;
-      margin-bottom: 18px;
-    }
-    .onboard {
-      background: rgba(255, 255, 255, 0.02);
-      border: 1px solid rgba(2, 195, 154, 0.22);
-      border-radius: 14px;
-      padding: 14px;
-      margin-bottom: 16px;
-    }
-    .onboard h2 {
-      font-size: 14px;
-      margin-bottom: 8px;
-      color: #c4fff3;
-    }
-    .onboard-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-    }
-    .on-step {
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 10px;
-      background: rgba(255, 255, 255, 0.02);
-      padding: 10px;
-      font-size: 12px;
-      color: rgba(245, 247, 255, 0.8);
-    }
-    .on-step strong {
-      display: block;
-      margin-bottom: 4px;
-      color: #e8f8ff;
-      font-size: 12px;
+      margin-bottom: 22px;
     }
     .stat-card {
       background: var(--card);
@@ -268,32 +198,67 @@
     .cards-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
-      margin-bottom: 18px;
+      gap: 14px;
+      margin-bottom: 0;
     }
     .hub-card {
       background: var(--card);
       border: 1px solid var(--line);
       border-radius: var(--radius);
-      padding: 16px;
-      min-height: 172px;
+      padding: 18px;
+      min-height: 168px;
       position: relative;
       transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
     }
-    .hub-card:hover {
+    a.hub-card {
+      color: inherit;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    a.hub-card:hover {
       transform: translateY(-4px);
       border-color: rgba(2, 195, 154, 0.36);
       box-shadow: 0 14px 28px rgba(0, 0, 0, 0.32);
     }
-    .hub-link-card { cursor: pointer; }
-    .hub-link-card::after {
-      content: "→";
-      position: absolute;
-      right: 15px;
-      top: 14px;
-      color: rgba(2, 195, 154, 0.85);
-      font-size: 18px;
-      opacity: 0.85;
+    button.hub-card {
+      width: 100%;
+      cursor: pointer;
+      font-family: inherit;
+      text-align: left;
+    }
+    button.hub-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(2, 195, 154, 0.36);
+      box-shadow: 0 14px 28px rgba(0, 0, 0, 0.32);
+    }
+    .hub-card-cta {
+      margin-top: auto;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      border: none;
+      background: var(--accent);
+      color: #042820;
+      width: 100%;
+      text-align: center;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    a.hub-card .hub-card-cta,
+    button.hub-card .hub-card-cta {
+      pointer-events: none;
+    }
+    a.hub-card:hover .hub-card-cta,
+    button.hub-card:hover .hub-card-cta {
+      box-shadow: 0 8px 20px rgba(2, 195, 154, 0.28);
+    }
+    .hub-card-cta--outline {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text);
+      border: 1px solid rgba(255, 255, 255, 0.2);
     }
     .card-head {
       display: flex;
@@ -302,90 +267,22 @@
       margin-bottom: 8px;
     }
     .card-ic {
-      width: 33px;
-      height: 33px;
+      width: 36px;
+      height: 36px;
       border-radius: 10px;
-      background: rgba(2, 195, 154, 0.15);
+      background: rgba(2, 195, 154, 0.12);
       display: grid;
       place-items: center;
-      border: 1px solid rgba(2, 195, 154, 0.3);
-      font-size: 16px;
+      border: 1px solid rgba(2, 195, 154, 0.28);
+      flex-shrink: 0;
+      color: #9fe8d8;
     }
-    .card-title { font-size: 1.03rem; font-weight: 700; letter-spacing: -0.01em; }
-    .card-sub { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
-    .card-note {
-      margin-top: 8px;
-      font-size: 12px;
-      color: rgba(245,247,255,0.58);
-      line-height: 1.5;
+    .card-ic svg {
+      width: 20px;
+      height: 20px;
     }
-    .card-list {
-      margin-top: 8px;
-      list-style: none;
-      display: grid;
-      gap: 5px;
-    }
-    .card-list li {
-      font-size: 12px;
-      color: rgba(245,247,255,0.78);
-      padding-left: 14px;
-      position: relative;
-    }
-    .card-list li::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      top: 0.58em;
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: rgba(2,195,154,0.9);
-    }
-    .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
-    .chip {
-      font-size: 11px;
-      padding: 4px 8px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.05);
-      color: rgba(245,247,255,0.72);
-      border: 1px solid rgba(255,255,255,0.12);
-    }
-
-    .lock-overlay {
-      position: absolute;
-      inset: 0;
-      background: rgba(10, 10, 15, 0.82);
-      backdrop-filter: blur(3px);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      gap: 6px;
-      border-radius: var(--radius);
-      z-index: 2;
-      cursor: pointer;
-    }
-    .lock-overlay[hidden] { display: none !important; }
-    .lock-overlay .tx {
-      color: rgba(245,247,255,0.62);
-      font-size: 12px;
-      max-width: 240px;
-    }
-
-    .sparkline-wrap {
-      margin-top: 10px;
-      height: 72px;
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 10px;
-      background: rgba(255,255,255,0.02);
-      padding: 6px;
-    }
-    #privacySparkline {
-      width: 100%;
-      height: 100%;
-      display: block;
-    }
+    .card-title { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.01em; }
+    .card-sub { font-size: 13px; color: var(--muted); margin-bottom: 14px; line-height: 1.45; flex: 1; }
 
     .table-wrap {
       margin-top: 8px;
@@ -428,30 +325,15 @@
     .status-warn { color: #ffd992; }
     .status-block { color: #ff9ea7; }
 
-    .progress {
-      margin-top: 10px;
-      height: 10px;
-      border-radius: 999px;
-      background: rgba(255,255,255,0.08);
-      overflow: hidden;
-    }
-    .progress > span {
-      display: block;
-      height: 100%;
-      width: 0;
-      background: linear-gradient(90deg, #02C39A, #6df3d9);
-      transition: width 0.35s ease;
-    }
-
     .quick-actions {
       background: var(--card);
       border: 1px solid var(--line);
       border-radius: 14px;
       padding: 14px;
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
-      margin-bottom: 16px;
+      margin-top: 14px;
     }
     .qa-btn {
       border: 1px solid rgba(255,255,255,0.14);
@@ -531,37 +413,6 @@
     .err { font-size: 11px; color: #E57373; min-height: 14px; }
     .mini-note { font-size: 11px; color: rgba(255,255,255,0.38); }
 
-    #kbSection {
-      display: none;
-      margin-top: 12px;
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 14px;
-    }
-    .kb-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-    .kb-block {
-      background: rgba(255,255,255,0.02);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 12px;
-      padding: 12px;
-    }
-    .kb-title { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
-    .drop-zone {
-      border: 2px dashed rgba(255,255,255,0.15);
-      border-radius: 10px;
-      padding: 20px;
-      text-align: center;
-      cursor: pointer;
-      transition: border-color 0.2s ease;
-      margin-bottom: 10px;
-    }
-    .drop-zone:hover { border-color: rgba(2,195,154,0.45); }
-
     #toast {
       position: fixed;
       bottom: 22px;
@@ -582,14 +433,19 @@
       transform: translateX(-50%) translateY(0);
     }
 
+    .activity-section { margin-top: 14px; }
+    .activity-placeholder {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+      padding: 6px 0 4px;
+    }
+    .activity-card { min-height: auto; }
+
     @media (max-width: 980px) {
-      .welcome { grid-template-columns: 1fr; }
-      .pill-demo { justify-self: start; }
       .stats-grid { grid-template-columns: repeat(2, 1fr); }
-      .onboard-grid { grid-template-columns: 1fr; }
       .cards-grid { grid-template-columns: 1fr; }
       .quick-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .kb-grid { grid-template-columns: 1fr; }
     }
     @media (max-width: 680px) {
       .container, .wrap { width: min(var(--maxw), calc(100% - 24px)); }
@@ -617,59 +473,26 @@
           <span id="connText">Not connected</span>
     </div>
     <div id="hdrAdminSlot">
-          <button type="button" id="adminBtn" class="btn btn-outline" onclick="showAdminLogin()">🔒 Admin</button>
+          <button type="button" id="adminBtn" class="btn btn-outline" onclick="showAdminLogin()">Admin</button>
         </div>
     </div>
   </div>
 </header>
 
   <main class="wrap">
-    <section class="welcome">
-      <div>
-        <h1>Welcome to Core Sentinel</h1>
-        <p>
-          Your command center for privacy, model health, admin security, and active learning.
-          Monitor risk trends, review recent activity, and keep AI usage aligned with detection criteria across teams.
-        </p>
-        <p style="margin-top:8px;font-size:12px;color:rgba(245,247,255,0.64);">
-          Current production support: Windows 10/11. Linux and iOS support are planned for a future version.
-        </p>
-    </div>
-      <div class="pill-demo" aria-label="Sentinel pill widget preview">
-        <span class="traffic"></span>
-        <span class="pill-core"><img src="favicon.svg" alt="Core Sentinel logo" style="width:22px;height:22px;border-radius:6px;"></span>
-        <div class="pill-text">Clipboard monitored · Risk engine active</div>
-    </div>
-    </section>
-
-    <section class="onboard">
-      <h2>New user path (recommended order)</h2>
-      <div class="onboard-grid">
-        <a class="on-step" href="demo/" target="_blank" rel="noopener">
-          <strong>1) Interactive Demo</strong>
-          Experience document-to-LLM paste interception, warn/block flow, and remediation.
-        </a>
-        <a class="on-step" href="dashboard/">
-          <strong>2) Privacy Dashboard</strong>
-          Understand personal risk trends, streaks, and recent events.
-        </a>
-        <a class="on-step" href="ml/">
-          <strong>3) ML + Admin Views</strong>
-          Validate model health in ML dashboard, then inspect org-level risk in Admin Dashboard.
-        </a>
-      </div>
-    </section>
+    <header class="hub-page-head">
+      <h1>Command Center</h1>
+      <p class="lead">Monitor risk, validate model health, and enforce policy across your organization.</p>
+    </header>
 
     <section class="stats-grid" id="miniStats">
       <article class="stat-card">
         <div class="stat-lbl">Safe Streak</div>
         <div class="stat-val" id="msStreak">—</div>
-        <div class="stat-sub" id="msStreakSub">sentinel_streak</div>
       </article>
       <article class="stat-card">
         <div class="stat-lbl">Total Pastes Scanned</div>
         <div class="stat-val" id="msTotal">—</div>
-        <div class="stat-sub">sentinel_total</div>
       </article>
       <article class="stat-card">
         <div class="stat-lbl">Admin Events</div>
@@ -677,7 +500,7 @@
         <div class="stat-sub" id="msLiveSub"><span class="live-dot"></span>Live</div>
       </article>
       <article class="stat-card">
-        <div class="stat-lbl">Model Quality</div>
+        <div class="stat-lbl">Model Accuracy</div>
         <div class="accuracy-wrap">
           <svg viewBox="0 0 84 84" role="img" aria-label="Model accuracy gauge">
             <circle cx="42" cy="42" r="30" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="8"></circle>
@@ -686,109 +509,70 @@
           <div>
             <div id="modelKpiPrimary" class="stat-val" style="font-size:1.35rem;margin-top:0;">F1 0.826</div>
             <div id="modelKpiSub" class="accuracy-mini">Recall (L/M/H): 1.00 / 0.41 / 0.99</div>
-            <div id="modelKpiMeta" class="accuracy-mini" style="margin-top:6px;opacity:0.88;font-size:0.78rem;line-height:1.35;">Last retrain: --</div>
-            <div id="modelKpiSafety" class="accuracy-mini" style="margin-top:6px;opacity:0.88;font-size:0.78rem;line-height:1.35;">Safety first: catching high/critical risk matters more than a single headline score—see repo README (Training and Evaluation).</div>
-    </div>
-  </div>
+            <div id="modelKpiMeta" class="accuracy-mini" style="margin-top:6px;opacity:0.88;font-size:0.78rem;line-height:1.35;">Last retrain: —</div>
+          </div>
+        </div>
       </article>
     </section>
 
-    <section class="cards-grid">
-      <a class="hub-card hub-link-card" href="dashboard/">
+    <section class="cards-grid" id="dashCards">
+      <a class="hub-card" href="dashboard/">
         <div class="card-head">
-          <span class="card-ic">🛡️</span>
+          <span class="card-ic" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </span>
           <h2 class="card-title">Privacy Dashboard</h2>
-      </div>
-        <p class="card-sub">Charts, streaks, paste history, risk timeline from local data</p>
-        <ul class="card-list">
-          <li>Risk trend over time + high-risk windows</li>
-          <li>PII category frequency and streak behavior</li>
-          <li>Recent paste timeline with action outcomes</li>
-        </ul>
-        <div class="sparkline-wrap">
-          <svg id="privacySparkline" viewBox="0 0 300 60" preserveAspectRatio="none">
-            <path id="sparkLinePath" d="M0 48 L40 40 L80 44 L120 30 L160 24 L200 28 L240 16 L300 20" fill="none" stroke="#02C39A" stroke-width="2.5"></path>
-            <path id="sparkFillPath" d="" fill="url(#sparkFill)"></path>
-            <defs>
-              <linearGradient id="sparkFill" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stop-color="rgba(2,195,154,0.35)"></stop>
-                <stop offset="100%" stop-color="rgba(2,195,154,0.02)"></stop>
-              </linearGradient>
-            </defs>
-          </svg>
-      </div>
-        <p class="card-note">Why click: understand personal exposure patterns and where leaks are happening.</p>
-      </a>
-
-      <a class="hub-card hub-link-card" href="ml/">
-        <div class="card-head">
-          <span class="card-ic">🧠</span>
-          <h2 class="card-title">ML Health Dashboard</h2>
-      </div>
-        <p class="card-sub">Precision-Recall curves, confusion matrix, drift detection, threshold simulator</p>
-        <ul class="card-list">
-          <li>Class-level precision/recall and confusion matrix</li>
-          <li>Threshold tuning and false-positive controls</li>
-          <li>Model quality drift and QA snapshot view</li>
-        </ul>
-        <div class="chips">
-          <span class="chip" id="mlChipAuc">AUPRC: 0.751</span>
-          <span class="chip" id="mlChipPrecision">Precision: 0.945</span>
-          <span class="chip" id="mlChipFpr">FPR: 52.6%</span>
         </div>
-        <p class="card-note">Why click: verify model reliability before demos, reviews, or releases.</p>
+        <p class="card-sub">Monitor your personal risk trends, paste history, and PII exposure over time.</p>
+        <span class="hub-card-cta">Open Dashboard</span>
       </a>
 
-      <div class="hub-card" id="fleetCardWrap">
-        <a class="hub-card hub-link-card" id="fleetCardLink" href="admin/" style="position:absolute;inset:0;opacity:0;z-index:1;"></a>
+      <a class="hub-card" href="ml/">
         <div class="card-head">
-          <span class="card-ic">🏢</span>
+          <span class="card-ic" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          </span>
+          <h2 class="card-title">ML Health Dashboard</h2>
+        </div>
+        <p class="card-sub">Validate model precision, recall, and drift before demos or releases.</p>
+        <span class="hub-card-cta">View ML Metrics</span>
+      </a>
+
+      <div class="hub-card" id="adminHubCard">
+        <div class="card-head">
+          <span class="card-ic" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 012-2h8a2 2 0 012 2v18"/><path d="M6 12h12"/><path d="M6 8h12"/><path d="M10 22v-6h4v6"/></svg>
+          </span>
           <h2 class="card-title">Admin Dashboard</h2>
         </div>
-        <p class="card-sub">Organization-wide monitoring, per-user risk profiles, policy enforcement</p>
-        <div id="fleetLockedHint" class="chips">
-          <span class="chip">🔒 Admin sign-in required</span>
-        </div>
-        <p id="fleetLockExplain" class="card-note">
-          Locked content includes user-level analytics, alert queues, risk-category breakdowns, and policy controls.
-        </p>
-        <div id="fleetLiveStats" class="chips" style="display:none;">
-          <span class="chip" id="fleetUsers">Users: —</span>
-          <span class="chip" id="fleetAlerts">Active alerts: —</span>
-          <span class="chip" id="fleetTop">Top risk: —</span>
-        </div>
-        <p id="fleetWhyOpen" class="card-note" style="display:none;">Why click: investigate org-wide risk hotspots and enforce controls at scale.</p>
-        <div class="lock-overlay" id="adminLock" onclick="showAdminLogin()" title="Sign in as admin">
-          <span style="font-size:24px;">🔒</span>
-          <span class="tx">Admin sign-in required</span>
-        </div>
+        <p class="card-sub">Org-wide risk profiles, alert queues, and policy enforcement.</p>
+        <a class="hub-card-cta" id="adminHubCta" href="admin/" style="display:none;box-sizing:border-box;">Open Admin Dashboard</a>
+        <button type="button" class="hub-card-cta" id="adminHubSignIn" onclick="showAdminLogin()">Sign In to Access</button>
       </div>
 
-      <button class="hub-card" onclick="showAdminLogin()" style="text-align:left;">
+      <button type="button" class="hub-card" onclick="showAdminLogin()">
         <div class="card-head">
-          <span class="card-ic">⚙️</span>
+          <span class="card-ic" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+          </span>
           <h2 class="card-title">Settings</h2>
         </div>
-        <p class="card-sub">Sensitivity thresholds, monitoring scope, notification preferences</p>
-        <ul class="card-list">
-          <li>Clipboard monitoring scope and LLM-window filter</li>
-          <li>Warn/block policy thresholds</li>
-          <li>Supabase sync + admin integration settings</li>
-        </ul>
-        <div class="chips">
-          <span class="chip" id="cfgSummary">Sensitivity: Medium | LLM-only: On | Block high-risk: On</span>
-        </div>
-        <p class="card-note">Why click: tune enforcement level without changing code.</p>
+        <p class="card-sub">Configure thresholds, monitoring scope, and Supabase sync.</p>
+        <span class="hub-card-cta">Open Settings</span>
       </button>
+    </section>
 
-      <article class="hub-card">
+    <section class="activity-section">
+      <article class="hub-card activity-card">
         <div class="card-head">
-          <span class="card-ic">📜</span>
-          <h2 class="card-title">Recent Activity</h2>
-    </div>
-        <p class="card-sub">Last 20 paste events with risk scores and actions taken</p>
-        <div class="table-wrap">
-          <table>
+          <span class="card-ic" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h8M8 9h2"/></svg>
+          </span>
+          <h2 class="card-title">Recent activity</h2>
+        </div>
+        <div id="activityPlaceholder" class="activity-placeholder">No recent activity. Install the desktop agent to begin monitoring.</div>
+        <div id="activityTableWrap" class="table-wrap" hidden>
+          <table aria-label="Recent paste activity">
             <thead>
               <tr>
                 <th>Time</th>
@@ -802,80 +586,11 @@
           </table>
         </div>
       </article>
-
-      <article class="hub-card">
-        <div class="card-head">
-          <span class="card-ic">🧪</span>
-          <h2 class="card-title">Feedback & Active Learning</h2>
-      </div>
-        <p class="card-sub">Your corrections improve the model. See training progress and impact.</p>
-        <ul class="card-list">
-          <li>Correction volume by class and direction</li>
-          <li>Retrain readiness and data quality signal</li>
-          <li>Feedback-to-training conversion visibility</li>
-        </ul>
-        <div class="chips">
-          <span class="chip" id="fbCollected">47 corrections collected</span>
-          <span class="chip" id="fbUsed">12 used for training</span>
-          <span class="chip" id="fbNext">Next retrain: 53 more needed</span>
-      </div>
-        <div class="chips" id="fbPatternChips">
-          <span class="chip" id="fbPattern1">Pattern: high→med (12)</span>
-          <span class="chip" id="fbPattern2">Pattern: med→low (9)</span>
-          <span class="chip" id="fbPattern3">Pattern: high→low (6)</span>
-    </div>
-        <div class="progress" aria-label="retrain progress">
-          <span id="fbProgress"></span>
-        </div>
-        <p class="card-note">Why click: identify where users disagree with the model and prioritize retraining.</p>
-      </article>
     </section>
 
     <section class="quick-actions">
-      <button class="qa-btn" onclick="triggerQuickScan()">Scan a File</button>
-      <button class="qa-btn" onclick="exportActivityReport()">Export Report</button>
       <a class="qa-btn" href="demo/" target="_blank" rel="noopener">Launch Interactive Demo</a>
       <a class="qa-btn" href="https://github.com/Alwinphilip0105/Core_Sentinal" target="_blank" rel="noopener">View GitHub</a>
-      <input id="quickScanInput" type="file" style="display:none;" accept=".txt,.md,.csv,.json,.pdf,.doc,.docx">
-    </section>
-
-    <section id="kbSection">
-      <h3 style="font-size:14px;font-weight:700;margin-bottom:10px;">📚 Knowledge Base Manager (Admin)</h3>
-      <div class="kb-grid">
-        <div class="kb-block">
-          <div class="kb-title">Upload detection policy documents</div>
-          <div id="dropZone" class="drop-zone"
-            onclick="document.getElementById('kbFile').click()"
-            ondragover="event.preventDefault();this.style.borderColor='#02C39A'"
-            ondragleave="this.style.borderColor='rgba(255,255,255,0.15)'"
-            ondrop="handleKBDrop(event)">
-            Drop files here or click to upload
-  </div>
-          <input type="file" id="kbFile" accept=".pdf,.docx,.txt,.yaml,.yml" multiple style="display:none" onchange="handleKBFiles(this.files)">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-            <select id="kbCategory" class="inp" style="font-size:12px;">
-              <option value="hipaa">HIPAA</option>
-              <option value="pci">PCI-DSS</option>
-              <option value="gdpr">GDPR</option>
-              <option value="sox">SOX</option>
-              <option value="custom">Custom</option>
-              <option value="legal">Legal</option>
-              <option value="internal">Internal</option>
-            </select>
-            <select id="kbRisk" class="inp" style="font-size:12px;">
-              <option value="block">Block</option>
-              <option value="warn" selected>Warn</option>
-              <option value="silent">Silent</option>
-            </select>
-</div>
-          <button type="button" class="btn-panel" style="margin-top:8px;" onclick="uploadKB()">Upload to Knowledge Base</button>
-          <div id="kbStatus" class="mini-note" style="margin-top:8px;min-height:16px;color:#9de7d0;"></div>
-        </div>
-        <div class="kb-block">
-          <div class="kb-title">Active KB entries</div>
-          <div id="kbList" class="mini-note">Loading...</div>
-        </div>
-      </div>
     </section>
   </main>
 
@@ -885,7 +600,7 @@
   <aside id="adminPanel">
   <button type="button" id="adminPanelClose" onclick="closeAdminPanel()" aria-label="Close">×</button>
     <div id="adminLoginBlock" style="display:flex;flex-direction:column;gap:10px;">
-      <div style="font-size:16px;font-weight:700;">🔒 Admin access</div>
+      <div style="font-size:16px;font-weight:700;">Admin access</div>
       <div class="mini-note">Enter credentials to unlock admin and configuration controls.</div>
     <input type="email" id="admEmail" class="inp" placeholder="Email" autocomplete="username">
     <input type="password" id="admPass" class="inp" placeholder="Password" autocomplete="current-password">
@@ -895,7 +610,7 @@
   </div>
 
     <div id="adminSettings" style="display:none;gap:10px;">
-      <div style="font-size:13px;font-weight:700;margin-top:8px;">⚙ System Configuration</div>
+      <div style="font-size:13px;font-weight:700;margin-top:8px;">System configuration</div>
       <label class="mini-note">Supabase URL</label>
       <input id="cfgUrl" type="text" class="inp" placeholder="https://xxxx.supabase.co">
       <label class="mini-note">Anon Key</label>
@@ -939,15 +654,9 @@
       recallMed: 0.413,
       recallHigh: 0.989
     };
-    const ML_CARD_DEFAULT = {
-      auc: 0.751,
-      precision: 0.945,
-      fprPct: 52.6
-    };
     let _lastActivityRows = [];
     let hubModelRecordsPollTimer = null;
     let hubLastModelRecordsToken = "";
-    let hubModelRecordsSourceLabel = "unavailable";
 
     function showToast(msg, color) {
       const el = document.getElementById("toast");
@@ -1039,44 +748,28 @@
 
     function applyAdminState(loggedIn) {
       const slot = document.getElementById("hdrAdminSlot");
-      const lock = document.getElementById("adminLock");
-      const kbSection = document.getElementById("kbSection");
       const connStatus = document.getElementById("connStatus");
-      const fleetLockedHint = document.getElementById("fleetLockedHint");
-      const fleetLiveStats = document.getElementById("fleetLiveStats");
-      const fleetLockExplain = document.getElementById("fleetLockExplain");
-      const fleetWhyOpen = document.getElementById("fleetWhyOpen");
+      const adminHubCta = document.getElementById("adminHubCta");
+      const adminHubSignIn = document.getElementById("adminHubSignIn");
 
       if (loggedIn) {
         slot.innerHTML = `
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <span class="mini-note" style="color:#9ec9ff;">🔧 Admin mode</span>
+            <span class="mini-note" style="color:#9ec9ff;">Admin mode</span>
             <button type="button" class="btn btn-outline" onclick="showAdminLogin()">Settings</button>
             <button type="button" class="btn btn-outline" onclick="logoutAdmin()">Sign out</button>
           </div>`;
-        if (lock) lock.setAttribute("hidden", "");
-        if (kbSection) {
-          kbSection.style.display = "block";
-          loadKBEntries();
-        }
         if (connStatus) connStatus.style.display = "inline-flex";
-        if (fleetLockedHint) fleetLockedHint.style.display = "none";
-        if (fleetLiveStats) fleetLiveStats.style.display = "flex";
-        if (fleetLockExplain) fleetLockExplain.style.display = "none";
-        if (fleetWhyOpen) fleetWhyOpen.style.display = "block";
-        loadFleetDetails();
+        if (adminHubCta) adminHubCta.style.display = "block";
+        if (adminHubSignIn) adminHubSignIn.style.display = "none";
       } else {
-        slot.innerHTML = `<button type="button" id="adminBtn" class="btn btn-outline" onclick="showAdminLogin()">🔒 Admin</button>`;
-        if (lock) lock.removeAttribute("hidden");
-        if (kbSection) kbSection.style.display = "none";
+        slot.innerHTML = `<button type="button" id="adminBtn" class="btn btn-outline" onclick="showAdminLogin()">Admin</button>`;
         if (connStatus) connStatus.style.display = "none";
-        if (fleetLockedHint) fleetLockedHint.style.display = "flex";
-        if (fleetLiveStats) fleetLiveStats.style.display = "none";
-        if (fleetLockExplain) fleetLockExplain.style.display = "block";
-        if (fleetWhyOpen) fleetWhyOpen.style.display = "none";
+        if (adminHubCta) adminHubCta.style.display = "none";
+        if (adminHubSignIn) adminHubSignIn.style.display = "block";
       }
-  syncAdminPanelContent();
-}
+      syncAdminPanelContent();
+    }
 
     function saveConfig() {
       const url = (document.getElementById("cfgUrl").value || "").trim();
@@ -1157,21 +850,6 @@
       return `Last retrain: ${d.toLocaleString()}`;
     }
 
-    function _toFiniteNumber(val) {
-      const n = Number(val);
-      return Number.isFinite(n) ? n : null;
-    }
-
-    function _parseFprFromCalibration(policy) {
-      const calib = policy && policy.inference_3class_labels
-        ? policy.inference_3class_labels._calibration_metrics_val
-        : "";
-      if (!calib) return null;
-      const match = String(calib).match(/fpr_non_high_as_high[^0-9]*([0-9]*\.?[0-9]+)/i);
-      if (!match) return null;
-      return _toFiniteNumber(match[1]);
-    }
-
     function isWebsiteRecordsSummary(summary) {
       if (!summary || typeof summary !== "object") return false;
       const datasetTrain = Number(summary?.dataset?.train_samples);
@@ -1218,24 +896,6 @@
       );
     }
 
-    function updateMlCardChips(retrainMeta) {
-      const aucEl = document.getElementById("mlChipAuc");
-      const precisionEl = document.getElementById("mlChipPrecision");
-      const fprEl = document.getElementById("mlChipFpr");
-      if (!aucEl || !precisionEl || !fprEl) return;
-
-      const metrics = retrainMeta && typeof retrainMeta === "object"
-        ? (retrainMeta.metrics || {})
-        : {};
-      const auc = _toFiniteNumber(metrics.auc);
-      const precision = _toFiniteNumber(metrics.precision);
-      const fpr = _toFiniteNumber(metrics.fpr_non_high_as_high) ?? _parseFprFromCalibration(retrainMeta?.policy);
-
-      aucEl.textContent = `AUPRC: ${(auc ?? ML_CARD_DEFAULT.auc).toFixed(3)}`;
-      precisionEl.textContent = `Precision: ${(precision ?? ML_CARD_DEFAULT.precision).toFixed(3)}`;
-      fprEl.textContent = `FPR: ${(((fpr ?? (ML_CARD_DEFAULT.fprPct / 100)) * 100)).toFixed(1)}%`;
-    }
-
     async function loadRetrainSummary() {
       const candidates = getModelRecordsCandidates();
       for (const url of candidates) {
@@ -1244,7 +904,6 @@
           if (!r.ok) continue;
           const j = await r.json();
           if (isWebsiteRecordsSummary(j)) {
-            hubModelRecordsSourceLabel = url;
             return j;
           }
         } catch {
@@ -1269,7 +928,6 @@
             if (row) {
               const fromJson = row.summary_json && typeof row.summary_json === "object" ? row.summary_json : null;
               if (isWebsiteRecordsSummary(fromJson)) {
-                hubModelRecordsSourceLabel = `supabase:${table}`;
                 return fromJson;
               }
             }
@@ -1278,7 +936,6 @@
           }
         }
       }
-      hubModelRecordsSourceLabel = "unavailable";
       return null;
     }
 
@@ -1334,14 +991,12 @@
 
       let kpi = { ...MODEL_KPI_DEFAULT };
       let retrainMeta = null;
-      let kpiSource = "default";
       try {
         const raw = localStorage.getItem("sentinel_model_kpis");
         if (raw) {
           const parsed = JSON.parse(raw);
           if (parsed && typeof parsed === "object") {
             kpi = { ...kpi, ...parsed };
-            kpiSource = "cache";
           }
         }
       } catch {
@@ -1376,7 +1031,6 @@
             recallMed: Number(best.eval_recall_med || kpi.recallMed || 0),
             recallHigh: Number(best.eval_recall_high || kpi.recallHigh || 0)
           };
-          kpiSource = "train_eval";
           localStorage.setItem("sentinel_model_kpis", JSON.stringify(kpi));
           break;
         } catch {
@@ -1394,7 +1048,6 @@
           recallMed: Number(metrics.recall_med ?? kpi.recallMed ?? 0),
           recallHigh: Number(metrics.recall_high ?? kpi.recallHigh ?? 0)
         };
-        kpiSource = "retrain_summary";
         localStorage.setItem("sentinel_model_kpis", JSON.stringify(kpi));
       }
 
@@ -1403,13 +1056,9 @@
       primary.textContent = `F1 ${Number(kpi.macroF1 || 0).toFixed(3)}`;
       sub.textContent = `Recall (L/M/H): ${Number(kpi.recallLow || 0).toFixed(2)} / ${Number(kpi.recallMed || 0).toFixed(2)} / ${Number(kpi.recallHigh || 0).toFixed(2)}`;
       if (meta) {
-        const versionTag = retrainMeta?.model?.version_tag ? ` • ${retrainMeta.model.version_tag}` : "";
-        const sourceHint = retrainMeta
-          ? ` • source=${hubModelRecordsSourceLabel}`
-          : ` • source=${kpiSource}`;
-        meta.textContent = `${formatRetrainTime(retrainMeta?.generated_at)}${versionTag}${sourceHint}`;
+        const versionTag = retrainMeta?.model?.version_tag ? ` · ${retrainMeta.model.version_tag}` : "";
+        meta.textContent = `${formatRetrainTime(retrainMeta?.generated_at)}${versionTag}`;
       }
-      updateMlCardChips(retrainMeta);
     }
 
     async function loadMiniStats() {
@@ -1417,10 +1066,8 @@
       let total = Number(localStorage.getItem("sentinel_total") || 0);
       const streakEl = document.getElementById("msStreak");
       const totalEl = document.getElementById("msTotal");
-      const streakSub = document.getElementById("msStreakSub");
       if (streakEl) streakEl.textContent = String(streak);
       if (totalEl) totalEl.textContent = String(total);
-      if (streakSub) streakSub.textContent = streak > 10 ? "🔥 streak on fire" : "sentinel_streak";
 
       const liveEl = document.getElementById("msLive");
       const liveSub = document.getElementById("msLiveSub");
@@ -1437,7 +1084,6 @@
             localStorage.setItem("sentinel_total", String(total));
             if (streakEl) streakEl.textContent = String(streak);
             if (totalEl) totalEl.textContent = String(total);
-            if (streakSub) streakSub.textContent = streak > 10 ? "🔥 streak on fire" : "sentinel_streak";
           }
         } catch {
           // ignore local fallback parse issues
@@ -1483,7 +1129,6 @@
             streak = run;
             localStorage.setItem("sentinel_streak", String(streak));
             if (streakEl) streakEl.textContent = String(streak);
-            if (streakSub) streakSub.textContent = streak > 10 ? "🔥 streak on fire" : "sentinel_streak";
           }
         }
 
@@ -1500,7 +1145,6 @@
             localStorage.setItem("sentinel_total", String(total));
             if (streakEl) streakEl.textContent = String(streak);
             if (totalEl) totalEl.textContent = String(total);
-            if (streakSub) streakSub.textContent = streak > 10 ? "🔥 streak on fire" : "sentinel_streak";
           }
         } catch {
           // ignore local fallback parse issues
@@ -1527,21 +1171,6 @@
       };
     }
 
-    function fallbackActivity() {
-      const now = Date.now();
-      const sampleScores = [12, 35, 78, 66, 24, 82, 41, 15, 59, 92, 31, 22, 74, 18, 63, 28, 53, 80, 26, 44];
-      return sampleScores.map((s, i) => {
-        const t = new Date(now - i * 60 * 60 * 1000).toISOString();
-        return normalizeEvent({
-          timestamp: t,
-          risk_score: s,
-          risk: s >= 70 ? "high" : s >= 40 ? "med" : "low",
-          pii_type: s >= 70 ? "API key pattern" : s >= 40 ? "email address" : "low",
-          action: s >= 70 ? "block" : s >= 40 ? "warn" : "silent"
-        });
-      });
-    }
-
     async function fetchActivity() {
       const url = localStorage.getItem("sb_url");
       const key = localStorage.getItem("sb_key");
@@ -1561,7 +1190,7 @@
         const local = JSON.parse(localStorage.getItem("sentinel_recent_events") || "[]");
         if (Array.isArray(local) && local.length) return local.map(normalizeEvent).slice(0, 20);
       } catch {}
-      return fallbackActivity();
+      return [];
     }
 
     function formatTime(ts) {
@@ -1575,7 +1204,28 @@
 
     function renderActivity(rows) {
       const tbody = document.getElementById("activityRows");
+      const placeholder = document.getElementById("activityPlaceholder");
+      const tableWrap = document.getElementById("activityTableWrap");
+      const hasRows = Array.isArray(rows) && rows.length > 0;
       if (!tbody) return;
+
+      if (!hasRows) {
+        tbody.innerHTML = "";
+        if (placeholder) {
+          placeholder.hidden = false;
+        }
+        if (tableWrap) {
+          tableWrap.hidden = true;
+        }
+        return;
+      }
+
+      if (placeholder) {
+        placeholder.hidden = true;
+      }
+      if (tableWrap) {
+        tableWrap.hidden = false;
+      }
       tbody.innerHTML = "";
       rows.forEach((r) => {
         const riskClass = r.risk === "high" ? "risk-high" : r.risk === "med" ? "risk-med" : "risk-low";
@@ -1592,195 +1242,6 @@
       });
     }
 
-    function renderSparkline(rows) {
-      const linePath = document.getElementById("sparkLinePath");
-      const fillPath = document.getElementById("sparkFillPath");
-      if (!linePath || !fillPath) return;
-
-      const byDay = {};
-      rows.forEach((r) => {
-        const d = new Date(r.time);
-        const key = d.toISOString().slice(0, 10);
-        byDay[key] = byDay[key] || [];
-        byDay[key].push(Number(r.score || 0));
-      });
-      const keys = Object.keys(byDay).sort().slice(-7);
-      let points = keys.map((k) => {
-        const arr = byDay[k];
-        return Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
-      });
-      if (points.length < 7) {
-        const fallback = [12, 28, 40, 32, 52, 38, 64];
-        points = fallback.slice(0, 7 - points.length).concat(points);
-      }
-
-      const w = 300, h = 60;
-      const max = 100;
-      const step = w / (points.length - 1);
-      const coords = points.map((v, i) => [i * step, h - (v / max) * (h - 6) - 3]);
-      const dLine = coords.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(2)} ${p[1].toFixed(2)}`).join(" ");
-      const dFill = `${dLine} L ${w} ${h} L 0 ${h} Z`;
-      linePath.setAttribute("d", dLine);
-      fillPath.setAttribute("d", dFill);
-    }
-
-    function loadConfigSummary() {
-      const sensitivity = localStorage.getItem("sentinel_sensitivity") || "Medium";
-      const llmOnly = localStorage.getItem("monitor_llm_only");
-      const blockHigh = localStorage.getItem("block_high_risk_pastes");
-      const llmOn = llmOnly === null ? true : llmOnly === "true";
-      const blockOn = blockHigh === null ? true : blockHigh === "true";
-      const text = `Sensitivity: ${sensitivity} | LLM-only: ${llmOn ? "On" : "Off"} | Block high-risk: ${blockOn ? "On" : "Off"}`;
-      const el = document.getElementById("cfgSummary");
-      if (el) el.textContent = text;
-    }
-
-    function loadFeedbackStats() {
-      const collected = Number(localStorage.getItem("feedback_collected") || 47);
-      const used = Number(localStorage.getItem("feedback_used_for_training") || 12);
-      const threshold = Number(localStorage.getItem("feedback_retrain_threshold") || 100);
-      const remaining = Math.max(0, threshold - collected);
-      const pct = Math.max(0, Math.min(100, (collected / threshold) * 100));
-      document.getElementById("fbCollected").textContent = `${collected} corrections collected`;
-      document.getElementById("fbUsed").textContent = `${used} used for training`;
-      document.getElementById("fbNext").textContent = `Next retrain: ${remaining} more needed`;
-      document.getElementById("fbProgress").style.width = pct.toFixed(1) + "%";
-      loadFeedbackPatterns();
-    }
-
-    function loadFeedbackPatterns() {
-      const p1 = document.getElementById("fbPattern1");
-      const p2 = document.getElementById("fbPattern2");
-      const p3 = document.getElementById("fbPattern3");
-      if (!p1 || !p2 || !p3) return;
-      try {
-        const raw = localStorage.getItem("feedback_patterns");
-        if (!raw) throw new Error("no patterns");
-        const data = JSON.parse(raw);
-        const pairs = Object.entries(data || {}).sort((a, b) => Number(b[1]) - Number(a[1]));
-        if (!pairs.length) throw new Error("empty");
-        const top = pairs.slice(0, 3);
-        const slots = [p1, p2, p3];
-        for (let i = 0; i < slots.length; i++) {
-          const t = top[i];
-          if (!t) {
-            slots[i].style.display = "none";
-            continue;
-          }
-          const label = String(t[0]).replace("->", "→");
-          slots[i].style.display = "inline-block";
-          slots[i].textContent = `Pattern: ${label} (${Number(t[1]) || 0})`;
-        }
-      } catch {
-        p1.textContent = "Pattern: high→med (12)";
-        p2.textContent = "Pattern: med→low (9)";
-        p3.textContent = "Pattern: high→low (6)";
-        p1.style.display = "inline-block";
-        p2.style.display = "inline-block";
-        p3.style.display = "inline-block";
-      }
-    }
-
-    async function loadFleetDetails() {
-      const usersEl = document.getElementById("fleetUsers");
-      const alertsEl = document.getElementById("fleetAlerts");
-      const topEl = document.getElementById("fleetTop");
-      if (!usersEl || !alertsEl || !topEl) return;
-
-      const url = localStorage.getItem("sb_url");
-      const key = localStorage.getItem("sb_key");
-      if (!url || !key) {
-        usersEl.textContent = "Users: —";
-        alertsEl.textContent = "Active alerts: —";
-        topEl.textContent = "Top risk: —";
-        return;
-      }
-      try {
-        const r = await fetch(
-          url.replace(/\/$/, "")
-            + "/rest/v1/guardrail_events?select=text_hash,llm_name,risk_score,pii_classes&order=timestamp.desc.nullslast&limit=400",
-          { headers: { apikey: key, Authorization: "Bearer " + key } }
-        );
-        if (!r.ok) throw new Error("fetch failed");
-        const rows = await r.json();
-        const identities = new Set();
-        let alerts = 0;
-        const cats = {};
-        for (const row of rows) {
-          const id = row.text_hash || row.llm_name || "unknown";
-          identities.add(String(id));
-          if (Number(row.risk_score || 0) >= 70) alerts += 1;
-          const raw = row.pii_classes;
-          const firstCat = Array.isArray(raw)
-            ? raw[0]
-            : String(raw || "")
-                .split(/[,;/|]/)
-                .map((s) => s.trim())
-                .filter(Boolean)[0] || "";
-          if (firstCat) cats[firstCat] = (cats[firstCat] || 0) + 1;
-        }
-        const topCat = Object.entries(cats).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
-        usersEl.textContent = `Users: ${identities.size}`;
-        alertsEl.textContent = `Active alerts: ${alerts}`;
-        topEl.textContent = `Top risk: ${String(topCat).slice(0, 18)}`;
-      } catch {
-        usersEl.textContent = "Users: —";
-        alertsEl.textContent = "Active alerts: —";
-        topEl.textContent = "Top risk: unavailable";
-      }
-    }
-
-    function triggerQuickScan() {
-      const input = document.getElementById("quickScanInput");
-      if (!input) return;
-      input.click();
-    }
-
-    function quickScanFile(file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const text = String(reader.result || "");
-        const patterns = [
-          /\b\d{3}-\d{2}-\d{4}\b/g,
-          /\b(?:\d[ -]*?){13,16}\b/g,
-          /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,
-          /\b(?:sk_live_|AKIA|AIza)[A-Za-z0-9_\-]{8,}\b/g
-        ];
-        let hits = 0;
-        patterns.forEach((re) => {
-          const m = text.match(re);
-          if (m) hits += m.length;
-        });
-        if (hits > 0) {
-          showToast(`Scan complete: ${hits} potential PII pattern(s) found`, "#FFB300");
-  } else {
-          showToast("Scan complete: no obvious PII patterns found", "#02C39A");
-        }
-      };
-      reader.onerror = () => showToast("Could not read file", "#E53935");
-      reader.readAsText(file);
-    }
-
-    function exportActivityReport() {
-      const rows = _lastActivityRows.slice(0, 20);
-      const html = `<!doctype html>
-<html><head><meta charset="utf-8"><title>Core Sentinel Activity Export</title>
-<style>body{font-family:Arial,sans-serif;padding:24px;background:#f7f7f9;color:#111}table{width:100%;border-collapse:collapse}th,td{padding:8px;border:1px solid #ddd;font-size:13px;text-align:left}th{background:#eee}</style></head>
-<body><h1>Core Sentinel Activity Report</h1><p>Generated: ${new Date().toLocaleString()}</p>
-<table><thead><tr><th>Time</th><th>Risk</th><th>PII Type</th><th>Action</th><th>Status</th></tr></thead>
-<tbody>${rows.map(r => `<tr><td>${formatTime(r.time)}</td><td>${r.risk.toUpperCase()} (${r.score})</td><td>${String(r.pii||"—")}</td><td>${r.action}</td><td>${r.status}</td></tr>`).join("")}</tbody></table>
-</body></html>`;
-      const blob = new Blob([html], { type: "text/html" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "core_sentinel_activity_report.html";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(a.href);
-      showToast("Report exported", "#02C39A");
-    }
-
     async function refreshHubData() {
       await testConnection();
       await loadMiniStats();
@@ -1788,12 +1249,6 @@
       const events = await fetchActivity();
       _lastActivityRows = events;
       renderActivity(events);
-      renderSparkline(events);
-      loadConfigSummary();
-      loadFeedbackStats();
-      if (getAdminSession()) {
-        await loadFleetDetails();
-      }
     }
 
     function startHubModelRecordsPolling() {
@@ -1811,184 +1266,6 @@
         await loadModelKpis();
       }, 60000);
     }
-
-    function handleKBDrop(e) {
-  e.preventDefault();
-      document.getElementById("dropZone").style.borderColor = "rgba(255,255,255,0.15)";
-  handleKBFiles(e.dataTransfer.files);
-}
-
-    function handleKBFiles(files) {
-      if (!files.length) return;
-      const names = Array.from(files).map((f) => f.name).join(", ");
-      document.getElementById("kbStatus").textContent = "Ready to upload: " + names;
-  window._kbPendingFiles = files;
-}
-
-    function readFileText(file) {
-      return new Promise((res, rej) => {
-        const r = new FileReader();
-        r.onload = (e) => res(e.target.result);
-        r.onerror = rej;
-        r.readAsText(file);
-      });
-    }
-
-    function extractPatterns(text, category) {
-      const patterns = [];
-      const seedsMap = {
-        hipaa: ["patient","diagnosis","treatment","medical record"],
-        pci: ["cardholder","PAN","CVV","expiry"],
-        gdpr: ["data subject","personal data","consent"],
-        legal: ["privileged","attorney-client","litigation"],
-        sox: ["audit","financial reporting","controls"],
-        custom: [], internal: ["confidential","internal only"]
-      };
-      const seeds = seedsMap[category] || [];
-      text.split(/[.!?\n]+/).forEach((s) => {
-        const sl = s.toLowerCase().trim();
-        if (sl.length < 10 || sl.length > 220) return;
-        if (seeds.some((seed) => sl.includes(seed))) {
-          patterns.push({ type: "keyword_context", pattern: s.trim().slice(0, 120), risk: "medium" });
-        }
-      });
-      return patterns.slice(0, 50);
-    }
-
-    async function uploadKB() {
-      const files = window._kbPendingFiles;
-      const category = document.getElementById("kbCategory").value;
-      const risk = document.getElementById("kbRisk").value;
-      const statusEl = document.getElementById("kbStatus");
-      if (!files || !files.length) {
-        statusEl.textContent = "Please select files first.";
-        return;
-      }
-  const SB_URL = sbBase();
-      const SB_KEY = localStorage.getItem("sb_key");
-      if (!SB_URL || !SB_KEY) {
-        statusEl.textContent = "Configure Supabase first in Admin settings.";
-    return;
-  }
-      statusEl.textContent = "Processing files...";
-      try {
-        for (const file of files) {
-      const text = await readFileText(file);
-      const patterns = extractPatterns(text, category);
-          const res = await fetch(SB_URL + "/rest/v1/kb_entries", {
-            method: "POST",
-        headers: {
-              apikey: SB_KEY,
-              Authorization: "Bearer " + SB_KEY,
-              "Content-Type": "application/json",
-              Prefer: "return=minimal"
-        },
-        body: JSON.stringify({
-          filename: file.name,
-              category,
-          risk_level: risk,
-              patterns,
-          raw_length: text.length,
-          uploaded_at: new Date().toISOString(),
-          active: true
-        })
-      });
-          if (!res.ok) {
-        const t = await res.text();
-            throw new Error(t.slice(0, 140) || res.statusText);
-      }
-    }
-        statusEl.textContent = "Uploaded successfully.";
-    window._kbPendingFiles = null;
-    loadKBEntries();
-        showToast("Knowledge base updated", "#02C39A");
-      } catch (err) {
-        statusEl.textContent = "Upload failed: " + (err.message || String(err));
-        showToast("KB upload failed", "#E53935");
-      }
-    }
-
-    function patternCountSafe(raw) {
-      if (raw == null) return 0;
-      if (Array.isArray(raw)) return raw.length;
-      try {
-        const arr = typeof raw === "string" ? JSON.parse(raw || "[]") : raw;
-        return Array.isArray(arr) ? arr.length : 0;
-      } catch {
-        return 0;
-      }
-    }
-
-    function escapeHtml(s) {
-      return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-    }
-
-    async function loadKBEntries() {
-      const listEl = document.getElementById("kbList");
-      if (!listEl) return;
-  const SB_URL = sbBase();
-      const SB_KEY = localStorage.getItem("sb_key");
-      if (!SB_URL || !SB_KEY) {
-        listEl.innerHTML = "<div class='mini-note'>Configure Supabase to view KB entries.</div>";
-    return;
-  }
-      try {
-        const r = await fetch(SB_URL + "/rest/v1/kb_entries?select=*&order=uploaded_at.desc", {
-          headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
-        });
-        if (!r.ok) throw new Error(await r.text());
-    const entries = await r.json();
-        if (!entries.length) {
-          listEl.innerHTML = "<div class='mini-note'>No KB entries yet.</div>";
-      return;
-    }
-        listEl.innerHTML = entries.map((e) => {
-      const id = encodeURIComponent(String(e.id));
-          const c = escapeHtml(String(e.category || "").toUpperCase());
-          const f = escapeHtml(e.filename || "file");
-          const p = patternCountSafe(e.patterns);
-          return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.08)">
-        <div style="flex:1">
-              <div style="font-size:12px;font-weight:600">${f}</div>
-              <div class="mini-note">${c} · ${p} patterns</div>
-          </div>
-            <button type="button" class="qa-btn kb-del" data-kb-id="${id}" style="padding:6px 8px;font-size:11px;">Remove</button>
-      </div>`;
-        }).join("");
-      } catch {
-        listEl.innerHTML = "<div class='mini-note' style='color:#ffb3b1;'>Could not load KB entries.</div>";
-      }
-    }
-
-    async function deleteKB(id) {
-  const SB_URL = sbBase();
-      const SB_KEY = localStorage.getItem("sb_key");
-      if (!SB_URL || !SB_KEY) return;
-      try {
-        const r = await fetch(SB_URL + "/rest/v1/kb_entries?id=eq." + encodeURIComponent(id), {
-          method: "DELETE",
-          headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
-        });
-        if (!r.ok) throw new Error(await r.text());
-    loadKBEntries();
-        showToast("KB entry removed", "#E53935");
-      } catch {
-        showToast("Remove failed", "#E53935");
-      }
-    }
-
-    document.addEventListener("click", (e) => {
-      const btn = e.target.closest(".kb-del");
-      if (!btn) return;
-      const id = decodeURIComponent(btn.getAttribute("data-kb-id") || "");
-      if (id) deleteKB(id);
-    });
-
-    document.getElementById("quickScanInput").addEventListener("change", (e) => {
-      const file = e.target.files && e.target.files[0];
-      if (file) quickScanFile(file);
-      e.target.value = "";
-    });
 
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") closeAdminPanel();

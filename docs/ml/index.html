@@ -7,7 +7,7 @@
 <meta name="core-sentinel-supabase-url" content="">
 <!-- Optional: force model records source (e.g., GitHub raw JSON URL). -->
 <meta name="core-sentinel-model-records-url" content="">
-<title>Core Sentinel - ML Health Dashboard</title>
+<title>Model Health — Core Sentinel</title>
   <link rel="icon" type="image/svg+xml" href="../favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -170,6 +170,33 @@
     }
 
     main { padding: 14px 0 34px; }
+    .page-title {
+      font-size: clamp(1.35rem, 2.5vw, 1.85rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 14px;
+      color: #fff;
+    }
+    .kpi-card {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 8px;
+      min-height: 102px;
+    }
+    .kpi-num {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--accent);
+      line-height: 1.1;
+    }
+    .kpi-lbl {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
     .row { display: grid; gap: 10px; margin-bottom: 10px; }
     .row-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .row-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -506,13 +533,14 @@
       <div class="brand">
         <span class="brand-mark">🛡</span>
         <span>Core Sentinel</span>
-        <span class="crumb">/ ML Health Dashboard</span>
+        <span class="crumb">/ ML</span>
   </div>
       <div class="status">
         <span class="pulse"></span>
         <span id="liveState">Live</span>
-        <span id="lastUpdated">Updated --</span>
-        <span id="policySourceChip" class="policy-chip source-default">Policy: Fallback defaults</span>
+        <span id="lastUpdated">Updated —</span>
+        <span id="modelVersionChip" class="policy-chip source-default">Version —</span>
+        <span id="policySourceChip" class="policy-chip source-default">Policy —</span>
   </div>
       <div class="actions">
         <a class="btn" href="../hub.html">← Back to Hub</a>
@@ -524,34 +552,28 @@
   </header>
 
   <div class="sb-wrap" id="mlSbPanel">
-    <details class="sb-details" open>
-      <summary class="sb-summary">Supabase (admin only — URL &amp; anon key)</summary>
+    <details class="sb-details">
+      <summary class="sb-summary">Supabase credentials</summary>
       <div id="mlSbAdminGate" class="sb-grid sb-gate">
-        <p class="mini-note sb-hint" style="margin:0;">
-          Project URL and anon key are <strong>not shown</strong> until you sign in with the same <strong>access key</strong> as the
-          <a href="../hub.html">documentation hub</a> (Admin panel), or configure them there first — this page will then use saved credentials for charts without displaying them.
-        </p>
         <label class="mini-note">Access key
-          <input type="password" id="mlSbAccessKey" placeholder="Same as Hub → Admin" autocomplete="off" style="max-width:320px;" />
+          <input type="password" id="mlSbAccessKey" placeholder="Hub Admin key" autocomplete="off" style="max-width:320px;" />
         </label>
         <div class="sb-actions">
-          <button type="button" class="btn btn-accent" id="mlSbUnlockBtn">Unlock credential form</button>
+          <button type="button" class="btn btn-accent" id="mlSbUnlockBtn">Unlock</button>
           <span class="mini-note" id="mlSbGateErr" style="color:var(--warn);"></span>
         </div>
-        <p class="mini-note" style="color:var(--muted);">After signing in on the Hub, you can return here — session is shared in this browser.</p>
       </div>
       <div id="mlSbAdminForm" class="sb-grid" style="display:none;">
         <label>Project URL
-          <input type="url" id="mlSbUrl" placeholder="https://your-project-ref.supabase.co" autocomplete="url" />
+          <input type="url" id="mlSbUrl" placeholder="https://…supabase.co" autocomplete="url" />
         </label>
-        <label>Anon public key
-          <input type="password" id="mlSbKey" placeholder="eyJhbGciOiJIUzI1NiIs…" autocomplete="off" />
+        <label>Anon key
+          <input type="password" id="mlSbKey" placeholder="eyJ…" autocomplete="off" />
         </label>
         <div class="sb-actions">
           <button type="button" class="btn btn-accent" id="mlSbSave">Save &amp; reload</button>
-          <button type="button" class="btn" id="mlSbSignOut" style="border:1px solid var(--line);background:transparent;color:var(--muted);">Sign out (clear admin view)</button>
+          <button type="button" class="btn" id="mlSbSignOut" style="border:1px solid var(--line);background:transparent;color:var(--muted);">Sign out</button>
         </div>
-        <p class="mini-note sb-hint">Keys: <strong>Supabase → Project Settings → API</strong>. If you see <strong>401 / 403 / PGRST</strong>, run SQL in <code>core-sentinel-guardrail/supabase/retrain_runs.sql</code> and <code>guardrail_events.sql</code>. One <code>retrain_runs</code> row helps metrics; empty <code>guardrail_events</code> is OK.</p>
       </div>
       <p class="mini-note" id="mlSbStatus" style="margin-top:12px;color:var(--muted);"></p>
     </details>
@@ -559,245 +581,79 @@
 
   <!-- If all network fetches for model_records fail, loadRetrainSummary() parses this (keep in sync when republishing docs/data/model_records.json). -->
   <script type="application/json" id="ml-model-records-fallback">
-{"artifact_version":1,"generated_at":"2026-04-18T20:33:10.433713+00:00","dataset":{"train_samples":10455,"val_samples":485,"test_samples":2289},"metrics":{"accuracy":0.9121203184901209,"precision":0.9446945337620579,"recall":0.9588772845953003,"auc":0.7514706327301757,"fpr_non_high_as_high":0.5259938837920489,"false_negative_rate_risky":0.041122715404699736,"roc_auc":0.9144344703411822},"calibration":{"fpr":0.0015723270440251573},"charts":{"pr_curve_summary":{"high_class_curve":{"precision_values":[1,0.94],"recall_values":[0,1],"thresholds":[0,1],"operating_point":{},"holdout_threshold_point":{}}},"roc_curve_summary":{"high_class_curve":{"fpr_values":[0,1],"tpr_values":[0,1],"auc":0.9144344703411822,"operating_point":{},"holdout_threshold_point":{}}}}}
+{"artifact_version":1,"generated_at":"2026-04-18T20:33:10.433713+00:00","metrics":{"accuracy":0.9121203184901209,"precision":0.9446945337620579,"recall":0.9588772845953003,"auc":0.7514706327301757,"fpr_non_high_as_high":0.5259938837920489,"false_negative_rate_risky":0.041122715404699736,"roc_auc":0.9144344703411822},"calibration":{"fpr":0.0015723270440251573},"charts":{"pr_curve_summary":{"high_class_curve":{"precision_values":[1,0.94],"recall_values":[0,1],"thresholds":[0,1],"operating_point":{},"holdout_threshold_point":{}}},"roc_curve_summary":{"high_class_curve":{"fpr_values":[0,1],"tpr_values":[0,1],"auc":0.9144344703411822,"operating_point":{},"holdout_threshold_point":{}}}}}
   </script>
 
   <main class="container">
+    <h1 class="page-title">Model Health</h1>
+
     <section class="row row-4">
-      <article class="card">
-        <h3>Model Accuracy</h3>
-        <div class="metric-row">
-          <div>
-            <div class="metric-val countup" id="accuracyMetric" data-target="91.2" data-decimals="1" data-suffix="%">0.0%</div>
-            <div class="trend up">↑ stable this week</div>
-            <div class="mini-note" id="accuracySource">Source: demo baseline</div>
-            <div class="mini-note">Dataset split: 10,455 train / 485 val / 2,289 test (~13,229 total, 24 PII categories, 6 data sources)</div>
-    </div>
-          <div class="gauge-wrap">
-            <svg viewBox="0 0 84 84" aria-label="accuracy gauge">
-              <circle cx="42" cy="42" r="30" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="8"></circle>
-              <circle id="accGaugeArc" cx="42" cy="42" r="30" fill="none" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-dasharray="188.5" stroke-dashoffset="188.5" transform="rotate(-90 42 42)"></circle>
-            </svg>
-    </div>
-  </div>
-        <svg class="sparkline" id="accuracySpark"></svg>
+      <article class="card kpi-card">
+        <div class="kpi-num countup" id="precisionMetric" data-decimals="3">—</div>
+        <div class="kpi-lbl">Precision</div>
       </article>
-
-      <article class="card">
-        <h3>Macro AUPRC</h3>
-        <p class="sub" id="aucKpiSub" style="margin:0 0 6px;font-size:11px;color:var(--muted);line-height:1.35;">Mean PR-AUC (low / med / high). This is not ROC-AUC.</p>
-        <div class="metric-val countup" id="aucMetric" data-target="0.751" data-decimals="3">0.000</div>
-        <span class="badge" id="aucBadge">Good</span>
-        <div class="trend up" id="aucTrend">↑ current report snapshot</div>
-        <div class="mini-note" id="aucSource">Source: demo baseline</div>
-        <svg class="sparkline" id="aucSpark"></svg>
+      <article class="card kpi-card">
+        <div class="kpi-num countup" id="recallMetric" data-decimals="3">—</div>
+        <div class="kpi-lbl">Recall</div>
       </article>
-
-      <article class="card">
-        <h3>False positive rate (holdout)</h3>
-        <div class="metric-val countup" id="fprMetric" data-target="52.6" data-decimals="1" data-suffix="%">0.0%</div>
-        <span class="badge good" id="fprBadge">Safe→risky rate</span>
-        <div class="trend up" id="fprTrend">Label FPR at τ (not the ~4% miss rate)</div>
-        <div class="mini-note" id="fprSource">Source: demo events</div>
-        <svg class="sparkline" id="fprSpark"></svg>
+      <article class="card kpi-card">
+        <div class="kpi-num countup" id="f1Metric" data-decimals="3">—</div>
+        <div class="kpi-lbl">F1</div>
       </article>
-
-      <article class="card">
-        <h3>Precision</h3>
-        <div class="metric-val countup" id="precisionMetric" data-target="0.945" data-decimals="3">0.000</div>
-        <span class="badge good">Operating point</span>
-        <div class="trend up" id="precisionTrend">↑ robust on validation sweep</div>
-        <div class="mini-note" id="precisionSource">Source: demo baseline</div>
-        <svg class="sparkline" id="precisionSpark"></svg>
-      </article>
-    </section>
-
-    <section class="row row-3">
-      <article class="card">
-        <h3>Recall (risky) / TPR</h3>
-        <div class="metric-val countup" id="recallMetric" data-target="0.959" data-decimals="3">0.000</div>
-        <span class="badge good">Catch rate for risky class</span>
-        <div class="trend up" id="recallTrend">Holdout @ recommended threshold</div>
-        <div class="mini-note" id="recallSource">Source: model_records.json</div>
-        <svg class="sparkline" id="recallSpark"></svg>
-      </article>
-      <article class="card">
-        <h3>False negative rate (risky)</h3>
-        <div class="metric-val countup" id="fnrMetric" data-target="4.1" data-decimals="1" data-suffix="%">0.0%</div>
-        <span class="badge good" id="fnrBadge">Missed risky rate</span>
-        <div class="trend up" id="fnrTrend">FNR = 1 − recall</div>
-        <div class="mini-note" id="fnrExpl">Not the same as FPR (safe text flagged as risky).</div>
-        <svg class="sparkline" id="fnrSpark"></svg>
-      </article>
-      <article class="card">
-        <h3>Calibration FPR (validation)</h3>
-        <div class="metric-val countup" id="calibFprMetric" data-target="0.2" data-decimals="2" data-suffix="%">0.0%</div>
-        <span class="badge good" id="calibFprBadge">Threshold sweep on val</span>
-        <div class="trend up" id="calibFprTrend">Lower than holdout FPR</div>
-        <div class="mini-note" id="calibFprExpl">From threshold_calibration.json — not paste telemetry.</div>
-        <svg class="sparkline" id="calibFprSpark"></svg>
+      <article class="card kpi-card">
+        <div class="kpi-num countup" id="aucMetric" data-decimals="3">—</div>
+        <div class="kpi-lbl">AUC</div>
       </article>
     </section>
 
     <section class="row row-2">
       <article class="card chart-card">
         <h3>Precision-Recall Curve</h3>
-        <p class="sub" id="prSub">Live PR data unavailable</p>
         <div class="chart-box" id="prChartCard">
           <svg class="chart-svg" id="prChart"></svg>
-    </div>
+        </div>
         <div class="legend">
-          <span class="l-pr">PR curve</span>
-          <span class="l-op">Eval OP (red)</span>
-          <span style="color:#22c55e;font-size:11px">● Holdout τ (green)</span>
-          <span class="l-target">Min precision target</span>
+          <span class="l-pr">PR</span>
+          <span class="l-op">OP</span>
+          <span style="color:#22c55e;font-size:11px">● τ</span>
         </div>
       </article>
 
       <article class="card chart-card">
-        <h3>ROC (operating point)</h3>
-        <p class="sub" id="rocSub">ROC-AUC: <span class="badge" id="rocAucBadge">N/A</span><span id="rocSubExpl"> — ROC-AUC not in summary yet. Red point = calibrated FPR vs recall (high). Headline KPI is macro PR-AUC, not ROC-AUC.</span></p>
-        <div class="chart-box" id="rocChartCard">
-          <svg class="chart-svg" id="rocChart"></svg>
-      </div>
-        <div class="legend">
-          <span class="l-pr">ROC</span>
-          <span class="l-random">Random classifier</span>
-          <span class="l-op">Eval OP (red)</span>
-          <span style="color:#22c55e;font-size:11px">● Holdout τ (green)</span>
-    </div>
-      </article>
-    </section>
-
-    <section class="row row-2">
-      <article class="card chart-card">
-        <h3>Confusion Matrix (Predicted vs Actual)</h3>
+        <h3>Confusion Matrix</h3>
         <div class="chart-box">
           <svg class="heatmap-svg" id="cmChart"></svg>
-  </div>
-        <p class="mini-note" id="cmNote">Reference matrix shown (live confusion export unavailable).</p>
-      </article>
-
-      <article class="card">
-        <h3>Performance by PII Class</h3>
-        <p class="sub" id="classPerfSub">Synthetic reference rows (not live production telemetry).</p>
-        <div class="table-wrap">
-          <table id="classPerfTable">
-            <thead>
-              <tr>
-                <th data-sort="class">PII Class</th>
-                <th data-sort="sensitivity">Sensitivity</th>
-                <th data-sort="expected">Expected</th>
-                <th data-sort="actual">Actual</th>
-                <th data-sort="range">Score Range</th>
-                <th data-sort="status">Status</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-    </div>
-      </article>
-    </section>
-
-    <section class="row row-2">
-      <article class="card chart-card">
-        <h3>Score Distribution Heatmap (Current vs Previous Week)</h3>
-        <div class="chart-box">
-          <svg class="heatmap-svg" id="distHeatmap"></svg>
-  </div>
-      </article>
-
-      <article class="card chart-card">
-        <h3>Drift Detection (Weekly Correction Rate)</h3>
-        <div class="chart-box" id="driftChartCard">
-          <svg class="chart-svg" id="driftChart"></svg>
-    </div>
-        <div class="legend">
-          <span class="l-pr">Correction rate %</span>
-          <span class="l-target">Warning threshold: 8%</span>
-          <span class="l-op">Retrain trigger: 15%</span>
         </div>
-        <p class="mini-note" id="driftNote"></p>
       </article>
     </section>
 
     <section class="row row-2">
       <article class="card">
         <h3>Threshold Simulator</h3>
-        <p class="sub">Adjust warn/block cutoffs and preview policy impact.</p>
         <div class="sim-grid">
-      <div class="sim-row">
-            <label for="warnSlider">Warn threshold (<span id="warnVal">40</span>)</label>
-            <span class="badge warn">20-60</span>
-      </div>
+          <div class="sim-row">
+            <label for="warnSlider">Warn (<span id="warnVal">40</span>)</label>
+            <span class="badge warn">20–60</span>
+          </div>
           <input id="warnSlider" type="range" min="20" max="60" value="40">
 
-      <div class="sim-row">
-            <label for="blockSlider">Block threshold (<span id="blockVal">70</span>)</label>
-            <span class="badge bad">50-95</span>
-      </div>
+          <div class="sim-row">
+            <label for="blockSlider">Block (<span id="blockVal">70</span>)</label>
+            <span class="badge bad">50–95</span>
+          </div>
           <input id="blockSlider" type="range" min="50" max="95" value="70">
 
           <div class="sim-values">
-            <div id="simBlock">Simulated block: <strong>409 (+123 vs current)</strong></div>
-            <div id="simWarn">Simulated warn: <strong>34 (-132 vs current)</strong></div>
-            <div id="simSafe">Simulated safe: <strong>557 (+9 vs current)</strong></div>
-            <div id="simFpr">Estimated FPR proxy: <strong>~0.0%</strong></div>
-    </div>
+            <div id="simBlock"><strong>—</strong></div>
+            <div id="simWarn"><strong>—</strong></div>
+            <div id="simSafe"><strong>—</strong></div>
+            <div id="simFpr"><strong>—</strong></div>
+          </div>
 
-          <button class="btn btn-accent" id="applyConfigBtn">Apply to config</button>
-          <p class="mini-note">Copies suggested values for <code>risk_policy.json</code>.</p>
-  </div>
+          <button type="button" class="btn btn-accent" id="applyConfigBtn">Copy threshold JSON</button>
+        </div>
       </article>
-
-      <article class="card">
-        <h3>Live FPR Monitor</h3>
-        <div class="donut-wrap">
-          <svg class="donut" viewBox="0 0 180 180" id="fprDonut">
-            <circle cx="90" cy="90" r="62" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="16"></circle>
-            <circle id="fprDonutArc" cx="90" cy="90" r="62" fill="none" stroke="var(--accent)" stroke-width="16" stroke-linecap="round" stroke-dasharray="389.6" stroke-dashoffset="389.6" transform="rotate(-90 90 90)"></circle>
-            <text id="fprDonutText" x="90" y="86" text-anchor="middle" fill="#e8e8e8" font-size="28" font-weight="800">0.0%</text>
-            <text id="fprGaugeLabel" x="90" y="104" text-anchor="middle" fill="#6b7280" font-size="11">FPR</text>
-          </svg>
-          <div class="fpr-stats">
-            <div>Displayed metric: <strong id="fprMetricKind">FPR proxy</strong></div>
-            <div>FPR value: <strong id="fprStatVal" class="ok">0.0%</strong></div>
-            <div>Holdout FPR: <strong id="fprHoldoutVal">N/A</strong></div>
-            <div>Calibration FPR: <strong id="fprCalibVal">N/A</strong></div>
-            <div>Total blocks: <strong id="fprBlocks">286</strong></div>
-            <div>Total snoozed: <strong id="fprSnoozed">0</strong></div>
-            <div>Override rate: <strong id="fprOverride">0.0%</strong></div>
-            <div class="mini-note">Target &lt; 5%, alert &gt; 10%</div>
-    </div>
-    </div>
-      </article>
-    </section>
-
-    <section class="row row-2">
-      <article class="card">
-        <h3>Active Learning Status</h3>
-        <div id="alContent">
-          <p class="sub">No feedback rows synced yet. Collect corrections from remediation dialog to populate active learning stats.</p>
-  </div>
-      </article>
-
-      <article class="card">
-        <h3>False Positive Log (Recent 20)</h3>
-        <div class="table-wrap">
-          <table class="fp-table">
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Score</th>
-                <th>PII Class</th>
-                <th>Action</th>
-                <th>Feedback</th>
-              </tr>
-            </thead>
-            <tbody id="fpRows"></tbody>
-          </table>
-</div>
-      </article>
+      <article class="card" aria-hidden="true" style="min-height:0;border:none;background:transparent;box-shadow:none;padding:0"></article>
     </section>
   </main>
 
@@ -807,6 +663,7 @@
       auc: Number.NaN,
       precision: Number.NaN,
       recall: Number.NaN,
+      f1: Number.NaN,
       fnr: Number.NaN,
       roc_auc: Number.NaN,
       fpr: 0.0,
@@ -826,10 +683,6 @@
       fpr: 0.0,
       weeklyRates: DEMO_DRIFT
     };
-    const ROC_POINTS = [
-      [0.0, 0.0], [0.002, 0.46], [0.005, 0.72], [0.01, 0.86], [0.02, 0.93],
-      [0.05, 0.97], [0.1, 0.985], [0.2, 0.993], [0.5, 0.998], [1.0, 1.0]
-    ];
     const PR_POINTS = [
       [0.55, 0.995], [0.70, 0.992], [0.80, 0.989], [0.90, 0.985],
       [0.94, 0.981], [0.965, 0.978], [0.987, 0.976], [1.0, 0.965]
@@ -973,6 +826,7 @@
         || sourceMode.includes("sync")
         || (hasRecommendedThreshold && hasKeyMetrics)
         || (hasDataset && hasCurves && hasStamp)
+        || (hasKeyMetrics && hasCurves && hasStamp)
       );
     }
 
@@ -1121,30 +975,6 @@
       };
     }
 
-    function getHighRocCurve(summary) {
-      const roc = summary?.evaluation?.roc_curve_summary;
-      const hc = (roc && typeof roc === "object" && roc.high_class_curve && typeof roc.high_class_curve === "object")
-        ? roc.high_class_curve
-        : roc;
-      if (!hc || typeof hc !== "object") return null;
-      const fpr = asNumberArray(hc.fpr_values);
-      const tpr = asNumberArray(hc.tpr_values);
-      const thresholds = asNumberArray(hc.thresholds);
-      if (!fpr.length || !tpr.length || fpr.length !== tpr.length) return null;
-      const op = hc.operating_point && typeof hc.operating_point === "object" ? hc.operating_point : {};
-      return {
-        fpr,
-        tpr,
-        thresholds,
-        auc: Number(hc.auc),
-        operatingPoint: {
-          fpr: Number(op.fpr),
-          tpr: Number(op.tpr),
-          threshold: Number(op.threshold),
-        },
-      };
-    }
-
     function actionFromScore(score, policy) {
       const blockThr = Number(policy.block_threshold || DEFAULT_POLICY.block_threshold);
       const silentMax = Number(policy.risk_score_silent_max || DEFAULT_POLICY.risk_score_silent_max);
@@ -1283,6 +1113,8 @@
     function applyRetrainSummary(summary) {
       if (!summary || typeof summary !== "object") {
         retrainSummary = null;
+        const verChip = document.getElementById("modelVersionChip");
+        if (verChip) verChip.textContent = "Version —";
         return;
       }
       if (summary.charts && typeof summary.charts === "object") {
@@ -1313,12 +1145,19 @@
         if (Number.isFinite(direct)) return direct;
         return deriveMacroAuprc(summary);
       })();
+      const precision = toUnitOrNaN(metrics.precision);
+      const recall = toUnitOrNaN(metrics.recall);
+      let f1 = toUnitOrNaN(metrics.f1);
+      if (!Number.isFinite(f1) && Number.isFinite(precision) && Number.isFinite(recall) && precision + recall > 0) {
+        f1 = (2 * precision * recall) / (precision + recall);
+      }
       METRICS_STATIC = {
         ...METRICS_STATIC,
         accuracy: toPctOrNaN(metrics.accuracy),
         auc: aucResolved,
-        precision: toUnitOrNaN(metrics.precision),
-        recall: toUnitOrNaN(metrics.recall),
+        precision,
+        recall,
+        f1,
         fnr: toUnitOrNaN(metrics.false_negative_rate_risky),
         roc_auc: toUnitOrNaN(metrics.roc_auc),
         fpr: pctFromUnit(metrics.fpr_non_high_as_high, METRICS_STATIC.fpr)
@@ -1330,42 +1169,11 @@
       if (summary.generated_at && usingDemo) {
         setLiveHeader(summary.generated_at, false);
       }
-      const policyChip = document.getElementById("policySourceChip");
-      if (policyChip && summary.model?.version_tag) {
-        const existing = policyChip.title ? `${policyChip.title}\n` : "";
-        policyChip.title = `${existing}Model version: ${summary.model.version_tag}`;
+      const verChip = document.getElementById("modelVersionChip");
+      if (verChip) {
+        const vt = summary.model?.version_tag;
+        verChip.textContent = vt ? `Version ${vt}` : "Version —";
       }
-    }
-
-    function updateKpiSources(metrics) {
-      const modelSource = retrainSummary
-        ? `website records (${modelRecordsSourceLabel || "resolved"})`
-        : "unavailable";
-      const hasFeedbackLabels = Boolean(metrics && metrics.hasFeedbackLabels);
-      const eventsSource = usingDemo
-        ? "demo events"
-        : metrics && metrics.fprSource === "calibration"
-          ? "calibration FPR (validation sweep; not user feedback)"
-        : metrics && metrics.fprSource === "holdout"
-          ? "holdout threshold-check FPR"
-        : hasFeedbackLabels
-          ? "live feedback labels"
-          : "live events (no feedback labels)";
-      const acc = document.getElementById("accuracySource");
-      const auc = document.getElementById("aucSource");
-      const prec = document.getElementById("precisionSource");
-      const rec = document.getElementById("recallSource");
-      const fpr = document.getElementById("fprSource");
-      if (acc) acc.textContent = `Source: ${modelSource}`;
-      if (prec) prec.textContent = `Source: ${modelSource}`;
-      if (rec) rec.textContent = `Source: ${modelSource}`;
-      if (auc) {
-        const hasAuc = Number.isFinite(METRICS_STATIC.auc);
-        auc.textContent = hasAuc
-          ? `Source: ${modelSource} (metrics.auc = macro AUPRC)`
-          : "Source: unavailable";
-      }
-      if (fpr) fpr.textContent = `Source: ${eventsSource}`;
     }
 
     async function loadPolicyThresholds() {
@@ -1481,7 +1289,7 @@
       requestAnimationFrame(step);
     }
 
-    function animateCounters(metrics) {
+    function animateCounters() {
       document.querySelectorAll(".countup").forEach((el) => {
         const raw = el.dataset.target;
         let target = Number.NaN;
@@ -1489,83 +1297,16 @@
           const n = Number(raw);
           if (Number.isFinite(n)) target = n;
         }
-        const dec = Number(el.dataset.decimals || 0);
+        const dec = Number(el.dataset.decimals ?? 3);
         const suffix = el.dataset.suffix || "";
         countUp(el, target, dec, suffix);
       });
-      const precisionEl = document.getElementById("precisionMetric");
-      if (precisionEl) {
-        precisionEl.dataset.target = String(METRICS_STATIC.precision);
-        countUp(precisionEl, METRICS_STATIC.precision, 3, "");
-      }
-      const fprEl = document.getElementById("fprMetric");
-      if (fprEl) {
-        fprEl.dataset.target = String(metrics.fpr);
-        countUp(fprEl, metrics.fpr, 1, "%");
-      }
     }
 
     function setGauge(arcEl, pct, circumference) {
       const clamped = Math.max(0, Math.min(100, pct));
       arcEl.style.strokeDasharray = String(circumference);
       arcEl.style.strokeDashoffset = String(circumference * (1 - clamped / 100));
-    }
-
-    function drawSparkline(svgId, values, color = "var(--accent)") {
-      const svg = document.getElementById(svgId);
-      if (!svg || !values.length) return;
-      const w = svg.clientWidth || 260;
-      const h = svg.clientHeight || 46;
-      svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
-      const max = Math.max(...values, 1);
-      const min = Math.min(...values, 0);
-      const span = Math.max(1, max - min);
-      const step = w / (values.length - 1);
-      const pts = values.map((v, i) => {
-        const x = i * step;
-        const y = h - ((v - min) / span) * (h - 6) - 3;
-        return [x, y];
-      });
-      const d = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(2)} ${p[1].toFixed(2)}`).join(" ");
-      const fillD = `${d} L ${w} ${h} L 0 ${h} Z`;
-      svg.innerHTML = `
-        <path d="${fillD}" fill="rgba(2,195,154,0.1)"></path>
-        <path d="${d}" fill="none" stroke="${color}" stroke-width="2.2"></path>
-      `;
-    }
-
-    function buildTrendToCurrent(current, options = {}) {
-      const points = Number(options.points || 7);
-      const min = Number.isFinite(Number(options.min)) ? Number(options.min) : -Infinity;
-      const max = Number.isFinite(Number(options.max)) ? Number(options.max) : Infinity;
-      const backoff = Number.isFinite(Number(options.backoff)) ? Number(options.backoff) : 0.05;
-      const c = Number(current);
-      if (!Number.isFinite(c) || points < 2) return Array.from({ length: Math.max(2, points) }, () => 0);
-      const out = [];
-      for (let i = 0; i < points; i++) {
-        const ratio = (points - 1 - i) / (points - 1);
-        const v = c * (1 - backoff * ratio);
-        out.push(Math.max(min, Math.min(max, v)));
-      }
-      return out;
-    }
-
-    function buildCenteredTrend(current, options = {}) {
-      const points = Number(options.points || 7);
-      const min = Number.isFinite(Number(options.min)) ? Number(options.min) : -Infinity;
-      const max = Number.isFinite(Number(options.max)) ? Number(options.max) : Infinity;
-      const amplitude = Number.isFinite(Number(options.amplitude)) ? Number(options.amplitude) : 0.08;
-      const c = Number(current);
-      if (!Number.isFinite(c) || points < 2) return Array.from({ length: Math.max(2, points) }, () => 0);
-      const out = [];
-      for (let i = 0; i < points; i++) {
-        const t = points === 1 ? 0 : i / (points - 1);
-        const wobble = Math.sin(t * Math.PI * 1.2) * amplitude;
-        const v = c * (1 + wobble);
-        out.push(Math.max(min, Math.min(max, v)));
-      }
-      out[out.length - 1] = Math.max(min, Math.min(max, c));
-      return out;
     }
 
     function normalizeEvent(raw) {
@@ -1771,6 +1512,7 @@
 
     function renderFalsePositiveLog(events) {
       const tbody = document.getElementById("fpRows");
+      if (!tbody) return;
       tbody.innerHTML = "";
       if (usingDemo) {
         DEMO_FALSE_POSITIVE_LOG.forEach((row) => {
@@ -1808,6 +1550,7 @@
 
     function renderActiveLearning(events) {
       const container = document.getElementById("alContent");
+      if (!container) return;
       const feedbackRows = events.filter((e) => String(e.feedback).toLowerCase().includes("wrong"));
       const total = usingDemo ? DEMO_METRICS.feedbackRows : (feedbackRows.length || 47);
       const used = Math.min(Math.floor(total * 0.26), total);
@@ -1839,6 +1582,7 @@
 
     function renderClassPerfTable() {
       const tbody = document.querySelector("#classPerfTable tbody");
+      if (!tbody) return;
       const key = classSort.key;
       const dir = classSort.dir === "asc" ? 1 : -1;
       const keyFn = (r) => {
@@ -1865,21 +1609,6 @@
           <td class="${r[5] === "ok" ? "ok" : "warn"}">${r[5] === "ok" ? "✅" : "⚠️"}</td>
         </tr>
       `).join("");
-    }
-
-    function attachSortableHeaders() {
-      document.querySelectorAll("#classPerfTable th[data-sort]").forEach((th) => {
-        th.addEventListener("click", () => {
-          const key = th.dataset.sort;
-          if (classSort.key === key) {
-            classSort.dir = classSort.dir === "asc" ? "desc" : "asc";
-          } else {
-            classSort.key = key;
-            classSort.dir = "asc";
-          }
-          renderClassPerfTable();
-        });
-      });
     }
 
     function drawAxes(svg, x, y, w, h, xLabel, yLabel) {
@@ -1974,7 +1703,6 @@
 
       const mapX = (r) => cx + r * cw;
       const mapY = (p) => cy + (1 - p) * ch;
-      const prSub = document.getElementById("prSub");
 
       const ns = "http://www.w3.org/2000/svg";
       const targetLine = document.createElementNS(ns, "line");
@@ -2008,9 +1736,6 @@
             "var(--danger)",
             `Eval sweep: P=${op.precision.toFixed(3)} R=${op.recall.toFixed(3)}`
           );
-          if (prSub) prSub.textContent = `Risky-class PR curve (${pts.length} points). Red = eval sweep OP. Green = holdout @ τ from model_records.`;
-        } else if (prSub) {
-          prSub.textContent = `Risky-class PR curve (${pts.length} points).`;
         }
         const prBox = retrainSummary?.evaluation?.pr_curve_summary;
         const hcBox = prBox?.high_class_curve || prBox;
@@ -2029,8 +1754,7 @@
 
       const polHigh = retrainSummary?.policy?.thresholds?.high;
       const polAuprc = Number(polHigh?.auprc);
-      if (retrainSummary && Number.isFinite(polAuprc) && prSub) {
-        prSub.textContent = `Policy snapshot: high-class AUPRC ≈ ${polAuprc.toFixed(3)} (full PR curve needs evaluation bundle in retrain summary)`;
+      if (retrainSummary && Number.isFinite(polAuprc)) {
         addHoverablePoint(
           svg,
           mapX(0.5),
@@ -2042,7 +1766,6 @@
       }
 
       if (usingDemo) {
-        if (prSub) prSub.textContent = "Demo PR curve (illustrative)";
         const prPath = PR_POINTS.map((d, i) => `${i ? "L" : "M"}${mapX(d[0]).toFixed(2)} ${mapY(d[1]).toFixed(2)}`).join(" ");
         const path = document.createElementNS(ns, "path");
         path.setAttribute("d", prPath);
@@ -2053,144 +1776,6 @@
         svg.appendChild(path);
         PR_POINTS.forEach((p) => {
           addHoverablePoint(svg, mapX(p[0]), mapY(p[1]), "var(--accent)", `Demo point  P=${p[1].toFixed(3)}  R=${p[0].toFixed(3)}`);
-        });
-      } else if (prSub) {
-        prSub.textContent = "Live PR curve unavailable from current artifacts";
-      }
-    }
-
-    function drawROCChart() {
-      const svg = document.getElementById("rocChart");
-      const w = svg.clientWidth || 560;
-      const h = svg.clientHeight || 300;
-      svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
-      svg.innerHTML = "";
-      const pad = { l: 62, r: 16, t: 16, b: 44 };
-      const cx = pad.l, cy = pad.t, cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
-      addGrid(svg, cx, cy, cw, ch, 9, 6);
-      drawAxes(svg, cx, cy, cw, ch, "False Positive Rate", "True Positive Rate");
-      const ns = "http://www.w3.org/2000/svg";
-      const rocAucBadge = document.getElementById("rocAucBadge");
-      const mapX = (x) => cx + Math.max(0, Math.min(1, x)) * cw;
-      const mapY = (y) => cy + (1 - y) * ch;
-
-      const diag = document.createElementNS(ns, "line");
-      diag.setAttribute("x1", cx);
-      diag.setAttribute("y1", cy + ch);
-      diag.setAttribute("x2", cx + cw);
-      diag.setAttribute("y2", cy);
-      diag.setAttribute("stroke", "#7b7f8a");
-      diag.setAttribute("stroke-width", "1.5");
-      diag.setAttribute("stroke-dasharray", "6 5");
-      svg.appendChild(diag);
-
-      const rocCurve = getHighRocCurve(retrainSummary);
-      const _rawRoc = Number(rocCurve?.auc);
-      const rocAucOnly = Number.isFinite(_rawRoc)
-        ? _rawRoc
-        : Number(retrainSummary?.metrics?.roc_auc);
-      const rocSubExpl = document.getElementById("rocSubExpl");
-      if (rocAucBadge) {
-        if (Number.isFinite(rocAucOnly)) {
-          rocAucBadge.textContent = rocAucOnly.toFixed(3);
-          rocAucBadge.className = "badge good";
-          if (rocSubExpl) {
-            rocSubExpl.textContent = " (validation). Red point = calibrated FPR vs TPR (high).";
-          }
-        } else {
-          rocAucBadge.textContent = "N/A";
-          rocAucBadge.className = "badge";
-          if (rocSubExpl) {
-            rocSubExpl.textContent =
-              " — ROC-AUC not exported in retrain summary yet. Red point = calibrated FPR vs recall (high). Headline KPI is macro PR-AUC, not ROC-AUC.";
-          }
-        }
-      }
-
-      if (rocCurve) {
-        const pts = rocCurve.fpr.map((x, i) => [Math.max(0, Math.min(1, x)), Math.max(0, Math.min(1, rocCurve.tpr[i] || 0))]);
-        if (pts.length >= 2) {
-          const pathD = pts.map((d, i) => `${i ? "L" : "M"}${mapX(d[0]).toFixed(2)} ${mapY(d[1]).toFixed(2)}`).join(" ");
-          const path = document.createElementNS(ns, "path");
-          path.setAttribute("d", pathD);
-          path.setAttribute("fill", "none");
-          path.setAttribute("stroke", "var(--accent)");
-          path.setAttribute("stroke-width", "2.5");
-          path.classList.add("animate-path");
-          svg.appendChild(path);
-        }
-        const op = rocCurve.operatingPoint || {};
-        if (Number.isFinite(op.fpr) && Number.isFinite(op.tpr)) {
-          addHoverablePoint(
-            svg,
-            mapX(Math.max(0, Math.min(1, op.fpr))),
-            mapY(Math.max(0, Math.min(1, op.tpr))),
-            "var(--danger)",
-            `Eval sweep  FPR=${op.fpr.toFixed(3)}  TPR=${op.tpr.toFixed(3)}`
-          );
-        }
-        const rocBox = retrainSummary?.evaluation?.roc_curve_summary;
-        const rocHc = rocBox?.high_class_curve || rocBox;
-        const rhop = rocHc?.holdout_threshold_point;
-        if (rhop && Number.isFinite(Number(rhop.fpr)) && Number.isFinite(Number(rhop.tpr))) {
-          addHoverablePoint(
-            svg,
-            mapX(Math.max(0, Math.min(1, Number(rhop.fpr)))),
-            mapY(Math.max(0, Math.min(1, Number(rhop.tpr)))),
-            "#22c55e",
-            `Holdout τ=${Number(rhop.threshold).toFixed(2)}  FPR=${Number(rhop.fpr).toFixed(3)} TPR=${Number(rhop.tpr).toFixed(3)}`
-          );
-        }
-        return;
-      }
-
-      const liveRec = retrainSummary?.evaluation?.threshold_calibration?.recommended
-        || retrainSummary?.evaluation?.threshold_calibration?.current_metrics
-        || {};
-      const calObj = retrainSummary?.calibration && typeof retrainSummary.calibration === "object"
-        ? retrainSummary.calibration
-        : {};
-      const liveFpr = Number.isFinite(Number(liveRec.fpr_non_high_as_high))
-        ? Number(liveRec.fpr_non_high_as_high)
-        : Number(calObj.fpr);
-      const liveTpr = Number.isFinite(Number(liveRec.recall_high))
-        ? Number(liveRec.recall_high)
-        : Number(calObj.recall);
-      if (Number.isFinite(liveFpr) && Number.isFinite(liveTpr)) {
-        addHoverablePoint(
-          svg,
-          mapX(Math.max(0, Math.min(1, liveFpr))),
-          mapY(Math.max(0, Math.min(1, liveTpr))),
-          "var(--danger)",
-          `Live operating point  FPR=${liveFpr.toFixed(3)}  TPR=${liveTpr.toFixed(3)}`
-        );
-        return;
-      }
-
-      const mFpr = Number(retrainSummary?.metrics?.fpr_non_high_as_high);
-      const mRec = Number(retrainSummary?.metrics?.recall_high);
-      if (Number.isFinite(mFpr) && Number.isFinite(mRec)) {
-        addHoverablePoint(
-          svg,
-          mapX(Math.max(0, Math.min(1, mFpr))),
-          mapY(Math.max(0, Math.min(1, mRec))),
-          "var(--danger)",
-          `Metrics row  FPR=${mFpr.toFixed(3)}  TPR=${mRec.toFixed(3)}`
-        );
-        return;
-      }
-
-      if (usingDemo) {
-        const pathD = ROC_POINTS.map((d, i) => `${i ? "L" : "M"}${mapX(d[0]).toFixed(2)} ${mapY(d[1]).toFixed(2)}`).join(" ");
-        const path = document.createElementNS(ns, "path");
-        path.setAttribute("d", pathD);
-        path.setAttribute("fill", "none");
-        path.setAttribute("stroke", "var(--accent)");
-        path.setAttribute("stroke-width", "2.5");
-        path.classList.add("animate-path");
-        svg.appendChild(path);
-        ROC_POINTS.forEach((p) => {
-          addHoverablePoint(svg, mapX(p[0]), mapY(p[1]), "var(--accent)", `Demo ROC point  FPR=${p[0]}  TPR=${p[1].toFixed(3)}`);
         });
       }
     }
@@ -2352,6 +1937,7 @@
 
     function drawDistributionHeatmap(events) {
       const svg = document.getElementById("distHeatmap");
+      if (!svg) return;
       const w = svg.clientWidth || 560;
       const h = svg.clientHeight || 240;
       svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
@@ -2424,6 +2010,7 @@
 
     function drawDriftChart(rates) {
       const svg = document.getElementById("driftChart");
+      if (!svg) return;
       const w = svg.clientWidth || 560;
       const h = svg.clientHeight || 300;
       svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
@@ -2496,6 +2083,7 @@
       const blockSlider = document.getElementById("blockSlider");
       const warnVal = document.getElementById("warnVal");
       const blockVal = document.getElementById("blockVal");
+      if (!warnSlider || !blockSlider || !warnVal || !blockVal) return;
       const baselineWarn = Math.min(95, Number(runtimePolicy.risk_score_silent_max) + 1);
       const baselineBlock = Math.max(baselineWarn + 1, Number(runtimePolicy.block_threshold));
       warnSlider.value = String(baselineWarn);
@@ -2516,16 +2104,22 @@
         const newSafe = allEvents.length - newBlock - newWarn;
         const wrongInterventions = allEvents.filter((e) => String(e.feedback).toLowerCase().includes("wrong") && (e.score >= w)).length;
         const fpProxy = newBlock + newWarn ? (wrongInterventions / (newBlock + newWarn)) * 100 : 0;
-        document.getElementById("simBlock").innerHTML = `Simulated block: <strong>${newBlock} (${newBlock >= curBlock ? "+" : ""}${newBlock - curBlock} vs current)</strong>`;
-        document.getElementById("simWarn").innerHTML = `Simulated warn: <strong>${newWarn} (${newWarn >= curWarn ? "+" : ""}${newWarn - curWarn} vs current)</strong>`;
-        document.getElementById("simSafe").innerHTML = `Simulated safe: <strong>${newSafe} (${newSafe >= (allEvents.length - curBlock - curWarn) ? "+" : ""}${newSafe - (allEvents.length - curBlock - curWarn)} vs current)</strong>`;
-        document.getElementById("simFpr").innerHTML = `Estimated FPR proxy: <strong>~${fpProxy.toFixed(1)}%</strong>`;
+        const elB = document.getElementById("simBlock");
+        const elW = document.getElementById("simWarn");
+        const elS = document.getElementById("simSafe");
+        const elF = document.getElementById("simFpr");
+        if (elB) elB.innerHTML = `Block <strong>${newBlock}</strong> <span class="mini-note">Δ ${newBlock - curBlock}</span>`;
+        if (elW) elW.innerHTML = `Warn <strong>${newWarn}</strong> <span class="mini-note">Δ ${newWarn - curWarn}</span>`;
+        if (elS) elS.innerHTML = `Safe <strong>${newSafe}</strong> <span class="mini-note">Δ ${newSafe - (allEvents.length - curBlock - curWarn)}</span>`;
+        if (elF) elF.innerHTML = `FPR proxy <strong>${fpProxy.toFixed(1)}%</strong>`;
       };
-      warnSlider.addEventListener("input", update);
-      blockSlider.addEventListener("input", update);
+      warnSlider.oninput = update;
+      blockSlider.oninput = update;
       update();
 
-      document.getElementById("applyConfigBtn").onclick = async () => {
+      const applyBtn = document.getElementById("applyConfigBtn");
+      if (!applyBtn) return;
+      applyBtn.onclick = async () => {
         const payload = {
           risk_score_silent_max: Math.max(0, Number(warnSlider.value) - 1),
           warn_threshold: Number(warnSlider.value),
@@ -2534,16 +2128,17 @@
         };
         try {
           await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
-          alert("Suggested threshold JSON copied to clipboard for risk_policy.json");
+          alert("Copied.");
         } catch {
-          alert("Could not access clipboard. Copy manually:\n" + JSON.stringify(payload, null, 2));
+          alert(JSON.stringify(payload, null, 2));
         }
       };
     }
 
     function renderFprDonut(metrics) {
-      const fpr = Number(metrics.fpr);
       const arc = document.getElementById("fprDonutArc");
+      if (!arc) return;
+      const fpr = Number(metrics.fpr);
       const circum = 389.6;
       const hasFpr = Number.isFinite(fpr);
       const holdoutVal = Number(metrics.fprHoldout);
@@ -2639,12 +2234,7 @@
         const next = document.body.classList.contains("compact") ? "comfortable" : "compact";
         applyDensityMode(next);
         drawPRChart();
-        drawROCChart();
         drawConfusionMatrix();
-        drawDistributionHeatmap(allEvents);
-        const m = computeMetrics(allEvents);
-        const useDemoDrift = usingDemo || !m.hasCorrections || m.weeklyRates.every((v) => !Number.isFinite(Number(v)) || Number(v) === 0);
-        drawDriftChart(useDemoDrift ? DEMO_DRIFT : m.weeklyRates);
       });
     }
 
@@ -2737,9 +2327,7 @@
         if (retrainSummary && !retrainSummary.evaluation) retrainSummary.evaluation = {};
       }
       if (!retrainSummary) return;
-      const needsPr = !getHighPrCurve(retrainSummary);
-      const needsRoc = !getHighRocCurve(retrainSummary);
-      if (!needsPr && !needsRoc) return;
+      if (getHighPrCurve(retrainSummary)) return;
       const candidates = [
         "../../core-sentinel-guardrail/reports",
         "../core-sentinel-guardrail/reports",
@@ -2747,197 +2335,45 @@
       ];
       for (const base of candidates) {
         try {
-          if (needsPr) {
-            const r1 = await fetch(`${base}/pr_curve_summary.json`, { cache: "no-store" });
-            if (r1.ok) {
-              const pr = await r1.json();
-              if (pr && typeof pr === "object") retrainSummary.evaluation.pr_curve_summary = pr;
-            }
+          const r1 = await fetch(`${base}/pr_curve_summary.json`, { cache: "no-store" });
+          if (r1.ok) {
+            const pr = await r1.json();
+            if (pr && typeof pr === "object") retrainSummary.evaluation.pr_curve_summary = pr;
           }
-          if (needsRoc) {
-            const r2 = await fetch(`${base}/roc_curve_summary.json`, { cache: "no-store" });
-            if (r2.ok) {
-              const roc = await r2.json();
-              if (roc && typeof roc === "object") retrainSummary.evaluation.roc_curve_summary = roc;
-            }
-          }
-          if (!needsPr || getHighPrCurve(retrainSummary)) {
-            if (!needsRoc || getHighRocCurve(retrainSummary)) break;
-          }
+          if (getHighPrCurve(retrainSummary)) break;
         } catch {
           /* try next */
         }
       }
     }
 
-    function tierMacroAuprc(m) {
-      if (!Number.isFinite(m)) return { label: "AUPRC unavailable", cls: "badge", trend: "Add metrics.auc or ml/risk_policy.json" };
-      if (m >= 0.58) return { label: "Solid", cls: "badge good", trend: "↑ mean PR-AUC across classes (typical band ~0.45–0.65)" };
-      if (m >= 0.48) return { label: "Moderate", cls: "badge", trend: "↑ mean PR-AUC — not comparable to ROC-AUC scale" };
-      if (m >= 0.35) return { label: "Fair", cls: "badge warn", trend: "→ consider more data or calibration" };
-      return { label: "Low", cls: "badge warn", trend: "↓ review PR curves and thresholds" };
-    }
-
-    function updateAucKpiChrome() {
-      const badge = document.getElementById("aucBadge");
-      const trend = document.getElementById("aucTrend");
-      const auc = METRICS_STATIC.auc;
-      if (!badge || !trend) return;
-      const t = tierMacroAuprc(auc);
-      badge.textContent = t.label;
-      badge.className = t.cls;
-      if (Number.isFinite(auc)) {
-        trend.textContent = t.trend;
-        trend.className = t.cls.includes("warn") ? "trend down" : "trend up";
-      } else {
-        trend.textContent = t.trend;
-        trend.className = "trend down";
-      }
-    }
-
     async function loadDashboard() {
       try {
-      applyRetrainSummary(await loadRetrainSummary());
-      lastModelRecordToken = deriveModelRecordToken(retrainSummary) || lastModelRecordToken;
-      await enrichRetrainSummaryFromRiskPolicyFile();
-      await enrichRetrainSummaryFromCurveFiles();
-      allEvents = await fetchEvents();
-      const newest = allEvents[0]?.ts;
-      setLiveHeader(newest || retrainSummary?.generated_at, !usingDemo);
+        applyRetrainSummary(await loadRetrainSummary());
+        lastModelRecordToken = deriveModelRecordToken(retrainSummary) || lastModelRecordToken;
+        await enrichRetrainSummaryFromRiskPolicyFile();
+        await enrichRetrainSummaryFromCurveFiles();
+        allEvents = await fetchEvents();
+        const newest = allEvents[0]?.ts;
+        setLiveHeader(newest || retrainSummary?.generated_at, !usingDemo);
 
-      const metrics = computeMetrics(allEvents);
-      const accuracyEl = document.getElementById("accuracyMetric");
-      if (accuracyEl) accuracyEl.dataset.target = String(Number.isFinite(METRICS_STATIC.accuracy) ? METRICS_STATIC.accuracy : Number.NaN);
-      const aucEl = document.getElementById("aucMetric");
-      if (aucEl) aucEl.dataset.target = String(Number.isFinite(METRICS_STATIC.auc) ? METRICS_STATIC.auc : Number.NaN);
-      const precisionEl = document.getElementById("precisionMetric");
-      if (precisionEl) precisionEl.dataset.target = String(Number.isFinite(METRICS_STATIC.precision) ? METRICS_STATIC.precision : Number.NaN);
-      const recallEl = document.getElementById("recallMetric");
-      if (recallEl) recallEl.dataset.target = String(Number.isFinite(METRICS_STATIC.recall) ? METRICS_STATIC.recall : Number.NaN);
-      const fnrEl = document.getElementById("fnrMetric");
-      if (fnrEl) {
-        fnrEl.dataset.target = String(
-          Number.isFinite(METRICS_STATIC.fnr) ? METRICS_STATIC.fnr * 100 : Number.NaN
-        );
-      }
-      const calibFprEl = document.getElementById("calibFprMetric");
-      const calibFprRaw = retrainSummary?.calibration?.fpr;
-      if (calibFprEl && Number.isFinite(Number(calibFprRaw))) {
-        calibFprEl.dataset.target = String(Number(calibFprRaw) * 100);
-      }
-      const fprMetricEl = document.getElementById("fprMetric");
-      if (fprMetricEl) {
-        fprMetricEl.dataset.target = String(Number.isFinite(metrics.fpr) ? metrics.fpr.toFixed(1) : Number.NaN);
-      }
-      const precisionTrendEl = document.getElementById("precisionTrend");
-      if (precisionTrendEl) {
-        precisionTrendEl.textContent = usingDemo
-          ? "↑ stable operating precision"
-          : "↑ robust on validation sweep";
-      }
-      const fprBadgeEl = document.getElementById("fprBadge");
-      if (fprBadgeEl && Number.isFinite(metrics.fpr)) {
-        if (metrics.fpr > 20) {
-          fprBadgeEl.className = "badge warn";
-          fprBadgeEl.textContent = "High vs 5% target";
-        } else {
-          fprBadgeEl.className = "badge good";
-          fprBadgeEl.textContent = "Compare to calibration FPR";
-        }
-      }
-      const notes = retrainSummary?.metrics?.metric_notes;
-      const fnrExpl = document.getElementById("fnrExpl");
-      if (fnrExpl && notes && typeof notes.fnr_definition === "string") {
-        fnrExpl.textContent = notes.fnr_definition;
-      }
-      updateKpiSources(metrics);
-      updateAucKpiChrome();
+        const metrics = computeMetrics(allEvents);
 
-      drawSparkline(
-        "accuracySpark",
-        buildTrendToCurrent(METRICS_STATIC.accuracy, { points: 7, min: 0, max: 100, backoff: 0.018 })
-      );
-      drawSparkline(
-        "aucSpark",
-        Number.isFinite(METRICS_STATIC.auc)
-          ? buildTrendToCurrent(METRICS_STATIC.auc, { points: 7, min: 0, max: 1, backoff: 0.09 })
-          : [0, 0, 0, 0, 0, 0, 0],
-        Number.isFinite(METRICS_STATIC.auc) ? "var(--accent)" : "rgba(255,255,255,0.12)"
-      );
-      drawSparkline(
-        "fprSpark",
-        Number.isFinite(metrics.fpr)
-          ? buildCenteredTrend(metrics.fpr, { points: 7, min: 0, max: 100, amplitude: 0.16 })
-          : [0, 0, 0, 0, 0, 0, 0],
-        Number.isFinite(metrics.fpr) && metrics.fpr > 5 ? "var(--danger)" : "var(--accent)"
-      );
-      drawSparkline(
-        "precisionSpark",
-        buildTrendToCurrent(METRICS_STATIC.precision, { points: 7, min: 0, max: 1, backoff: 0.03 })
-      );
-      drawSparkline(
-        "recallSpark",
-        buildTrendToCurrent(METRICS_STATIC.recall, { points: 7, min: 0, max: 1, backoff: 0.02 })
-      );
-      drawSparkline(
-        "fnrSpark",
-        Number.isFinite(METRICS_STATIC.fnr)
-          ? buildTrendToCurrent(METRICS_STATIC.fnr * 100, { points: 7, min: 0, max: 25, backoff: 0.4 })
-          : [0, 0, 0, 0, 0, 0, 0],
-        Number.isFinite(METRICS_STATIC.fnr) && METRICS_STATIC.fnr > 0.08 ? "var(--warn)" : "var(--accent)"
-      );
-      const calibPct = Number(retrainSummary?.calibration?.fpr);
-      drawSparkline(
-        "calibFprSpark",
-        Number.isFinite(calibPct)
-          ? buildTrendToCurrent(calibPct * 100, { points: 7, min: 0, max: 5, backoff: 0.15 })
-          : [0, 0, 0, 0, 0, 0, 0],
-        "var(--accent)"
-      );
+        const setKpiTarget = (id, val) => {
+          const el = document.getElementById(id);
+          if (!el) return;
+          el.dataset.target = String(Number.isFinite(val) ? val : Number.NaN);
+        };
+        setKpiTarget("precisionMetric", METRICS_STATIC.precision);
+        setKpiTarget("recallMetric", METRICS_STATIC.recall);
+        setKpiTarget("f1Metric", METRICS_STATIC.f1);
+        setKpiTarget("aucMetric", METRICS_STATIC.auc);
 
-      drawPRChart();
-      drawROCChart();
-      drawConfusionMatrix();
-      const cmNote = document.getElementById("cmNote");
-      if (cmNote) {
-        const holdoutCmNote = retrainSummary?.metrics?.confusion_holdout;
-        const hasBinary =
-          holdoutCmNote
-          && typeof holdoutCmNote === "object"
-          && [holdoutCmNote.tp, holdoutCmNote.tn, holdoutCmNote.fp, holdoutCmNote.fn].every((v) => Number.isFinite(Number(v)));
-        const binaryNote =
-          hasBinary
-            ? `Binary holdout @ τ: TP=${holdoutCmNote.tp} TN=${holdoutCmNote.tn} FP=${holdoutCmNote.fp} FN=${holdoutCmNote.fn} (n=${holdoutCmNote.n_eval ?? "—"}). Chart = 2×2 (not risky vs risky).`
-            : "";
-        cmNote.innerHTML = hasBinary
-          ? `${binaryNote}${
-              Number.isFinite(METRICS_STATIC.accuracy)
-                ? ` Accuracy (metadata): ${METRICS_STATIC.accuracy.toFixed(1)}%.`
-                : ""
-            }`
-          : Number.isFinite(METRICS_STATIC.accuracy)
-            ? `${binaryNote}<br>Illustrative 3×3 chart is legacy layout; headline numbers are binary metrics above. Accuracy (metadata): ${METRICS_STATIC.accuracy.toFixed(1)}%.`
-            : `Illustrative 3×3 layout; ${binaryNote || "live 2×2 export optional."}`;
-      }
-      drawDistributionHeatmap(allEvents);
-      const shouldUseDriftDemo = usingDemo || !metrics.hasCorrections || metrics.weeklyRates.every((v) => !Number.isFinite(Number(v)) || Number(v) === 0);
-      drawDriftChart(shouldUseDriftDemo ? DEMO_DRIFT : metrics.weeklyRates);
-      const driftNoteEl = document.getElementById("driftNote");
-      if (driftNoteEl) {
-        driftNoteEl.textContent = shouldUseDriftDemo
-          ? "Demo drift trend — no live corrections yet."
-          : "Trend derived from live correction telemetry";
-      }
-
-      renderClassPerfTable();
-      renderFalsePositiveLog(allEvents);
-      renderActiveLearning(allEvents);
-      renderThresholdSimulator(metrics);
-      renderFprDonut(metrics);
-      const accGaugeArc = document.getElementById("accGaugeArc");
-      if (accGaugeArc) setGauge(accGaugeArc, METRICS_STATIC.accuracy, 188.5);
-      animateCounters(metrics);
-      updateMlSbStatusLine();
+        drawPRChart();
+        drawConfusionMatrix();
+        renderThresholdSimulator(metrics);
+        animateCounters();
+        updateMlSbStatusLine();
       } catch (err) {
         console.error(err);
         const st = document.getElementById("mlSbStatus");
@@ -2955,7 +2391,7 @@
           /* ignore */
         }
         try {
-          animateCounters({ fpr: Number.NaN, hasFeedbackLabels: false, hasCorrections: false, weeklyRates: [] });
+          animateCounters();
         } catch {
           /* ignore */
         }
@@ -3072,7 +2508,6 @@
 
     (async function init() {
       initMlSupabasePanel();
-      attachSortableHeaders();
       initDensityControl();
       const policyLoad = await loadPolicyThresholds();
       runtimePolicy = policyLoad.policy;

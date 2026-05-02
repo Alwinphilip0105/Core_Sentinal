@@ -269,16 +269,6 @@
       color: rgba(245, 247, 255, 0.56);
       font-size: 13px;
     }
-    .hero-problem {
-      margin-top: 14px;
-      border-left: 3px solid rgba(255, 77, 109, 0.75);
-      background: rgba(255, 77, 109, 0.08);
-      color: rgba(255, 224, 231, 0.95);
-      padding: 10px 12px;
-      border-radius: 10px;
-      font-size: 13px;
-      max-width: 640px;
-    }
     .demo-shell {
       margin-top: 18px;
       border: 1px solid var(--line);
@@ -299,32 +289,6 @@
       flex-wrap: wrap;
       gap: 8px;
       margin-top: 12px;
-    }
-    .guided-start {
-      margin-top: 14px;
-      border: 1px solid rgba(2, 195, 154, 0.28);
-      border-radius: 12px;
-      background: rgba(2, 195, 154, 0.08);
-      padding: 12px 14px;
-    }
-    .guided-start strong {
-      display: block;
-      font-size: 13px;
-      margin-bottom: 6px;
-      color: #c4fff3;
-    }
-    .guided-start ol {
-      margin: 0;
-      padding-left: 18px;
-      color: rgba(245, 247, 255, 0.85);
-      font-size: 13px;
-      display: grid;
-      gap: 4px;
-    }
-    .platform-note {
-      margin-top: 10px;
-      font-size: 12px;
-      color: rgba(245, 247, 255, 0.68);
     }
 
     .hero-visual {
@@ -413,262 +377,86 @@
       padding: 18px;
       transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
     }
+    .stat-card {
+      min-height: 140px;
+      display: flex;
+      flex-direction: column;
+    }
     .card:hover {
       transform: translateY(-4px);
       border-color: rgba(2, 195, 154, 0.3);
       box-shadow: 0 12px 26px rgba(0, 0, 0, 0.3);
     }
-    .stat-ic { font-size: 22px; margin-bottom: 10px; }
     .stat-num {
-      font-size: 1.25rem;
+      font-size: clamp(1.85rem, 4vw, 2.55rem);
       font-weight: 800;
-      line-height: 1.2;
-      margin-bottom: 7px;
+      line-height: 1.08;
+      margin-bottom: 8px;
+      letter-spacing: -0.03em;
+    }
+    .stat-label {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: rgba(245, 247, 255, 0.88);
+      line-height: 1.25;
+      max-width: 16ch;
     }
     .stat-src {
       font-size: 12px;
-      color: rgba(245, 247, 255, 0.54);
-      margin-top: 8px;
+      color: rgba(245, 247, 255, 0.52);
+      margin-top: auto;
+      padding-top: 14px;
     }
 
-    .flow {
-      margin-top: 28px;
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 14px;
-      position: relative;
-    }
-    .flow::before {
-      content: "";
-      position: absolute;
-      top: 50px;
-      left: 8%;
-      right: 8%;
-      border-top: 1px dashed rgba(2, 195, 154, 0.5);
-      z-index: 0;
-    }
-    .flow-card {
-      z-index: 1;
-      position: relative;
-      background: linear-gradient(180deg, rgba(2, 195, 154, 0.09), rgba(255, 255, 255, 0.02));
-      border: 1px solid rgba(2, 195, 154, 0.28);
-      border-radius: var(--radius);
-      padding: 18px;
-      transition: transform 0.22s ease, border-color 0.22s ease;
-    }
-    .flow-card:hover {
-      transform: translateY(-4px);
-      border-color: rgba(2, 195, 154, 0.45);
-    }
-    .flow-step {
-      width: 34px;
-      height: 34px;
-      border-radius: 50%;
-      background: rgba(2, 195, 154, 0.22);
-      border: 1px solid rgba(2, 195, 154, 0.45);
-      display: grid;
-      place-items: center;
-      font-size: 13px;
-      font-weight: 700;
-      margin-bottom: 12px;
-      color: #8deed6;
-    }
-    .flow-card h3 { font-size: 1.05rem; margin-bottom: 8px; }
-    .flow-card p { color: var(--muted); font-size: 14px; }
-
-    .pipeline-stack {
-      margin-top: 26px;
-      display: grid;
-      gap: 12px;
-      max-width: 940px;
-    }
-    .pipeline-step {
-      position: relative;
-      padding: 16px 16px 14px 52px;
+    .pipeline-matrix-wrap {
+      margin-top: 22px;
+      border: 1px solid var(--line);
       border-radius: 14px;
-      border: 1px solid rgba(2, 195, 154, 0.24);
-      background: linear-gradient(180deg, rgba(2, 195, 154, 0.1), rgba(255, 255, 255, 0.02));
-      transition: transform 0.2s ease, border-color 0.2s ease;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.02);
+      max-width: 920px;
     }
-    .pipeline-step:hover {
-      transform: translateY(-3px);
-      border-color: rgba(2, 195, 154, 0.4);
-    }
-    .pipeline-step::before {
-      content: attr(data-step);
-      position: absolute;
-      left: 14px;
-      top: 14px;
-      width: 26px;
-      height: 26px;
-      border-radius: 50%;
-      background: rgba(2, 195, 154, 0.22);
-      border: 1px solid rgba(2, 195, 154, 0.46);
-      color: #b8fff0;
-      display: grid;
-      place-items: center;
-      font-size: 12px;
-      font-weight: 800;
-    }
-    .pipeline-step h3 { font-size: 1.04rem; margin-bottom: 6px; }
-    .pipeline-step p { color: var(--muted); font-size: 14px; }
-    .step-arrow {
-      color: rgba(2, 195, 154, 0.85);
-      margin: -4px 0 -2px 24px;
-      font-size: 18px;
-      line-height: 1;
-      width: max-content;
-    }
-    .code-mini {
-      margin-top: 9px;
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      border-radius: 10px;
-      background: rgba(10, 10, 15, 0.75);
-      padding: 10px;
-      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-      font-size: 12px;
-      color: rgba(245, 247, 255, 0.86);
-      overflow-x: auto;
-      white-space: pre;
-    }
-    .tech-table-wrap {
-      margin-top: 10px;
-      border: 1px solid rgba(255,255,255,0.14);
-      border-radius: 10px;
-      overflow-x: auto;
-      background: rgba(255,255,255,0.02);
-    }
-    .tech-table {
+    .pipeline-matrix {
       width: 100%;
-      min-width: 560px;
       border-collapse: collapse;
-      font-size: 12px;
+      font-size: 14px;
     }
-    .tech-table th {
+    .pipeline-matrix th,
+    .pipeline-matrix td {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
       text-align: left;
-      padding: 8px 10px;
-      color: rgba(245,247,255,0.58);
-      border-bottom: 1px solid rgba(255,255,255,0.12);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      font-size: 10px;
-    }
-    .tech-table td {
-      padding: 8px 10px;
-      color: rgba(245,247,255,0.9);
-      border-bottom: 1px solid rgba(255,255,255,0.08);
       vertical-align: top;
     }
-    .model-deep-grid {
-      margin-top: 20px;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-    .chips {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-top: 8px;
-    }
-    .metric-chip {
-      display: inline-block;
-      margin: 3px 5px 0 0;
-      padding: 4px 8px;
-      border-radius: 999px;
+    .pipeline-matrix th {
+      color: rgba(245, 247, 255, 0.48);
       font-size: 11px;
-      background: rgba(255,255,255,0.07);
-      border: 1px solid rgba(255,255,255,0.15);
-      color: rgba(245,247,255,0.8);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+      width: 34%;
     }
-
-    .paper-grid {
-      margin-top: 24px;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
+    .pipeline-matrix tr:last-child td,
+    .pipeline-matrix tr:last-child th {
+      border-bottom: 0;
     }
-    .paper-card {
-      background: #121219;
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 16px;
+    .pipeline-matrix td strong {
+      color: #e8fff6;
+      font-weight: 700;
     }
-    .paper-card h3 { font-size: 1.02rem; margin-bottom: 8px; }
-    .paper-card ul { list-style: none; display: grid; gap: 8px; }
-    .paper-card li {
-      color: var(--muted);
+    .pipeline-latency {
+      margin-top: 14px;
       font-size: 13px;
-      padding-left: 14px;
-      position: relative;
-    }
-    .paper-card li::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      top: 0.58em;
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--accent);
-    }
-
-    .arch-grid {
-      display: grid;
-      grid-template-columns: 1.15fr 0.85fr;
-      gap: 16px;
-      margin-top: 28px;
-      align-items: start;
-    }
-    .arch-diagram {
-      background: #121219;
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      padding: 18px;
-    }
-    .arch-track {
-      display: grid;
-      gap: 8px;
-    }
-    .node {
-      padding: 10px 12px;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 10px;
-      background: rgba(255, 255, 255, 0.02);
-      font-size: 13px;
-      color: rgba(245, 247, 255, 0.9);
-    }
-    .node strong { color: #9ff3df; }
-    .arrow-down {
-      text-align: center;
-      color: rgba(2, 195, 154, 0.9);
-      font-size: 18px;
-      line-height: 1;
-      animation: pulse 2.5s ease-in-out infinite;
-    }
-    .model-card ul { list-style: none; display: grid; gap: 11px; margin-top: 10px; }
-    .model-card li {
       color: var(--muted);
-      font-size: 14px;
-      padding-left: 16px;
-      position: relative;
-    }
-    .model-card li::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      top: 0.55em;
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: var(--accent);
+      max-width: 920px;
     }
 
     .pii-grid {
       margin-top: 24px;
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 12px;
+      max-width: 720px;
     }
     .pii-item {
       padding: 12px 13px;
@@ -684,16 +472,27 @@
       border-color: rgba(2, 195, 154, 0.3);
     }
     .pii-item .level {
-      display: inline-block;
-      margin-top: 7px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 8px;
       font-size: 11px;
       font-weight: 700;
       letter-spacing: 0.02em;
-      opacity: 0.9;
+      opacity: 0.92;
     }
+    .severity-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .critical .severity-dot { background: #ff4d6d; box-shadow: 0 0 0 1px rgba(255, 77, 109, 0.35); }
+    .medium .severity-dot { background: #ffb703; box-shadow: 0 0 0 1px rgba(255, 183, 3, 0.28); }
+    .low .severity-dot { background: #4d8fff; box-shadow: 0 0 0 1px rgba(77, 143, 255, 0.35); }
     .critical .level { color: #ff8ea3; }
     .medium .level { color: #ffd166; }
-    .low .level { color: #9ce0c8; }
+    .low .level { color: #8cb4ff; }
 
     .use-grid {
       margin-top: 24px;
@@ -724,11 +523,24 @@
       width: 56px;
       height: 56px;
       border-radius: 50%;
-      background: rgba(2, 195, 154, 0.2);
-      border: 1px solid rgba(2, 195, 154, 0.4);
-      display: grid;
-      place-items: center;
-      font-size: 36px;
+      flex-shrink: 0;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: radial-gradient(circle at 32% 28%, rgba(2, 195, 154, 0.45), transparent 55%),
+        rgba(255, 255, 255, 0.04);
+    }
+    .avatar.avatar-health {
+      background: radial-gradient(circle at 32% 28%, rgba(77, 143, 255, 0.45), transparent 55%),
+        rgba(255, 255, 255, 0.04);
+      border-color: rgba(77, 143, 255, 0.35);
+    }
+    .avatar.avatar-finance {
+      background: radial-gradient(circle at 32% 28%, rgba(255, 183, 3, 0.35), transparent 55%),
+        rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 183, 3, 0.32);
+    }
+    .avatar.avatar-legal {
+      background: radial-gradient(circle at 32% 28%, rgba(245, 247, 255, 0.2), transparent 55%),
+        rgba(255, 255, 255, 0.04);
     }
     .persona h3 {
       font-size: 16px;
@@ -759,22 +571,6 @@
     }
     .feature-list strong { color: var(--text); }
 
-    .test-grid {
-      margin-top: 22px;
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
-    }
-    .quote p { color: var(--muted); font-size: 14px; margin-bottom: 14px; }
-    .quote .who { display: flex; align-items: center; gap: 10px; color: rgba(245, 247, 255, 0.75); font-size: 13px; }
-    .dot {
-      width: 30px;
-      height: 30px;
-      border-radius: 50%;
-      border: 1px solid rgba(255, 255, 255, 0.25);
-      background: linear-gradient(145deg, #1f2731, #10201a);
-    }
-
     .oss {
       text-align: center;
       padding: 78px 0;
@@ -798,12 +594,21 @@
     .footer-top {
       display: flex;
       justify-content: space-between;
-      gap: 16px;
+      align-items: center;
+      gap: 20px;
       flex-wrap: wrap;
       padding-bottom: 16px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.08);
       margin-bottom: 12px;
     }
+    .footer-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      color: rgba(245, 247, 255, 0.88);
+    }
+    .footer-brand:hover { color: var(--text); }
     .footer-nav {
       display: flex;
       gap: 14px;
@@ -826,15 +631,8 @@
     }
 
     @media (max-width: 1080px) {
-      .hero-grid,
-      .arch-grid { grid-template-columns: 1fr; }
+      .hero-grid { grid-template-columns: 1fr; }
       .stats-grid { grid-template-columns: 1fr; }
-      .flow { grid-template-columns: repeat(2, 1fr); }
-      .flow::before { display: none; }
-      .pii-grid { grid-template-columns: repeat(3, 1fr); }
-      .test-grid { grid-template-columns: 1fr; }
-      .model-deep-grid,
-      .paper-grid { grid-template-columns: 1fr; }
     }
 
     @media (max-width: 760px) {
@@ -845,8 +643,7 @@
       .hero { min-height: auto; padding-top: 40px; }
       .hero-ctas { width: 100%; }
       .btn { width: 100%; }
-      .flow { grid-template-columns: 1fr; }
-      .pii-grid { grid-template-columns: 1fr 1fr; }
+      .pii-grid { grid-template-columns: 1fr; }
       .use-grid { grid-template-columns: 1fr; }
       .feature-list { grid-template-columns: 1fr; }
       .footer-top { flex-direction: column; }
@@ -854,10 +651,10 @@
 
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
-      .fade-in, .card, .flow-card, .pii-item, .persona, .feature-list div, .btn, .nav-links a.nav-link::after {
+      .fade-in, .card, .pii-item, .persona, .feature-list div, .btn, .nav-links a.nav-link::after {
         transition: none;
       }
-      .scanner-bar, .flow-arrow, .arrow-down {
+      .scanner-bar, .flow-arrow {
         animation: none;
       }
       .parallax {
@@ -874,10 +671,11 @@
         <span>Core Sentinel</span>
       </a>
       <nav class="nav-links">
+        <a class="nav-link" href="#stats">Stats</a>
         <a class="nav-link" href="#use-cases">Use Cases</a>
         <a class="nav-link" href="#live-demo">Live Demo</a>
         <a class="nav-link" href="#how-it-works">How It Works</a>
-        <a class="nav-link" href="#architecture">Architecture</a>
+        <a class="nav-link" href="#detection">Detection</a>
         <a href="hub.html">Hub</a>
         <a href="https://github.com/Alwinphilip0105/Core_Sentinal" target="_blank" rel="noopener">GitHub</a>
         <a class="nav-cta" href="hub.html">Try It</a>
@@ -892,20 +690,14 @@
           <span class="eyebrow">AI Clipboard Guardian</span>
           <h1>Your AI conversations deserve privacy.</h1>
           <p>
-            Core Sentinel monitors your clipboard in real-time, detects PII before it reaches any LLM, and gives you one-click remediation — redact or encrypt.
+            Core Sentinel monitors your clipboard in real time, detects PII before any LLM sees it, and offers one-click remediation.
           </p>
-          <div class="hero-problem">
-            Problem: Teams are pasting secrets, customer data, and regulated PII into AI chats without realizing the exposure risk until it is too late.
-          </div>
           <div class="hero-ctas">
-          <a class="btn btn-primary" href="hub.html">Try it Free</a>
+          <a class="btn btn-primary" href="hub.html">Try Free</a>
             <a class="btn btn-outline" href="#live-demo">Watch Demo</a>
           </div>
           <div class="hero-trust">
             Works with ChatGPT · Claude · Gemini · Copilot · Any LLM
-          </div>
-          <div class="platform-note">
-            Current production support: Windows 10/11. Linux and iOS are planned next.
           </div>
         </div>
 
@@ -934,37 +726,59 @@
       </div>
     </section>
 
+    <section id="stats">
+      <div class="container">
+        <h2 class="section-title fade-in">Industry data on AI paste risk</h2>
+        <div class="stats-grid">
+          <article class="card stat-card fade-in">
+            <div class="stat-num">67%</div>
+            <div class="stat-label">Employees paste sensitive data into AI</div>
+            <div class="stat-src">Cyberhaven · 2024</div>
+          </article>
+          <article class="card stat-card fade-in">
+            <div class="stat-num">$4.45M</div>
+            <div class="stat-label">Average cost of each data breach</div>
+            <div class="stat-src">IBM · 2023</div>
+          </article>
+          <article class="card stat-card fade-in">
+            <div class="stat-num">92%</div>
+            <div class="stat-label">Organizations lack AI DLP guardrails</div>
+            <div class="stat-src">Gartner · 2024</div>
+          </article>
+        </div>
+      </div>
+    </section>
+
     <section id="use-cases">
       <div class="container">
-        <span class="eyebrow fade-in">Who Is This For</span>
-        <h2 class="section-title fade-in">Use cases across high-trust industries</h2>
+        <h2 class="section-title fade-in">Built for high-trust industries</h2>
         <div class="use-grid">
           <article class="persona fade-in">
-            <div class="avatar">👨‍💻</div>
+            <div class="avatar" aria-hidden="true"></div>
             <div>
               <h3>Developers</h3>
-              <p>Stop pasting stack traces with API keys, database URIs, and internal IPs into ChatGPT. Sentinel catches credentials even when they're embedded in code.</p>
+              <p>Catches keys, URIs, and secrets inside pasted traces before they reach an LLM.</p>
             </div>
           </article>
           <article class="persona fade-in">
-            <div class="avatar">🏥</div>
+            <div class="avatar avatar-health" aria-hidden="true"></div>
             <div>
               <h3>Healthcare / HIPAA</h3>
-              <p>Patient names, DOBs, diagnoses, and medication lists get flagged before they reach any AI. Maximize PII detection accuracy with HIPAA-derived labeling categories.</p>
+              <p>Flags patient-identifiable and clinical text under HIPAA-aligned categories before outbound paste.</p>
             </div>
           </article>
           <article class="persona fade-in">
-            <div class="avatar">💼</div>
+            <div class="avatar avatar-finance" aria-hidden="true"></div>
             <div>
               <h3>Finance / SOX</h3>
-              <p>Account numbers, transaction details, SSNs in financial documents — Sentinel blocks them from reaching uncontrolled AI endpoints.</p>
+              <p>Stops accounts, identifiers, and sensitive finance spans reaching unmanaged AI endpoints.</p>
             </div>
           </article>
           <article class="persona fade-in">
-            <div class="avatar">⚖️</div>
+            <div class="avatar avatar-legal" aria-hidden="true"></div>
             <div>
               <h3>Enterprise / Legal</h3>
-              <p>Contracts with party names, case numbers, privileged communications — keep attorney-client privilege intact when using AI assistants.</p>
+              <p>Reduces risk from privileged wording and contract identifiers in assistant workflows.</p>
             </div>
           </article>
         </div>
@@ -973,19 +787,7 @@
 
     <section id="live-demo">
       <div class="container">
-        <span class="eyebrow fade-in">Try It Live</span>
-        <h2 class="section-title fade-in">Interactive widget demo in your browser</h2>
-        <p class="section-sub fade-in">
-          Explore warn/block behavior, remediation actions, drag behavior, file-scan simulation, and guided overlay tour — no installation required.
-        </p>
-        <div class="guided-start fade-in">
-          <strong>New here? Start in 3 steps</strong>
-          <ol>
-            <li>Run the live widget walkthrough in this section.</li>
-            <li>Open the Dashboard Hub to compare Privacy, ML, and Admin views.</li>
-            <li>Review the architecture section below to understand detection + remediation flow.</li>
-          </ol>
-        </div>
+        <h2 class="section-title fade-in">Try the demo in your browser</h2>
         <div class="demo-shell fade-in">
           <iframe src="demo/" title="Core Sentinel Interactive Demo" loading="lazy"></iframe>
         </div>
@@ -996,277 +798,75 @@
       </div>
     </section>
 
-    <section id="problem">
-      <div class="container">
-        <span class="eyebrow fade-in">The Problem</span>
-        <h2 class="section-title fade-in">Every paste is a potential data leak</h2>
-        <p class="section-sub fade-in">
-          Whether you're a developer sharing code snippets, an HR professional discussing candidates, or a doctor describing symptoms — your clipboard carries secrets. Core Sentinel catches them before they leave your machine.
-        </p>
-
-        <div class="stats-grid">
-          <article class="card fade-in">
-            <div class="stat-ic">🧠</div>
-            <div class="stat-num">67% of employees paste sensitive data into AI tools</div>
-            <div class="stat-src">Source: Cyberhaven 2024</div>
-          </article>
-          <article class="card fade-in">
-            <div class="stat-ic">💸</div>
-            <div class="stat-num">4.45M average cost of a data breach</div>
-            <div class="stat-src">Source: IBM 2023</div>
-          </article>
-          <article class="card fade-in">
-            <div class="stat-ic">🛡</div>
-            <div class="stat-num">92% of organizations lack AI data loss controls</div>
-            <div class="stat-src">Source: Gartner 2024</div>
-          </article>
-        </div>
-      </div>
-    </section>
-
     <section id="how-it-works">
       <div class="container">
-        <span class="eyebrow fade-in">How It Works</span>
-        <h2 class="section-title fade-in">8-step technical pipeline (full walkthrough)</h2>
-        <p class="section-sub fade-in">This is the exact runtime path from keyboard paste event to safety decision and model learning. It is intentionally deep, reproducible, and auditable.</p>
+        <h2 class="section-title fade-in">How Core Sentinel scans each paste</h2>
 
-        <div class="pipeline-stack">
-          <article class="pipeline-step fade-in" data-step="1">
-            <h3>Clipboard hooking + LLM context guard</h3>
-            <p>Sentinel runs as a PyQt6 tray process and intercepts paste events only when active window matches supported LLM targets. This prevents unnecessary scanning and limits latency overhead.</p>
-            <div class="code-mini">if is_llm_window(active_title):
-    text = clipboard.text()
-    on_paste_detected(text)</div>
-          </article>
-          <div class="step-arrow">↓</div>
-
-          <article class="pipeline-step fade-in" data-step="2">
-            <h3>Text normalization + chunking (512 token windows)</h3>
-            <p>Large clipboard content is normalized, then chunked into overlapping windows for robust inference on long inputs while preserving semantic context around entities.</p>
-            <div class="code-mini">windows = make_windows(text, size=512, overlap=128)
-for w in windows:
-    score_window(w)</div>
-          </article>
-          <div class="step-arrow">↓</div>
-
-          <article class="pipeline-step fade-in" data-step="3">
-            <h3>Layer 1: Regex & deterministic patterns</h3>
-            <p>Critical token families are matched first with deterministic regex. This catches exact leak signatures with near-zero recall loss on known formats.</p>
-            <div class="tech-table-wrap">
-              <table class="tech-table">
-                <thead>
-                  <tr><th>Pattern family</th><th>Examples</th><th>Runtime action</th></tr>
-                </thead>
-                <tbody>
-                  <tr><td>SSN / National ID</td><td>123-45-6789</td><td>High-risk candidate</td></tr>
-                  <tr><td>Credit card / PAN</td><td>4111 1111 1111 1111</td><td>High-risk candidate</td></tr>
-                  <tr><td>Email / Phone</td><td>john@corp.com, +1-202-555-0110</td><td>Medium-risk candidate</td></tr>
-                  <tr><td>Secrets / tokens</td><td>sk_live_..., JWT, API key</td><td>Force block candidate</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </article>
-          <div class="step-arrow">↓</div>
-
-          <article class="pipeline-step fade-in" data-step="4">
-            <h3>Layer 2: spaCy NER semantic entity extraction</h3>
-            <p>NER provides contextual entities beyond strict formatting, including PERSON / ORG / GPE / DATE / MONEY. This catches natural-language leakage that regex misses.</p>
-            <div class="chips">
-              <span class="metric-chip">PERSON</span>
-              <span class="metric-chip">ORG</span>
-              <span class="metric-chip">GPE</span>
-              <span class="metric-chip">DATE</span>
-              <span class="metric-chip">MONEY</span>
-            </div>
-          </article>
-          <div class="step-arrow">↓</div>
-
-          <article class="pipeline-step fade-in" data-step="5">
-            <h3>Layer 3: Fine-tuned TinyBERT contextual risk model</h3>
-            <p>Windows are passed through a TinyBERT sequence classifier to estimate contextual breach probability (e.g., medical narratives, legal clauses, financial records).</p>
-            <div class="model-deep-grid">
-              <div class="card">
-                <h4 style="margin-bottom:8px;">Model card</h4>
-                <div class="chips">
-                  <span class="metric-chip">Base: TinyBERT_General_4L_312D</span>
-                  <span class="metric-chip">Params: ~14M</span>
-                  <span class="metric-chip">Context: 512</span>
-                  <span class="metric-chip">Inference: ~22ms/window</span>
-                </div>
-              </div>
-              <div class="card">
-                <h4 style="margin-bottom:8px;">Validation metrics</h4>
-                <div class="chips">
-                  <span class="metric-chip" id="landingMetricPrecision">Precision 0.945</span>
-                  <span class="metric-chip" id="landingMetricRecall">Recall 0.959</span>
-                  <span class="metric-chip" id="landingMetricAuprc">AUPRC 0.751</span>
-                  <span class="metric-chip" id="landingMetricFpr">FPR 52.6%</span>
-                </div>
-              </div>
-            </div>
-          </article>
-          <div class="step-arrow">↓</div>
-
-          <article class="pipeline-step fade-in" data-step="6">
-            <h3>Risk aggregation + decision thresholds</h3>
-            <p>Signals from regex, NER, and model probabilities are merged into a final 0-100 score and mapped to policy outcomes:</p>
-            <div class="chips">
-              <span class="metric-chip">0-40: silent allow</span>
-              <span class="metric-chip">40-70: warn + review</span>
-              <span class="metric-chip">70-100: block + remediation panel</span>
-            </div>
-          </article>
-          <div class="step-arrow">↓</div>
-
-          <article class="pipeline-step fade-in" data-step="7">
-            <h3>Remediation workflow (one click)</h3>
-            <p>Users can safely continue work with guided transformations: <strong>Redact</strong> (mask tokens), <strong>Encrypt</strong> (AES-256 reversible protection), or <strong>Override</strong> with audit trace.</p>
-          </article>
-          <div class="step-arrow">↓</div>
-
-          <article class="pipeline-step fade-in" data-step="8">
-            <h3>Active learning feedback loop</h3>
-            <p>User corrections (false positives/negatives) are stored as supervised signals, then queued into periodic retraining runs. This keeps policy aligned with real operational usage without requiring raw user data collection.</p>
-          </article>
+        <div class="pipeline-matrix-wrap fade-in">
+          <table class="pipeline-matrix">
+            <thead>
+              <tr><th scope="col">Step</th><th scope="col">Role</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>1. Clipboard Hook</strong></td><td>Captures clipboard text when a supported AI app receives paste.</td></tr>
+              <tr><td><strong>2. Chunking</strong></td><td>Splits normalized text into overlapping inference windows.</td></tr>
+              <tr><td><strong>3. Regex Scan</strong></td><td>Matches deterministic patterns for IDs, cards, secrets, and tokens.</td></tr>
+              <tr><td><strong>4. spaCy NER</strong></td><td>Extracts PERSON, ORG, GPE, DATE, and MONEY spans for context.</td></tr>
+              <tr><td><strong>5. TinyBERT Classifier</strong></td><td>Scores each window for contextual sensitive-content likelihood.</td></tr>
+              <tr><td><strong>6. Risk Aggregation</strong></td><td>Fuses signals into a single score mapped to warn or block policy.</td></tr>
+              <tr><td><strong>7. Remediation</strong></td><td>Offers redaction, reversible encryption, or audited override paths.</td></tr>
+              <tr><td><strong>8. Active Learning</strong></td><td>Queues corrections for retraining without storing raw clipboard by default.</td></tr>
+            </tbody>
+          </table>
         </div>
-      </div>
-    </section>
-
-    <section id="architecture">
-      <div class="container">
-        <span class="eyebrow fade-in">Architecture & Model</span>
-        <h2 class="section-title fade-in">Built on real ML, not just regex</h2>
-        <div class="arch-grid">
-          <div class="arch-diagram fade-in">
-            <div class="arch-track">
-              <div class="node"><strong>Clipboard Hook</strong> → Text Extraction → <strong>Chunking (512 tokens)</strong></div>
-              <div class="arrow-down">↓</div>
-              <div class="node"><strong>Layer 1:</strong> Regex/Pattern (SSN, CC, Phone, Email, IP, API keys)</div>
-              <div class="arrow-down">↓</div>
-              <div class="node"><strong>Layer 2:</strong> spaCy NER (PERSON, ORG, GPE, DATE, MONEY)</div>
-              <div class="arrow-down">↓</div>
-              <div class="node"><strong>Layer 3:</strong> Fine-tuned TinyBERT classifier (risk scoring)</div>
-              <div class="arrow-down">↓</div>
-              <div class="node"><strong>Risk Aggregator</strong> → Decision Engine (silent / warn / block)</div>
-              <div class="arrow-down">↓</div>
-              <div class="node"><strong>Remediation Panel</strong> (Redact / Encrypt / Override)</div>
-            </div>
-          </div>
-          <aside class="card model-card fade-in">
-            <h3 style="margin-bottom: 8px;">Model Details</h3>
-            <ul>
-              <li>Base model: huawei-noah/TinyBERT_General_4L_312D (~14M params)</li>
-              <li>Training data: Multi-source PII corpus with 10,455 training samples across 24 PII categories from 6 sources (NVIDIA Nemotron-PII pool, Enron email pool, Faker business synthetic, safe negatives, Patronus stub set, and user feedback merges). Zero real user clipboard data in base corpus.</li>
-              <li id="landingModelPerfLine">Performance (current holdout threshold snapshot @0.45): Accuracy 91.21%, risky precision 0.945, risky recall 0.959, risky F1 0.952, safe recall 0.474, FPR 52.6%, macro-F1 0.731, risky-class AUPRC 0.989 (see ML dashboard).</li>
-              <li>Active learning: User corrections feed back into weekly fine-tuning cycles</li>
-            </ul>
-          </aside>
-        </div>
-      </div>
-    </section>
-
-    <section id="training-methodology">
-      <div class="container">
-        <span class="eyebrow fade-in">Training Methodology</span>
-        <h2 class="section-title fade-in">Paper-style model development process</h2>
-        <p class="section-sub fade-in">Core Sentinel training follows a reproducible ML protocol: synthetic corpus design, adversarial augmentation, controlled optimization, and strict holdout evaluation for deployment confidence.</p>
-        <div class="paper-grid">
-          <article class="paper-card fade-in">
-            <h3>Dataset construction</h3>
-            <ul>
-              <li>Balanced training split: 10,455 samples (3,485 low / 3,485 med / 3,485 high), plus 485 validation and 2,289 held-out test samples (~13,229 total).</li>
-              <li>Template generation for healthcare, finance, legal, HR, and engineering contexts.</li>
-              <li>Adversarial perturbations: obfuscation, spacing/noise, casing shifts, mixed-language spans.</li>
-              <li>Zero real user clipboard data used in base training.</li>
-            </ul>
-          </article>
-          <article class="paper-card fade-in">
-            <h3>Optimization configuration</h3>
-            <ul>
-              <li>Backbone: TinyBERT_General_4L_312D fine-tuned for risk classification.</li>
-              <li>Optimizer: AdamW with decoupled weight decay and linear warmup schedule.</li>
-              <li>Batching: dynamic sequence packing for 512-token windows.</li>
-              <li>Early stopping using validation AUC + precision/recall stability criteria.</li>
-            </ul>
-          </article>
-        </div>
-      </div>
-    </section>
-
-    <section id="evaluation-protocol">
-      <div class="container">
-        <span class="eyebrow fade-in">Evaluation Protocol</span>
-        <h2 class="section-title fade-in">Measured for production reliability</h2>
-        <div class="paper-grid">
-          <article class="paper-card fade-in">
-            <h3>Metrics and thresholds</h3>
-            <ul>
-              <li>Primary metrics: Precision, Recall, F1, ROC-AUC, and false positive rate.</li>
-              <li>High-risk guardrail tuned to minimize under-blocking on secret-like tokens.</li>
-              <li>Window-level + document-level calibration to reduce single-window false alarms.</li>
-              <li>Policy boundary validation at 40/70 thresholds before release.</li>
-            </ul>
-          </article>
-          <article class="paper-card fade-in">
-            <h3>Operational validation</h3>
-            <ul>
-              <li>Latency budget tested under continuous clipboard monitoring workload.</li>
-              <li>Regression suite for remediation consistency (redact/encrypt paths).</li>
-              <li>Feedback ingestion checks ensure correction events map to retraining datasets.</li>
-              <li>Release gates require no high-severity regressions on benchmark prompts.</li>
-            </ul>
-          </article>
-        </div>
+        <p class="pipeline-latency fade-in">Inference latency: ~22ms per window. Zero clipboard data stored.</p>
       </div>
     </section>
 
     <section id="detection">
       <div class="container">
-        <span class="eyebrow fade-in">Detection Coverage</span>
-        <h2 class="section-title fade-in">What It Detects</h2>
+        <h2 class="section-title fade-in">What Core Sentinel detects</h2>
         <div class="pii-grid">
-          <div class="pii-item critical fade-in">SSN / National ID <span class="level">🔴 Critical</span></div>
-          <div class="pii-item critical fade-in">Credit/Debit Card Numbers <span class="level">🔴 Critical</span></div>
-          <div class="pii-item critical fade-in">API Keys & Secrets <span class="level">🔴 Critical</span></div>
-          <div class="pii-item critical fade-in">Passwords & Tokens <span class="level">🔴 Critical</span></div>
-          <div class="pii-item medium fade-in">Full Names + Context <span class="level">🟡 Medium</span></div>
-          <div class="pii-item medium fade-in">Email Addresses <span class="level">🟡 Medium</span></div>
-          <div class="pii-item medium fade-in">Phone Numbers <span class="level">🟡 Medium</span></div>
-          <div class="pii-item medium fade-in">Physical Addresses <span class="level">🟡 Medium</span></div>
-          <div class="pii-item medium fade-in">Dates of Birth <span class="level">🟡 Medium</span></div>
-          <div class="pii-item medium fade-in">Medical Records / Diagnoses <span class="level">🟡 Medium</span></div>
-          <div class="pii-item critical fade-in">IP Addresses <span class="level">🔴 Critical</span></div>
-          <div class="pii-item critical fade-in">Bank Account / Routing Numbers <span class="level">🔴 Critical</span></div>
-          <div class="pii-item critical fade-in">Passport / Driver's License <span class="level">🔴 Critical</span></div>
-          <div class="pii-item critical fade-in">Biometric Identifiers <span class="level">🔴 Critical</span></div>
-          <div class="pii-item low fade-in">Vehicle Registration <span class="level">🟢 Low</span></div>
-          <div class="pii-item medium fade-in">Employment / Salary Data <span class="level">🟡 Medium</span></div>
+          <div class="pii-item critical fade-in">SSN / National ID <span class="level"><span class="severity-dot" aria-hidden="true"></span>Critical</span></div>
+          <div class="pii-item critical fade-in">Credit/Debit Card Numbers <span class="level"><span class="severity-dot" aria-hidden="true"></span>Critical</span></div>
+          <div class="pii-item critical fade-in">API Keys &amp; Secrets <span class="level"><span class="severity-dot" aria-hidden="true"></span>Critical</span></div>
+          <div class="pii-item critical fade-in">Passwords &amp; Tokens <span class="level"><span class="severity-dot" aria-hidden="true"></span>Critical</span></div>
+          <div class="pii-item medium fade-in">Full Names + Context <span class="level"><span class="severity-dot" aria-hidden="true"></span>Medium</span></div>
+          <div class="pii-item medium fade-in">Email Addresses <span class="level"><span class="severity-dot" aria-hidden="true"></span>Medium</span></div>
+          <div class="pii-item medium fade-in">Phone Numbers <span class="level"><span class="severity-dot" aria-hidden="true"></span>Medium</span></div>
+          <div class="pii-item medium fade-in">Physical Addresses <span class="level"><span class="severity-dot" aria-hidden="true"></span>Medium</span></div>
+          <div class="pii-item medium fade-in">Dates of Birth <span class="level"><span class="severity-dot" aria-hidden="true"></span>Medium</span></div>
+          <div class="pii-item medium fade-in">Medical Records / Diagnoses <span class="level"><span class="severity-dot" aria-hidden="true"></span>Medium</span></div>
+          <div class="pii-item critical fade-in">IP Addresses <span class="level"><span class="severity-dot" aria-hidden="true"></span>Critical</span></div>
+          <div class="pii-item critical fade-in">Bank Account / Routing Numbers <span class="level"><span class="severity-dot" aria-hidden="true"></span>Critical</span></div>
+          <div class="pii-item critical fade-in">Passport / Driver's License <span class="level"><span class="severity-dot" aria-hidden="true"></span>Critical</span></div>
+          <div class="pii-item critical fade-in">Biometric Identifiers <span class="level"><span class="severity-dot" aria-hidden="true"></span>Critical</span></div>
+          <div class="pii-item low fade-in">Vehicle Registration <span class="level"><span class="severity-dot" aria-hidden="true"></span>Low</span></div>
+          <div class="pii-item medium fade-in">Employment / Salary Data <span class="level"><span class="severity-dot" aria-hidden="true"></span>Medium</span></div>
         </div>
       </div>
     </section>
 
     <section id="enterprise">
       <div class="container">
-        <span class="eyebrow fade-in">Enterprise Features</span>
         <h2 class="section-title fade-in">Security controls your team can operationalize</h2>
         <div class="feature-list">
-          <div class="fade-in"><strong>Admin dashboard</strong><br>Manage all employees from one panel.</div>
-          <div class="fade-in"><strong>Supabase-powered telemetry</strong><br>Real-time risk events across the org.</div>
-          <div class="fade-in"><strong>Custom sensitivity thresholds</strong><br>Set department-specific controls.</div>
-          <div class="fade-in"><strong>Override audit trail</strong><br>Track every override and remediation action.</div>
-          <div class="fade-in"><strong>Active learning loop</strong><br>Model improves from team corrections.</div>
-          <div class="fade-in"><strong>On-premise deployment</strong><br>No data leaves your network.</div>
+          <div class="fade-in"><strong>Admin dashboard</strong> — One panel for rollout and posture.</div>
+          <div class="fade-in"><strong>Risk telemetry</strong> — Aggregate events with configurable sync.</div>
+          <div class="fade-in"><strong>Scoped thresholds</strong> — Tune sensitivity by team or OU.</div>
+          <div class="fade-in"><strong>Audit trail</strong> — Every override stays attributable.</div>
+          <div class="fade-in"><strong>Active learning</strong> — Corrections improve models on your policy.</div>
+          <div class="fade-in"><strong>Deployment choice</strong> — Run without shipping data externally.</div>
         </div>
       </div>
     </section>
 
     <section id="open-source" class="oss">
       <div class="container fade-in">
-        <span class="eyebrow">Open Source & Transparency</span>
-        <h2>Core Sentinel is open-source.</h2>
-        <p>Every detection rule, every model weight, every line of code — auditable. No telemetry collected without consent. Your clipboard data never leaves your machine unless YOU choose Supabase sync.</p>
+        <h2>Open-source and fully auditable</h2>
+        <p>Every detection rule, model weight, and line of code is auditable. MIT licensed. No telemetry without consent.</p>
         <div class="hero-ctas" style="justify-content: center;">
-          <a class="btn btn-primary" href="https://github.com/Alwinphilip0105/Core_Sentinal" target="_blank" rel="noopener">⭐ Star on GitHub</a>
+          <a class="btn btn-primary" href="https://github.com/Alwinphilip0105/Core_Sentinal" target="_blank" rel="noopener">View on GitHub</a>
           <a class="btn btn-outline" href="hub.html">Open Dashboard Hub</a>
           <a class="btn btn-outline" href="demo/" target="_blank" rel="noopener">Launch Interactive Demo</a>
         </div>
@@ -1278,17 +878,17 @@ for w in windows:
   <footer>
     <div class="container">
       <div class="footer-top">
-        <nav class="footer-nav">
-          <a href="#use-cases">Use Cases</a>
-          <a href="#live-demo">Live Demo</a>
-          <a href="#how-it-works">How It Works</a>
-          <a href="#architecture">Architecture</a>
+        <a href="#hero" class="footer-brand">
+          <span class="brand-mark"><img src="favicon.svg" alt=""></span>
+          <span>Core Sentinel</span>
+        </a>
+        <nav class="footer-nav" aria-label="Footer">
           <a href="hub.html">Hub</a>
+          <a href="#live-demo">Live Demo</a>
           <a href="https://github.com/Alwinphilip0105/Core_Sentinal" target="_blank" rel="noopener">GitHub</a>
         </nav>
-        <div>Built with Python, PyQt6, TinyBERT, spaCy, and Supabase</div>
       </div>
-      <div>© 2025 Core Sentinel. Privacy-first AI safety.</div>
+      <div>© 2026 Core Sentinel. Privacy-first AI safety.</div>
     </div>
   </footer>
 
@@ -1317,61 +917,8 @@ for w in windows:
       });
     });
 
-    function _num(v) {
-      const n = Number(v);
-      return Number.isFinite(n) ? n : null;
-    }
-
-    async function loadLandingModelRecords() {
-      const candidates = ["./data/model_records.json", "data/model_records.json", "../docs/data/model_records.json"];
-      for (const url of candidates) {
-        try {
-          const r = await fetch(url, { cache: "no-store" });
-          if (!r.ok) continue;
-          const j = await r.json();
-          if (!j || typeof j !== "object") continue;
-          const m = j.metrics || {};
-          const acc = _num(m.accuracy);
-          const prec = _num(m.precision);
-          const rec = _num(m.recall);
-          const f1 = _num(m.f1);
-          const macroF1 = _num(m.macro_f1);
-          const safeRecall = _num(m.safe_recall);
-          const fpr = _num(m.fpr_non_high_as_high);
-          const riskyAuprc = _num(m.risky_auprc);
-          const threshold = _num(m.recommended_threshold);
-          const macroAuprc = _num(m.auc);
-
-          const chipP = document.getElementById("landingMetricPrecision");
-          const chipR = document.getElementById("landingMetricRecall");
-          const chipA = document.getElementById("landingMetricAuprc");
-          const chipF = document.getElementById("landingMetricFpr");
-          const perfLine = document.getElementById("landingModelPerfLine");
-
-          if (chipP && prec !== null) chipP.textContent = `Precision ${prec.toFixed(3)}`;
-          if (chipR && rec !== null) chipR.textContent = `Recall ${rec.toFixed(3)}`;
-          if (chipA && macroAuprc !== null) chipA.textContent = `AUPRC ${macroAuprc.toFixed(3)}`;
-          if (chipF && fpr !== null) chipF.textContent = `FPR ${(fpr * 100).toFixed(1)}%`;
-
-          if (perfLine && acc !== null) {
-            perfLine.textContent =
-              `Performance (current holdout threshold snapshot @${threshold !== null ? threshold.toFixed(2) : "n/a"}): ` +
-              `Accuracy ${(acc * 100).toFixed(2)}%, risky precision ${prec !== null ? prec.toFixed(3) : "n/a"}, ` +
-              `risky recall ${rec !== null ? rec.toFixed(3) : "n/a"}, risky F1 ${f1 !== null ? f1.toFixed(3) : "n/a"}, ` +
-              `safe recall ${safeRecall !== null ? safeRecall.toFixed(3) : "n/a"}, ` +
-              `FPR ${fpr !== null ? (fpr * 100).toFixed(1) + "%" : "n/a"}, ` +
-              `macro-F1 ${macroF1 !== null ? macroF1.toFixed(3) : "n/a"}, ` +
-              `risky-class AUPRC ${riskyAuprc !== null ? riskyAuprc.toFixed(3) : "n/a"} (see ML dashboard).`;
-          }
-          return;
-        } catch {
-          // try next path
-        }
-      }
-    }
-
     const topNav = document.querySelector(".topnav");
-    const sectionIds = ["use-cases", "live-demo", "how-it-works", "architecture"];
+    const sectionIds = ["stats", "use-cases", "live-demo", "how-it-works", "detection"];
     const navAnchors = Array.from(document.querySelectorAll(".nav-link"));
 
     const updateNavState = () => {
@@ -1418,7 +965,6 @@ for w in windows:
     window.addEventListener("resize", updateNavState);
     onScroll();
     updateNavState();
-    loadLandingModelRecords();
   </script>
 </body>
 </html>
