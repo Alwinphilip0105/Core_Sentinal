@@ -1,10 +1,42 @@
+/* Core Sentinel — shared design tokens and components */
+
 :root {
   --bg: #0a0a0f;
-  --card-bg: #1C1C1E;
-  --accent: #02C39A;
+  --bg-soft: #0a0a0f;
+  --card-bg: #111118;
+  --card: var(--card-bg);
   --text: #e8e8e8;
-  --muted: rgba(232, 232, 232, 0.68);
+  --text-muted: rgba(232, 232, 232, 0.72);
+  --muted: var(--text-muted);
   --line: rgba(255, 255, 255, 0.12);
+  --accent: #02c39a;
+  --danger: #ff4d6d;
+  --warn: #ffb703;
+  --ok: #43aa8b;
+  --radius: 14px;
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  --divider: rgba(255, 255, 255, 0.06);
+  --maxw: 1180px;
+
+  --fs-body: 0.9rem;
+  --lh-body: 1.65;
+  --fs-h1: clamp(2.8rem, 5vw, 4rem);
+  --fs-h2: clamp(1.8rem, 2.8vw, 2.2rem);
+  --fs-h3: clamp(1rem, 0.9rem + 0.2vw, 1.1rem);
+  --fs-label: 0.7rem;
+
+  --section-pad-y: 5rem;
+  --section-pad-y-mobile: 3rem;
+  --card-pad: 1.5rem;
+  --section-head-gap: 1rem;
+
+  --nav-h: 64px;
+  --nav-h-mobile: 56px;
+
+  --btn-text-on-accent: #042820;
+
+  --chart-tick: rgba(232, 232, 232, 0.42);
+  --legend-muted: rgba(232, 232, 232, 0.38);
 }
 
 * {
@@ -18,8 +50,52 @@ html {
 body {
   font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   background: var(--bg);
-  color: var(--text);
+  color: var(--text-muted);
+  font-size: var(--fs-body);
+  font-weight: 400;
+  line-height: var(--lh-body);
   transition: opacity 0.18s ease;
+}
+
+h1,
+h2,
+h3,
+h4,
+.hero h1,
+.section-title {
+  color: var(--text);
+}
+
+h1 {
+  font-size: var(--fs-h1);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.08;
+}
+
+h2 {
+  font-size: var(--fs-h2);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+h3,
+.card h3 {
+  font-size: var(--fs-h3);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+.section-label,
+label.tag,
+.stat-lbl,
+.kpi-lbl {
+  font-size: var(--fs-label);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 body.page-enter {
@@ -34,6 +110,7 @@ body.page-leave {
   opacity: 0;
 }
 
+/* —— Nav —— */
 .topnav {
   position: sticky;
   top: 0;
@@ -43,18 +120,45 @@ body.page-leave {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.topnav-inner {
+  min-height: var(--nav-h);
+  height: var(--nav-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+}
+
+.nav-links .btn-primary {
+  color: var(--btn-text-on-accent);
+}
+
+.nav-links .btn-primary:hover {
+  color: var(--btn-text-on-accent);
+}
+
+header.topbar .topbar-inner {
+  min-height: var(--nav-h);
+  height: var(--nav-h);
+  box-sizing: border-box;
+}
+
+/* —— Buttons —— */
 .btn {
   border-radius: 10px;
   border: 1px solid transparent;
-  padding: 9px 14px;
+  padding: 10px 16px;
   font-weight: 700;
-  font-size: 12px;
+  font-size: var(--fs-body);
   letter-spacing: 0.01em;
   display: inline-flex;
   align-items: center;
   gap: 7px;
   cursor: pointer;
   transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  font-family: inherit;
+  text-decoration: none;
+  box-sizing: border-box;
 }
 
 .btn:hover {
@@ -74,13 +178,95 @@ body.page-leave {
 
 .btn-primary {
   background: var(--accent);
-  color: #042820;
+  color: var(--btn-text-on-accent);
   border-color: rgba(2, 195, 154, 0.65);
   box-shadow: 0 10px 24px rgba(2, 195, 154, 0.25);
 }
 
-.card {
+.btn-primary:hover {
+  box-shadow: 0 14px 28px rgba(2, 195, 154, 0.32);
+}
+
+/* —— Cards (surface) —— */
+.card,
+.stat-card,
+.hub-card {
   background: var(--card-bg);
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: var(--radius);
+  padding: var(--card-pad);
+  box-shadow: var(--shadow);
+}
+
+/* Landing: section rhythm */
+.page-site main > section:not(.hero) {
+  padding: var(--section-pad-y) 0;
+  position: relative;
+}
+
+.page-site .section-title {
+  margin-bottom: var(--section-head-gap);
+}
+
+.page-site section[id],
+.page-site [id] {
+  scroll-margin-top: calc(var(--nav-h) + 12px);
+}
+
+@media (max-width: 760px) {
+  .topnav-inner,
+  header.topbar .topbar-inner {
+    min-height: var(--nav-h-mobile);
+    height: var(--nav-h-mobile);
+  }
+
+  .page-site .nav-links > a:not(.btn-primary) {
+    display: none;
+  }
+
+  .page-site main > section:not(.hero) {
+    padding: var(--section-pad-y-mobile) 0;
+  }
+
+  .page-site section[id],
+  .page-site [id] {
+    scroll-margin-top: calc(var(--nav-h-mobile) + 10px);
+  }
+
+  .page-hub .top-actions > a.btn-outline,
+  .page-hub .top-actions .mini-note,
+  .page-hub #connStatus {
+    display: none;
+  }
+
+  .page-hub .top-actions .btn-primary,
+  .page-hub .top-actions #hdrAdminSlot,
+  .page-hub .top-actions #hdrAdminSlot .btn {
+    display: inline-flex;
+  }
+}
+
+.page-dashboard .hdr {
+  position: sticky;
+  top: 0;
+  z-index: 120;
+  min-height: var(--nav-h);
+  height: var(--nav-h);
+  padding: 0 28px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--divider);
+}
+
+@media (max-width: 560px) {
+  .page-dashboard .hdr {
+    min-height: var(--nav-h-mobile);
+    height: var(--nav-h-mobile);
+    padding: 0 16px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
 }

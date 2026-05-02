@@ -18,30 +18,16 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #0a0a0f;
       --bg-soft: #101018;
-      --card-bg: #1C1C1E;
-      --card: var(--card-bg);
-      --text: #e8e8e8;
-      --muted: rgba(245, 247, 255, 0.68);
-      --line: rgba(255, 255, 255, 0.12);
-      --accent: #02C39A;
       --accent-soft: rgba(2, 195, 154, 0.2);
-      --danger: #ff4d6d;
-      --warn: #ffb703;
-      --ok: #43aa8b;
-      --maxw: 1180px;
-      --radius: 14px;
-      --shadow: 0 20px 55px rgba(0, 0, 0, 0.45);
+      --shadow-hero: 0 20px 55px rgba(0, 0, 0, 0.45);
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html { scroll-behavior: smooth; }
-    body {
+    body.page-site {
       font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
       background: radial-gradient(1200px 420px at 70% -12%, rgba(2, 195, 154, 0.17), transparent 55%), var(--bg);
-      color: var(--text);
-      line-height: 1.55;
       overflow-x: hidden;
     }
     body::before {
@@ -84,10 +70,6 @@
       border-bottom-color: rgba(255, 255, 255, 0.12);
     }
     .topnav-inner {
-      min-height: 72px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
       gap: 20px;
     }
     .brand {
@@ -123,11 +105,12 @@
       justify-content: flex-end;
     }
     .nav-links a {
-      font-size: 14px;
+      font-size: var(--fs-body);
       color: var(--muted);
       transition: color 0.2s ease, opacity 0.2s ease;
       opacity: 0.9;
       position: relative;
+      font-weight: 400;
     }
     .nav-links a:hover { color: var(--text); opacity: 1; }
     .nav-links a.nav-link::after {
@@ -148,21 +131,12 @@
       transform: scaleX(1);
     }
     .nav-links a.nav-link.active {
-      color: #c6fff0;
+      color: var(--accent);
       opacity: 1;
-    }
-    .nav-links .nav-cta {
-      color: #05241d;
-      font-weight: 700;
-      background: var(--accent);
-      padding: 8px 13px;
-      border-radius: 999px;
-      opacity: 1;
+      font-weight: 400;
     }
 
-    section { padding: 94px 0; position: relative; }
-    section[id], [id] { scroll-margin-top: 80px; }
-    section:not(.hero)::before {
+    .page-site main > section:not(.hero)::before {
       content: "";
       position: absolute;
       top: 0;
@@ -174,35 +148,35 @@
     }
     .eyebrow {
       display: inline-block;
-      font-size: 12px;
+      font-size: var(--fs-label);
       text-transform: uppercase;
       letter-spacing: 0.08em;
-      color: rgba(2, 195, 154, 0.95);
+      font-weight: 600;
+      color: var(--accent);
       border: 1px solid rgba(2, 195, 154, 0.45);
       background: rgba(2, 195, 154, 0.1);
       border-radius: 999px;
       padding: 6px 12px;
-      margin-bottom: 18px;
-      font-weight: 600;
+      margin-bottom: 1rem;
     }
     .section-title {
-      font-size: clamp(1.7rem, 2.5vw, 2.4rem);
-      line-height: 1.2;
-      margin-bottom: 14px;
-      letter-spacing: -0.02em;
+      font-size: var(--fs-h2);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: var(--section-head-gap);
     }
     .section-sub {
       color: var(--muted);
       max-width: 760px;
-      font-size: 1rem;
       text-wrap: pretty;
     }
 
     .hero {
-      min-height: calc(100vh - 72px);
+      min-height: calc(100vh - var(--nav-h));
       display: grid;
       align-items: center;
-      padding: 56px 0 42px;
+      padding: var(--section-pad-y-mobile) 0;
       position: relative;
       overflow: hidden;
     }
@@ -218,64 +192,29 @@
       z-index: 1;
     }
     .hero h1 {
-      font-size: clamp(2.2rem, 5.3vw, 4rem);
-      line-height: 1.04;
-      letter-spacing: -0.035em;
-      margin-bottom: 16px;
+      margin-bottom: 1rem;
     }
     .hero p {
       color: var(--muted);
-      font-size: clamp(1rem, 1.9vw, 1.15rem);
       max-width: 640px;
     }
     .hero-ctas {
       display: flex;
       gap: 12px;
-      margin-top: 26px;
+      margin-top: 1.25rem;
       flex-wrap: wrap;
     }
-    .btn {
-      border-radius: 10px;
-      border: 1px solid transparent;
-      padding: 12px 18px;
-      font-weight: 700;
-      font-size: 14px;
-      letter-spacing: 0.01em;
-      transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      cursor: pointer;
-    }
-    .btn:hover { transform: translateY(-2px); }
-    .btn-primary {
-      background: var(--accent);
-      color: #042820;
-      box-shadow: 0 12px 28px rgba(2, 195, 154, 0.25);
-    }
-    .btn-primary:hover { box-shadow: 0 16px 34px rgba(2, 195, 154, 0.3); }
-    .btn-outline {
-      border-color: rgba(255, 255, 255, 0.22);
-      background: rgba(255, 255, 255, 0.02);
-      color: var(--text);
-    }
-    .btn-outline:hover {
-      border-color: rgba(2, 195, 154, 0.48);
-      background: rgba(2, 195, 154, 0.08);
-    }
     .hero-trust {
-      margin-top: 22px;
-      color: rgba(245, 247, 255, 0.56);
-      font-size: 13px;
+      margin-top: 1.25rem;
+      color: var(--muted);
     }
     .demo-shell {
-      margin-top: 18px;
+      margin-top: var(--section-head-gap);
       border: 1px solid var(--line);
-      border-radius: 14px;
+      border-radius: var(--radius);
       overflow: hidden;
       background: rgba(255, 255, 255, 0.02);
-      box-shadow: var(--shadow);
+      box-shadow: var(--shadow-hero);
     }
     .demo-shell iframe {
       width: 100%;
@@ -294,10 +233,10 @@
     .hero-visual {
       position: relative;
       border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 18px;
+      border-radius: var(--radius);
       background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(2, 195, 154, 0.04));
       padding: 18px;
-      box-shadow: var(--shadow);
+      box-shadow: var(--shadow-hero);
       overflow: hidden;
     }
     .hero-visual::before {
@@ -322,10 +261,11 @@
       overflow: hidden;
     }
     .pipe h4 {
-      font-size: 12px;
-      color: rgba(245, 247, 255, 0.64);
+      font-size: var(--fs-label);
+      font-weight: 600;
+      color: var(--accent);
       text-transform: uppercase;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.08em;
       margin-bottom: 8px;
     }
     .code-line {
@@ -365,16 +305,12 @@
     }
 
     .stats-grid {
-      margin-top: 30px;
+      margin-top: 0;
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 14px;
     }
-    .card {
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      padding: 18px;
+    .page-site .card {
       transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
     }
     .stat-card {
@@ -382,7 +318,7 @@
       display: flex;
       flex-direction: column;
     }
-    .card:hover {
+    .page-site .card:hover {
       transform: translateY(-4px);
       border-color: rgba(2, 195, 154, 0.3);
       box-shadow: 0 12px 26px rgba(0, 0, 0, 0.3);
@@ -397,13 +333,13 @@
     .stat-label {
       font-size: 0.95rem;
       font-weight: 600;
-      color: rgba(245, 247, 255, 0.88);
+      color: var(--text);
       line-height: 1.25;
       max-width: 16ch;
     }
     .stat-src {
-      font-size: 12px;
-      color: rgba(245, 247, 255, 0.52);
+      font-size: var(--fs-label);
+      color: var(--muted);
       margin-top: auto;
       padding-top: 14px;
     }
@@ -419,7 +355,7 @@
     .pipeline-matrix {
       width: 100%;
       border-collapse: collapse;
-      font-size: 14px;
+      font-size: var(--fs-body);
     }
     .pipeline-matrix th,
     .pipeline-matrix td {
@@ -429,10 +365,10 @@
       vertical-align: top;
     }
     .pipeline-matrix th {
-      color: rgba(245, 247, 255, 0.48);
-      font-size: 11px;
+      color: var(--muted);
+      font-size: var(--fs-label);
       text-transform: uppercase;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.08em;
       font-weight: 600;
       width: 34%;
     }
@@ -445,8 +381,7 @@
       font-weight: 700;
     }
     .pipeline-latency {
-      margin-top: 14px;
-      font-size: 13px;
+      margin-top: 1rem;
       color: var(--muted);
       max-width: 920px;
     }
@@ -459,12 +394,11 @@
       max-width: 720px;
     }
     .pii-item {
-      padding: 12px 13px;
-      border-radius: 12px;
+      padding: var(--card-pad);
+      border-radius: var(--radius);
       border: 1px solid var(--line);
-      background: #121219;
-      font-size: 13px;
-      color: rgba(245, 247, 255, 0.9);
+      background: var(--card-bg);
+      color: var(--text);
       transition: transform 0.2s ease, border-color 0.2s ease;
     }
     .pii-item:hover {
@@ -504,7 +438,7 @@
     .persona {
       min-height: 220px;
       height: 100%;
-      background: #1C1C1E;
+      background: var(--card-bg);
       border: 1px solid rgba(2, 195, 154, 0.1);
       border-radius: 12px;
       padding: 24px;
@@ -543,12 +477,11 @@
         rgba(255, 255, 255, 0.04);
     }
     .persona h3 {
-      font-size: 16px;
-      font-weight: 700;
-      color: #ffffff;
       margin-bottom: 7px;
     }
-    .persona p { color: #9ca3af; font-size: 14px; }
+    .persona p {
+      color: var(--muted);
+    }
 
     .feature-list {
       margin-top: 18px;
@@ -557,11 +490,10 @@
       gap: 10px 16px;
     }
     .feature-list div {
-      background: #121219;
+      background: var(--card-bg);
       border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 12px 13px;
-      font-size: 14px;
+      border-radius: var(--radius);
+      padding: var(--card-pad);
       color: var(--muted);
       transition: border-color 0.22s ease, transform 0.22s ease;
     }
@@ -573,23 +505,25 @@
 
     .oss {
       text-align: center;
-      padding: 78px 0;
       border-top: 1px solid rgba(255, 255, 255, 0.06);
       border-bottom: 1px solid rgba(255, 255, 255, 0.06);
       background: linear-gradient(180deg, rgba(2, 195, 154, 0.06), transparent);
     }
-    .oss h2 { font-size: clamp(1.8rem, 3vw, 2.4rem); margin-bottom: 12px; }
-    .oss p { color: var(--muted); max-width: 780px; margin: 0 auto 24px; }
+    .oss h2 {
+      font-size: var(--fs-h2);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: var(--section-head-gap);
+    }
+    .oss p { color: var(--muted); max-width: 780px; margin: 0 auto var(--card-pad); }
     .meta-line {
-      color: rgba(245, 247, 255, 0.78);
-      font-size: 14px;
-      margin-top: 12px;
+      color: var(--muted);
+      margin-top: var(--section-head-gap);
     }
 
     footer {
-      padding: 36px 0 34px;
-      color: rgba(245, 247, 255, 0.55);
-      font-size: 13px;
+      padding: var(--section-pad-y-mobile) 0;
+      color: var(--muted);
     }
     .footer-top {
       display: flex;
@@ -637,10 +571,8 @@
 
     @media (max-width: 760px) {
       .container { width: min(var(--maxw), calc(100% - 28px)); }
-      section { padding: 70px 0; }
       .nav-links { gap: 12px; }
-      .nav-links a { font-size: 12px; }
-      .hero { min-height: auto; padding-top: 40px; }
+      .hero { min-height: auto; }
       .hero-ctas { width: 100%; }
       .btn { width: 100%; }
       .pii-grid { grid-template-columns: 1fr; }
@@ -658,12 +590,13 @@
         animation: none;
       }
       .parallax {
-        transform: none !important;
+        transform: translateY(0);
+        will-change: auto;
       }
     }
   </style>
 </head>
-<body>
+<body class="page-site">
   <header class="topnav">
     <div class="container topnav-inner">
       <a href="#hero" class="brand">
@@ -673,12 +606,12 @@
       <nav class="nav-links">
         <a class="nav-link" href="#stats">Stats</a>
         <a class="nav-link" href="#use-cases">Use Cases</a>
-        <a class="nav-link" href="#live-demo">Live Demo</a>
         <a class="nav-link" href="#how-it-works">How It Works</a>
+        <a class="nav-link" href="#live-demo">Live Demo</a>
         <a class="nav-link" href="#detection">Detection</a>
         <a href="hub.html">Hub</a>
         <a href="https://github.com/Alwinphilip0105/Core_Sentinal" target="_blank" rel="noopener">GitHub</a>
-        <a class="nav-cta" href="hub.html">Try It</a>
+        <a class="btn btn-primary nav-cta" href="hub.html">Try It</a>
       </nav>
     </div>
   </header>
@@ -785,19 +718,6 @@
       </div>
     </section>
 
-    <section id="live-demo">
-      <div class="container">
-        <h2 class="section-title fade-in">Try the demo in your browser</h2>
-        <div class="demo-shell fade-in">
-          <iframe src="demo/" title="Core Sentinel Interactive Demo" loading="lazy"></iframe>
-        </div>
-        <div class="demo-links fade-in">
-          <a class="btn btn-primary" href="demo/" target="_blank" rel="noopener">Open Demo Fullscreen</a>
-          <a class="btn btn-outline" href="https://github.com/Alwinphilip0105/Core_Sentinal" target="_blank" rel="noopener">View Source on GitHub</a>
-        </div>
-      </div>
-    </section>
-
     <section id="how-it-works">
       <div class="container">
         <h2 class="section-title fade-in">How Core Sentinel scans each paste</h2>
@@ -820,6 +740,19 @@
           </table>
         </div>
         <p class="pipeline-latency fade-in">Inference latency: ~22ms per window. Zero clipboard data stored.</p>
+      </div>
+    </section>
+
+    <section id="live-demo">
+      <div class="container">
+        <h2 class="section-title fade-in">Try the demo in your browser</h2>
+        <div class="demo-shell fade-in">
+          <iframe src="demo/" title="Core Sentinel Interactive Demo" loading="lazy"></iframe>
+        </div>
+        <div class="demo-links fade-in">
+          <a class="btn btn-primary" href="demo/" target="_blank" rel="noopener">Open Demo Fullscreen</a>
+          <a class="btn btn-outline" href="https://github.com/Alwinphilip0105/Core_Sentinal" target="_blank" rel="noopener">View Source on GitHub</a>
+        </div>
       </div>
     </section>
 
@@ -918,7 +851,7 @@
     });
 
     const topNav = document.querySelector(".topnav");
-    const sectionIds = ["stats", "use-cases", "live-demo", "how-it-works", "detection"];
+    const sectionIds = ["stats", "use-cases", "how-it-works", "live-demo", "detection"];
     const navAnchors = Array.from(document.querySelectorAll(".nav-link"));
 
     const updateNavState = () => {

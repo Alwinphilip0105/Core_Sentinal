@@ -20,48 +20,23 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
     :root {
-      --bg: #0a0a0f;
-      --card-bg: #1C1C1E;
-      --card: var(--card-bg);
-      --text: #e8e8e8;
-      --muted: rgba(245, 247, 255, 0.68);
-      --line: rgba(255, 255, 255, 0.12);
-      --accent: #02C39A;
       --accent-soft: rgba(2, 195, 154, 0.2);
       --danger: #ff5f7d;
-      --warn: #ffb703;
-      --ok: #43aa8b;
-      --radius: 14px;
-      --maxw: 1180px;
       --shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html { scroll-behavior: smooth; }
-    body {
+    body.page-hub {
       font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
       background: radial-gradient(1200px 420px at 72% -10%, rgba(2, 195, 154, 0.16), transparent 55%), var(--bg);
-      color: var(--text);
-      line-height: 1.55;
       overflow-x: hidden;
     }
 
     a { color: inherit; text-decoration: none; }
     .container { width: min(var(--maxw), calc(100% - 36px)); margin: 0 auto; }
 
-    .topnav {
-      position: sticky;
-      top: 0;
-      z-index: 120;
-      backdrop-filter: blur(12px);
-      background: rgba(10, 10, 15, 0.78);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    }
-    .topnav-inner {
-      min-height: 72px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+    .page-hub .topnav-inner {
       gap: 14px;
     }
     .brand {
@@ -96,37 +71,6 @@
       flex-wrap: wrap;
       justify-content: flex-end;
     }
-    .btn {
-      border-radius: 10px;
-      border: 1px solid transparent;
-      padding: 9px 14px;
-      font-weight: 700;
-      font-size: 12px;
-      letter-spacing: 0.01em;
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
-      cursor: pointer;
-      background: transparent;
-      color: var(--text);
-    }
-    .btn:hover { transform: translateY(-2px); }
-    .btn-outline {
-      border-color: rgba(255, 255, 255, 0.18);
-      background: rgba(255, 255, 255, 0.03);
-    }
-    .btn-outline:hover {
-      border-color: rgba(2, 195, 154, 0.45);
-      background: rgba(2, 195, 154, 0.08);
-    }
-    .btn-primary {
-      background: var(--accent);
-      color: #042820;
-      border-color: rgba(2, 195, 154, 0.65);
-      box-shadow: 0 10px 24px rgba(2, 195, 154, 0.25);
-    }
-
     .wrap {
       width: min(var(--maxw), calc(100% - 36px));
       margin: 0 auto;
@@ -135,18 +79,9 @@
     .hub-page-head {
       margin-bottom: 22px;
     }
-    .hub-page-head h1 {
-      font-size: clamp(1.75rem, 3.4vw, 2.35rem);
-      letter-spacing: -0.03em;
-      font-weight: 800;
-      line-height: 1.15;
-      margin-bottom: 8px;
-    }
     .hub-page-head .lead {
       color: var(--muted);
-      font-size: 15px;
       max-width: 640px;
-      line-height: 1.5;
     }
     @keyframes pulseDot {
       0%, 100% { box-shadow: 0 0 0 0 rgba(2, 195, 154, 0.42); }
@@ -160,10 +95,10 @@
       margin-bottom: 22px;
     }
     .stat-card {
-      background: var(--card);
+      background: var(--card-bg);
       border: 1px solid var(--line);
       border-radius: var(--radius);
-      padding: 16px;
+      padding: var(--card-pad);
       transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
       position: relative;
       overflow: hidden;
@@ -173,9 +108,14 @@
       border-color: rgba(2, 195, 154, 0.35);
       box-shadow: 0 14px 28px rgba(0, 0, 0, 0.32);
     }
-    .stat-lbl { font-size: 11px; color: rgba(245,247,255,0.5); text-transform: uppercase; letter-spacing: 0.05em; }
-    .stat-val { margin-top: 7px; font-size: 1.65rem; font-weight: 800; line-height: 1; color: #bfffee; }
+    .stat-lbl { font-size: var(--fs-label); font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+    .stat-val { margin-top: 7px; font-size: 1.65rem; font-weight: 800; line-height: 1; color: var(--accent); }
     .stat-sub { margin-top: 6px; font-size: 11px; color: rgba(245,247,255,0.45); }
+    .live-dot-muted {
+      background: var(--muted);
+      animation: none;
+      box-shadow: none;
+    }
     .live-dot {
       width: 7px;
       height: 7px;
@@ -193,7 +133,8 @@
       margin-top: 8px;
     }
     .accuracy-wrap svg { width: 64px; height: 64px; }
-    .accuracy-mini { font-size: 12px; color: rgba(245,247,255,0.62); }
+    .accuracy-mini { font-size: var(--fs-body); color: var(--muted); line-height: 1.35; }
+    #modelKpiMeta { margin-top: 6px; opacity: 0.88; font-size: var(--fs-label); }
 
     .cards-grid {
       display: grid;
@@ -202,10 +143,10 @@
       margin-bottom: 0;
     }
     .hub-card {
-      background: var(--card);
+      background: var(--card-bg);
       border: 1px solid var(--line);
       border-radius: var(--radius);
-      padding: 18px;
+      padding: var(--card-pad);
       min-height: 168px;
       position: relative;
       transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
@@ -236,13 +177,14 @@
     }
     .hub-card-cta {
       margin-top: auto;
-      padding: 10px 14px;
+      padding: 10px 16px;
       border-radius: 10px;
-      font-size: 13px;
+      font-size: var(--fs-body);
       font-weight: 700;
-      border: none;
+      border: 1px solid rgba(2, 195, 154, 0.65);
       background: var(--accent);
-      color: #042820;
+      color: var(--btn-text-on-accent);
+      box-shadow: 0 10px 24px rgba(2, 195, 154, 0.25);
       width: 100%;
       text-align: center;
       transition: transform 0.15s ease, box-shadow 0.15s ease;
@@ -297,10 +239,11 @@
       position: sticky;
       top: 0;
       background: rgba(20, 20, 28, 0.98);
-      color: rgba(245,247,255,0.54);
-      font-size: 10px;
+      color: var(--muted);
+      font-size: var(--fs-label);
+      font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.08em;
       text-align: left;
       padding: 9px 10px;
       border-bottom: 1px solid rgba(255,255,255,0.08);
@@ -308,8 +251,8 @@
     td {
       padding: 8px 10px;
       border-bottom: 1px solid rgba(255,255,255,0.06);
-      font-size: 12px;
-      color: rgba(245,247,255,0.86);
+      font-size: var(--fs-body);
+      color: var(--text);
     }
     .badge {
       display: inline-block;
@@ -326,10 +269,10 @@
     .status-block { color: #ff9ea7; }
 
     .quick-actions {
-      background: var(--card);
+      background: var(--card-bg);
       border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 14px;
+      border-radius: var(--radius);
+      padding: var(--card-pad);
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
@@ -449,14 +392,13 @@
     }
     @media (max-width: 680px) {
       .container, .wrap { width: min(var(--maxw), calc(100% - 24px)); }
-      .topnav-inner { min-height: 64px; }
       .top-actions { gap: 8px; }
       .stats-grid { grid-template-columns: 1fr; }
       .quick-actions { grid-template-columns: 1fr; }
     }
 </style>
 </head>
-<body>
+<body class="page-hub">
   <header class="topnav">
     <div class="container topnav-inner">
       <a href="index.html" class="brand">
@@ -467,9 +409,9 @@
         <a class="btn btn-outline" href="index.html">← Back to Home</a>
         <a class="btn btn-outline" href="dashboard/">Privacy</a>
         <a class="btn btn-outline" href="ml/">ML</a>
-        <a class="btn btn-outline" href="demo/">Demo</a>
+        <a class="btn btn-primary" href="demo/">Demo</a>
         <div id="connStatus" class="mini-note" style="display:none;">
-          <span id="connDot" class="live-dot" style="background:#555;animation:none;"></span>
+          <span id="connDot" class="live-dot live-dot-muted"></span>
           <span id="connText">Not connected</span>
     </div>
     <div id="hdrAdminSlot">
@@ -507,9 +449,9 @@
             <circle id="accArc" cx="42" cy="42" r="30" fill="none" stroke="#02C39A" stroke-width="8" stroke-linecap="round" stroke-dasharray="188.5" stroke-dashoffset="188.5" transform="rotate(-90 42 42)"></circle>
           </svg>
           <div>
-            <div id="modelKpiPrimary" class="stat-val" style="font-size:1.35rem;margin-top:0;">F1 0.826</div>
+            <div id="modelKpiPrimary" class="stat-val">F1 0.826</div>
             <div id="modelKpiSub" class="accuracy-mini">Recall (L/M/H): 1.00 / 0.41 / 0.99</div>
-            <div id="modelKpiMeta" class="accuracy-mini" style="margin-top:6px;opacity:0.88;font-size:0.78rem;line-height:1.35;">Last retrain: —</div>
+            <div id="modelKpiMeta" class="accuracy-mini">Last retrain: —</div>
           </div>
         </div>
       </article>
@@ -1112,12 +1054,15 @@
         localStorage.setItem("sentinel_total", String(total));
         if (totalEl) totalEl.textContent = String(total);
 
-        // Safe streak = consecutive most-recent non-warn/non-block events.
-        const rs = await fetch(
-          url.replace(/\/$/, "") + "/rest/v1/guardrail_events?select=action&order=timestamp.desc.nullslast&limit=200",
-          { headers: { apikey: key, Authorization: "Bearer " + key } }
-        );
-        if (rs.ok) {
+        const base = url.replace(/\/$/, "");
+        const hdrs = { apikey: key, Authorization: "Bearer " + key };
+        const streakQs = [
+          "/rest/v1/guardrail_events?select=action&order=timestamp.desc.nullslast&limit=200",
+          "/rest/v1/guardrail_events?select=action&order=created_at.desc.nullslast&limit=200",
+        ];
+        for (const path of streakQs) {
+          const rs = await fetch(base + path, { headers: hdrs });
+          if (!rs.ok) continue;
           const rows = await rs.json();
           if (Array.isArray(rows) && rows.length) {
             let run = 0;
@@ -1129,6 +1074,7 @@
             streak = run;
             localStorage.setItem("sentinel_streak", String(streak));
             if (streakEl) streakEl.textContent = String(streak);
+            break;
           }
         }
 
@@ -1172,19 +1118,24 @@
     }
 
     async function fetchActivity() {
-      const url = localStorage.getItem("sb_url");
-      const key = localStorage.getItem("sb_key");
-      if (url && key) {
-        try {
-    const r = await fetch(
-            url.replace(/\/$/, "") + "/rest/v1/guardrail_events?select=timestamp,risk_score,action,pii_classes,llm_name,text_hash&order=timestamp.desc.nullslast&limit=20",
-            { headers: { apikey: key, Authorization: "Bearer " + key } }
-          );
-          if (r.ok) {
+      const base = (localStorage.getItem("sb_url") || "").trim().replace(/\/$/, "");
+      const key = (localStorage.getItem("sb_key") || "").trim();
+      if (base && key) {
+        const hdrs = { apikey: key, Authorization: "Bearer " + key };
+        const paths = [
+          "/rest/v1/guardrail_events?select=timestamp,risk_score,action,pii_classes,llm_name,text_hash&order=timestamp.desc.nullslast&limit=20",
+          "/rest/v1/guardrail_events?select=created_at,risk_score,action,pii_classes,llm_name,text_hash&order=created_at.desc.nullslast&limit=20",
+        ];
+        for (const path of paths) {
+          try {
+            const r = await fetch(base + path, { headers: hdrs });
+            if (!r.ok) continue;
             const rows = await r.json();
             if (Array.isArray(rows) && rows.length) return rows.map(normalizeEvent);
+          } catch {
+            /* next path */
           }
-        } catch {}
+        }
       }
       try {
         const local = JSON.parse(localStorage.getItem("sentinel_recent_events") || "[]");
@@ -1242,13 +1193,17 @@
       });
     }
 
-    async function refreshHubData() {
+    async function refreshHubLive() {
       await testConnection();
       await loadMiniStats();
-      await loadModelKpis();
       const events = await fetchActivity();
       _lastActivityRows = events;
       renderActivity(events);
+    }
+
+    async function refreshHubData() {
+      await refreshHubLive();
+      await loadModelKpis();
     }
 
     function startHubModelRecordsPolling() {
@@ -1276,6 +1231,14 @@
   applyAdminState(!!getAdminSession());
       await refreshHubData();
       startHubModelRecordsPolling();
+      window.setInterval(async () => {
+        if (document.visibilityState !== "visible") return;
+        await refreshHubLive();
+      }, 120000);
+      document.addEventListener("visibilitychange", async () => {
+        if (document.visibilityState !== "visible") return;
+        await refreshHubLive();
+      });
 })();
 </script>
 </body>

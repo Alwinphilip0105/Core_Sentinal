@@ -3,39 +3,30 @@
 <head>
 <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<!-- Optional: default Supabase project URL for this deployment (anon key still via Hub or form below). -->
 <meta name="core-sentinel-supabase-url" content="">
-<!-- Optional: force model records source (e.g., GitHub raw JSON URL). -->
 <meta name="core-sentinel-model-records-url" content="">
 <title>Model Health — Core Sentinel</title>
   <link rel="icon" type="image/svg+xml" href="../favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../shared-styles.css">
 <style>
     :root {
       --bg: #080810;
-      --card: #111118;
-      --accent: #02C39A;
-      --warn: #FFB300;
-      --danger: #E53935;
-      --text: #e8e8e8;
-      --muted: #6b7280;
-      --line: rgba(2,195,154,0.1);
+      --line-subtle: rgba(2, 195, 154, 0.1);
       --grid: #1a1a22;
-      --shadow: 0 4px 24px rgba(0,0,0,0.3);
-      --radius: 12px;
       --maxw: 1360px;
+      --surface-chart: #0e0e15;
+      --surface-table: #0f0f16;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html { scroll-behavior: smooth; }
-    body {
+    body.page-ml {
       font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
       background: radial-gradient(1200px 420px at 80% -8%, rgba(2,195,154,0.12), transparent 55%), var(--bg);
-      color: var(--text);
       min-height: 100vh;
-      line-height: 1.5;
     }
     .container {
       width: min(var(--maxw), calc(100% - 28px));
@@ -57,7 +48,6 @@
       background: linear-gradient(90deg, rgba(2,195,154,0.95), rgba(2,195,154,0.18), transparent);
     }
     .topbar-inner {
-      min-height: 72px;
       display: grid;
       grid-template-columns: 1fr auto 1fr;
       align-items: center;
@@ -68,7 +58,7 @@
       align-items: center;
       gap: 10px;
       font-weight: 700;
-      color: #f6fffc;
+      color: var(--text);
     }
     .brand-mark {
       width: 28px;
@@ -78,20 +68,19 @@
       display: grid;
       place-items: center;
       color: #05241d;
-      font-size: 14px;
     }
     .crumb {
       color: var(--muted);
       font-weight: 500;
-      font-size: 13px;
+      font-size: var(--fs-body);
     }
     .status {
       justify-self: center;
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      font-size: 12px;
-      color: #9ae6d6;
+      font-size: var(--fs-body);
+      color: var(--accent);
     }
     .policy-chip {
       display: inline-flex;
@@ -102,9 +91,10 @@
       border: 1px solid rgba(255,255,255,0.16);
       background: rgba(255,255,255,0.04);
       color: #cdece4;
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 0.01em;
+      font-size: var(--fs-label);
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
     }
     .policy-chip.source-live {
       border-color: rgba(2,195,154,0.45);
@@ -140,42 +130,17 @@
       flex-wrap: wrap;
       justify-content: flex-end;
     }
-    .btn {
-      border: 1px solid rgba(255,255,255,0.16);
-      background: rgba(255,255,255,0.03);
-      color: var(--text);
-      border-radius: 10px;
-      padding: 9px 12px;
-      font-size: 12px;
-      font-weight: 700;
-      cursor: pointer;
-      transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .btn:hover {
-      transform: translateY(-2px);
-      border-color: rgba(2,195,154,0.4);
-    }
-    .btn-accent {
-      background: var(--accent);
-      color: #05241d;
-      border-color: rgba(2,195,154,0.7);
-    }
     .btn[data-active="true"] {
       border-color: rgba(2,195,154,0.65);
       background: rgba(2,195,154,0.18);
       color: #cffff4;
     }
 
-    main { padding: 14px 0 34px; }
+    main { padding: var(--section-head-gap) 0 var(--card-pad); }
     .page-title {
-      font-size: clamp(1.35rem, 2.5vw, 1.85rem);
       font-weight: 800;
-      letter-spacing: -0.03em;
-      margin-bottom: 14px;
-      color: #fff;
+      letter-spacing: -0.04em;
+      margin-bottom: var(--section-head-gap);
     }
     .kpi-card {
       display: flex;
@@ -192,32 +157,30 @@
       line-height: 1.1;
     }
     .kpi-lbl {
-      font-size: 11px;
+      font-size: var(--fs-label);
+      font-weight: 600;
+      letter-spacing: 0.08em;
       color: var(--muted);
       text-transform: uppercase;
-      letter-spacing: 0.06em;
     }
     .row { display: grid; gap: 10px; margin-bottom: 10px; }
     .row-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .row-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .row-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
-    .card {
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      padding: 14px;
+    .page-ml .card {
+      background: var(--card-bg);
+      border: 1px solid var(--line-subtle);
       min-height: 120px;
     }
-    .card h3 {
-      font-size: 14px;
+    .page-ml .card h3 {
+      font-size: var(--fs-h3);
       font-weight: 600;
-      color: #fff;
+      color: var(--text);
       margin-bottom: 2px;
     }
     .sub {
-      font-size: 12px;
+      font-size: var(--fs-body);
       color: var(--muted);
       margin-bottom: 8px;
     }
@@ -269,9 +232,9 @@
     .gauge-wrap svg { width: 68px; height: 68px; }
 
     .chart-box {
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 10px;
-      background: #0e0e15;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface-chart);
       padding: 8px;
       overflow: hidden;
     }
@@ -286,7 +249,7 @@
       gap: 10px;
       flex-wrap: wrap;
       margin-top: 8px;
-      font-size: 11px;
+      font-size: var(--fs-body);
       color: var(--muted);
     }
     .legend span::before {
@@ -296,12 +259,19 @@
       height: 2px;
       margin-right: 5px;
       vertical-align: middle;
-      background: #888;
+      background: var(--legend-muted);
     }
-    .l-pr::before { background: var(--accent) !important; }
-    .l-op::before { background: var(--danger) !important; }
-    .l-target::before { background: var(--warn) !important; }
-    .l-random::before { background: #7b7f8a !important; }
+    .legend span.l-pr::before { background: var(--accent); }
+    .legend span.l-op::before { background: var(--danger); }
+    .legend span.l-target::before { background: var(--warn); }
+    .legend span.l-random::before { background: var(--muted); }
+
+    .legend-tau {
+      color: var(--accent);
+      font-size: var(--fs-label);
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
 
     .heatmap-svg {
       width: 100%;
@@ -310,16 +280,16 @@
     }
     .mini-note {
       margin-top: 8px;
-      font-size: 12px;
+      font-size: var(--fs-body);
       color: var(--muted);
     }
 
     .table-wrap {
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
       overflow: auto;
       max-height: 292px;
-      background: #0f0f16;
+      background: var(--surface-table);
       scrollbar-width: thin;
       scrollbar-color: rgba(255, 255, 255, 0.22) rgba(15, 15, 22, 0.9);
     }
@@ -347,10 +317,11 @@
       position: sticky;
       top: 0;
       background: #151520;
-      color: #98a2b3;
-      font-size: 10px;
+      color: var(--muted);
+      font-size: var(--fs-label);
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.08em;
+      font-weight: 600;
       text-align: left;
       padding: 8px;
       border-bottom: 1px solid rgba(255,255,255,0.08);
@@ -361,8 +332,8 @@
     td {
       padding: 8px;
       border-bottom: 1px solid rgba(255,255,255,0.06);
-      font-size: 12px;
-      color: #d7dde8;
+      font-size: var(--fs-body);
+      color: var(--text);
       white-space: nowrap;
     }
     tbody tr:hover { background: rgba(255,255,255,0.03); }
@@ -389,7 +360,7 @@
       grid-template-columns: 1fr auto;
       gap: 8px;
       align-items: center;
-      font-size: 12px;
+      font-size: var(--fs-body);
     }
     input[type="range"] {
       width: 100%;
@@ -399,10 +370,10 @@
       margin-top: 4px;
       display: grid;
       gap: 6px;
-      font-size: 12px;
-      color: #c9d2df;
+      font-size: var(--fs-body);
+      color: var(--muted);
     }
-    .sim-values strong { color: #fff; }
+    .sim-values strong { color: var(--text); }
 
     .donut-wrap {
       display: grid;
@@ -465,7 +436,7 @@
     }
 
     body.compact .container { width: min(var(--maxw), calc(100% - 18px)); }
-    body.compact .topbar-inner { min-height: 60px; gap: 8px; }
+    body.page-ml.compact header.topbar .topbar-inner { min-height: var(--nav-h-mobile); height: auto; gap: 8px; }
     body.compact .brand { font-size: 13px; gap: 8px; }
     body.compact .crumb { font-size: 12px; }
     body.compact .status { font-size: 11px; }
@@ -503,30 +474,44 @@
     }
 
     .sb-wrap { margin: 0 auto 16px; width: min(var(--maxw), calc(100% - 28px)); }
-    .sb-details { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; }
-    .sb-summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted); list-style-position: outside; }
+    .sb-details { background: var(--card-bg); border: 1px solid var(--line-subtle); border-radius: var(--radius); padding: var(--section-head-gap) var(--card-pad); }
+    .sb-summary { cursor: pointer; font-size: var(--fs-h3); font-weight: 600; color: var(--muted); list-style-position: outside; }
     .sb-grid { display: grid; gap: 10px; margin-top: 10px; }
-    .sb-grid label { display: grid; gap: 4px; font-size: 11px; color: var(--muted); }
-    .sb-grid input { background: var(--grid); border: 1px solid rgba(255,255,255,0.1); color: var(--text); padding: 8px 10px; border-radius: 8px; font-size: 12px; width: 100%; max-width: 520px; }
+    .sb-grid label { display: grid; gap: 4px; font-size: var(--fs-body); letter-spacing: 0.03em; font-weight: 600; color: var(--muted); }
+    .sb-grid input { background: var(--grid); border: 1px solid rgba(255,255,255,0.1); color: var(--text); padding: 8px 10px; border-radius: var(--radius); font-size: var(--fs-body); width: 100%; max-width: 520px; }
     .sb-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
     .sb-hint { margin: 0; line-height: 1.45; max-width: 720px; }
+    #mlSbStatus.ml-sb-status { margin-top: var(--section-head-gap); color: var(--muted); }
 
     @media print {
-      body { background: #fff !important; color: #111 !important; }
-      .topbar, .actions, .btn { display: none !important; }
-      .card {
-        background: #fff !important;
-        color: #111 !important;
-        border: 1px solid #ccc !important;
-        box-shadow: none !important;
+      html body.page-ml {
+        background: #fff;
+        color: #111;
+      }
+      html body.page-ml .topbar,
+      html body.page-ml .actions,
+      html body.page-ml .btn {
+        display: none;
+      }
+      html body.page-ml .card {
+        background: #fff;
+        color: #111;
+        border: 1px solid #ccc;
+        box-shadow: none;
         break-inside: avoid;
       }
-      .row { break-inside: avoid; }
-      .sub, .mini-note, .legend, td, th { color: #333 !important; }
+      html body.page-ml .row { break-inside: avoid; }
+      html body.page-ml .sub,
+      html body.page-ml .mini-note,
+      html body.page-ml .legend,
+      html body.page-ml td,
+      html body.page-ml th {
+        color: #222;
+      }
     }
 </style>
 </head>
-<body>
+<body class="page-ml">
   <div class="tooltip" id="chartTooltip"></div>
   <header class="topbar">
     <div class="container topbar-inner">
@@ -543,23 +528,23 @@
         <span id="policySourceChip" class="policy-chip source-default">Policy —</span>
   </div>
       <div class="actions">
-        <a class="btn" href="../hub.html">← Back to Hub</a>
-        <button class="btn" id="densityBtn">Compact</button>
-        <button class="btn" id="exportPdfBtn">Export PDF</button>
-        <button class="btn btn-accent" id="refreshBtn">Refresh</button>
+        <a class="btn btn-outline" href="../hub.html">← Back to Hub</a>
+        <button class="btn btn-outline" type="button" id="densityBtn">Compact</button>
+        <button class="btn btn-outline" type="button" id="exportPdfBtn">Export PDF</button>
+        <button class="btn btn-primary" type="button" id="refreshBtn">Refresh</button>
 </div>
   </div>
   </header>
 
   <div class="sb-wrap" id="mlSbPanel">
     <details class="sb-details">
-      <summary class="sb-summary">Supabase credentials</summary>
+      <summary class="sb-summary">Credentials</summary>
       <div id="mlSbAdminGate" class="sb-grid sb-gate">
         <label class="mini-note">Access key
           <input type="password" id="mlSbAccessKey" placeholder="Hub Admin key" autocomplete="off" style="max-width:320px;" />
         </label>
         <div class="sb-actions">
-          <button type="button" class="btn btn-accent" id="mlSbUnlockBtn">Unlock</button>
+          <button type="button" class="btn btn-primary" id="mlSbUnlockBtn">Unlock</button>
           <span class="mini-note" id="mlSbGateErr" style="color:var(--warn);"></span>
         </div>
       </div>
@@ -571,15 +556,14 @@
           <input type="password" id="mlSbKey" placeholder="eyJ…" autocomplete="off" />
         </label>
         <div class="sb-actions">
-          <button type="button" class="btn btn-accent" id="mlSbSave">Save &amp; reload</button>
-          <button type="button" class="btn" id="mlSbSignOut" style="border:1px solid var(--line);background:transparent;color:var(--muted);">Sign out</button>
+          <button type="button" class="btn btn-primary" id="mlSbSave">Save &amp; reload</button>
+          <button type="button" class="btn btn-outline" id="mlSbSignOut">Sign out</button>
         </div>
       </div>
-      <p class="mini-note" id="mlSbStatus" style="margin-top:12px;color:var(--muted);"></p>
+      <p class="mini-note ml-sb-status" id="mlSbStatus"></p>
     </details>
   </div>
 
-  <!-- If all network fetches for model_records fail, loadRetrainSummary() parses this (keep in sync when republishing docs/data/model_records.json). -->
   <script type="application/json" id="ml-model-records-fallback">
 {"artifact_version":1,"generated_at":"2026-04-18T20:33:10.433713+00:00","metrics":{"accuracy":0.9121203184901209,"precision":0.9446945337620579,"recall":0.9588772845953003,"auc":0.7514706327301757,"fpr_non_high_as_high":0.5259938837920489,"false_negative_rate_risky":0.041122715404699736,"roc_auc":0.9144344703411822},"calibration":{"fpr":0.0015723270440251573},"charts":{"pr_curve_summary":{"high_class_curve":{"precision_values":[1,0.94],"recall_values":[0,1],"thresholds":[0,1],"operating_point":{},"holdout_threshold_point":{}}},"roc_curve_summary":{"high_class_curve":{"fpr_values":[0,1],"tpr_values":[0,1],"auc":0.9144344703411822,"operating_point":{},"holdout_threshold_point":{}}}}}
   </script>
@@ -608,38 +592,36 @@
 
     <section class="row row-2">
       <article class="card chart-card">
-        <h3>Precision-Recall Curve</h3>
+        <h3>PR curve</h3>
         <div class="chart-box" id="prChartCard">
           <svg class="chart-svg" id="prChart"></svg>
         </div>
         <div class="legend">
           <span class="l-pr">PR</span>
           <span class="l-op">OP</span>
-          <span style="color:#22c55e;font-size:11px">● τ</span>
+          <span class="legend-tau">● τ</span>
         </div>
       </article>
 
       <article class="card chart-card">
-        <h3>Confusion Matrix</h3>
+        <h3>Confusion matrix</h3>
         <div class="chart-box">
           <svg class="heatmap-svg" id="cmChart"></svg>
         </div>
       </article>
     </section>
 
-    <section class="row row-2">
-      <article class="card">
-        <h3>Threshold Simulator</h3>
+    <section class="row">
+      <article class="card" style="max-width:min(100%,640px);">
+        <h3>Threshold simulator</h3>
         <div class="sim-grid">
           <div class="sim-row">
             <label for="warnSlider">Warn (<span id="warnVal">40</span>)</label>
-            <span class="badge warn">20–60</span>
           </div>
           <input id="warnSlider" type="range" min="20" max="60" value="40">
 
           <div class="sim-row">
             <label for="blockSlider">Block (<span id="blockVal">70</span>)</label>
-            <span class="badge bad">50–95</span>
           </div>
           <input id="blockSlider" type="range" min="50" max="95" value="70">
 
@@ -650,14 +632,18 @@
             <div id="simFpr"><strong>—</strong></div>
           </div>
 
-          <button type="button" class="btn btn-accent" id="applyConfigBtn">Copy threshold JSON</button>
+          <button type="button" class="btn btn-primary" id="applyConfigBtn">Copy threshold JSON</button>
         </div>
       </article>
-      <article class="card" aria-hidden="true" style="min-height:0;border:none;background:transparent;box-shadow:none;padding:0"></article>
     </section>
   </main>
 
 <script>
+    function readCssVar(name, fallback) {
+      const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      return v || fallback;
+    }
+
     let METRICS_STATIC = {
       accuracy: Number.NaN,
       auc: Number.NaN,
@@ -1000,7 +986,7 @@
           const data = await resp.json();
           if (isWebsiteRecordsSummary(data)) {
             modelRecordsSourceLabel = url;
-            mlSbStatusRetrain = `Using website records: ${url}`;
+            mlSbStatusRetrain = "";
             return data;
           }
         } catch {
@@ -1050,19 +1036,18 @@
                 mlSbStatusRetrain = "";
                 return fromJson;
               }
-              mlSbStatusRetrain = "Supabase retrain row is legacy schema; using local website records/defaults.";
+              mlSbStatusRetrain = "Retrain schema legacy.";
             } catch (e) {
               mlSbStatusRetrain = `${table}: ${e && e.message ? e.message : String(e)}`;
             }
           }
         }
       } else {
-        mlSbStatusRetrain = "Configure URL + anon key below (or save from Hub).";
+        mlSbStatusRetrain = "Set Supabase URL + key.";
       }
       modelRecordsSourceLabel = "unavailable";
       if (!mlSbStatusRetrain) {
-        mlSbStatusRetrain =
-          "Could not load docs/data/model_records.json (404/CORS/offline). KPIs stay at 0 or — until the file is reachable.";
+        mlSbStatusRetrain = "model_records.json unreachable.";
       }
       const emb = document.getElementById("ml-model-records-fallback");
       if (emb && emb.textContent) {
@@ -1070,7 +1055,7 @@
           const data = JSON.parse(emb.textContent.trim());
           if (isWebsiteRecordsSummary(data)) {
             modelRecordsSourceLabel = "embedded-fallback";
-            mlSbStatusRetrain = `${mlSbStatusRetrain} Using embedded KPI snapshot.`;
+            mlSbStatusRetrain = "Embedded KPI snapshot.";
             return data;
           }
         } catch {
@@ -1352,7 +1337,7 @@
       const key = (localStorage.getItem("sb_key") || "").trim();
       if (!url || !key) {
         usingDemo = true;
-        mlSbStatusEvents = "No Supabase URL/key — using demo events.";
+        mlSbStatusEvents = "Demo events (no credentials).";
         return generateDemoEvents();
       }
       const evHeaders = {
@@ -1360,35 +1345,52 @@
         Authorization: `Bearer ${key}`,
         Accept: "application/json",
       };
+      const paths = [
+        "/rest/v1/guardrail_events?select=id,timestamp,risk_score,action,pii_classes,llm_name,text_hash&order=timestamp.desc.nullslast,id.desc&limit=4000",
+        "/rest/v1/guardrail_events?select=id,created_at,risk_score,action,pii_classes,llm_name,text_hash&order=created_at.desc.nullslast,id.desc&limit=4000",
+        "/rest/v1/guardrail_events?select=*&order=id.desc&limit=4000",
+      ];
       try {
-        const r = await fetch(
-          `${url}/rest/v1/guardrail_events?select=id,timestamp,risk_score,action,pii_classes,llm_name,text_hash&order=timestamp.desc.nullslast,id.desc&limit=4000`,
-          { headers: evHeaders, cache: "no-store" }
-        );
-        const rawText = await r.text();
-        if (!r.ok) {
-          mlSbStatusEvents = `guardrail_events: HTTP ${r.status} ${rawText.slice(0, 160)}`;
-          usingDemo = true;
-          return generateDemoEvents();
+        let sawAuthorizedEmpty = false;
+        for (const path of paths) {
+          let r;
+          try {
+            r = await fetch(url + path, { headers: evHeaders, cache: "no-store" });
+          } catch (netErr) {
+            mlSbStatusEvents = netErr && netErr.message ? netErr.message : String(netErr);
+            continue;
+          }
+          const rawText = await r.text();
+          if (!r.ok) {
+            mlSbStatusEvents = `guardrail_events: HTTP ${r.status} ${rawText.slice(0, 160)}`;
+            continue;
+          }
+          let rows;
+          try {
+            rows = JSON.parse(rawText);
+          } catch {
+            mlSbStatusEvents = "guardrail_events: invalid JSON";
+            continue;
+          }
+          if (!Array.isArray(rows)) {
+            mlSbStatusEvents = "guardrail_events: unexpected response";
+            continue;
+          }
+          if (!rows.length) {
+            sawAuthorizedEmpty = true;
+            continue;
+          }
+          usingDemo = false;
+          mlSbStatusEvents = "";
+          return rows.map(normalizeEvent);
         }
-        let rows;
-        try {
-          rows = JSON.parse(rawText);
-        } catch {
-          mlSbStatusEvents = "guardrail_events: invalid JSON";
-          usingDemo = true;
-          return generateDemoEvents();
+        if (sawAuthorizedEmpty) {
+          usingDemo = false;
+          mlSbStatusEvents = "guardrail_events: empty.";
+          return [];
         }
-        if (!Array.isArray(rows)) {
-          mlSbStatusEvents = "guardrail_events: unexpected response";
-          usingDemo = true;
-          return generateDemoEvents();
-        }
-        usingDemo = false;
-        if (!rows.length) {
-          mlSbStatusEvents = "Connected — no rows in guardrail_events yet.";
-        }
-        return rows.map(normalizeEvent);
+        usingDemo = true;
+        return generateDemoEvents();
       } catch (e) {
         mlSbStatusEvents = e && e.message ? e.message : String(e);
         usingDemo = true;
@@ -1624,7 +1626,7 @@
       xTxt.setAttribute("x", x + w / 2);
       xTxt.setAttribute("y", y + h + 32);
       xTxt.setAttribute("text-anchor", "middle");
-      xTxt.setAttribute("fill", "#7a8393");
+      xTxt.setAttribute("fill", readCssVar("--chart-tick", "rgba(232, 232, 232, 0.42)"));
       xTxt.setAttribute("font-size", "11");
       xTxt.textContent = xLabel;
       g.appendChild(xTxt);
@@ -1633,7 +1635,7 @@
       yTxt.setAttribute("x", x - 38);
       yTxt.setAttribute("y", y + h / 2);
       yTxt.setAttribute("text-anchor", "middle");
-      yTxt.setAttribute("fill", "#7a8393");
+      yTxt.setAttribute("fill", readCssVar("--chart-tick", "rgba(232, 232, 232, 0.42)"));
       yTxt.setAttribute("font-size", "11");
       yTxt.setAttribute("transform", `rotate(-90 ${x - 38} ${y + h / 2})`);
       yTxt.textContent = yLabel;
@@ -1760,7 +1762,7 @@
           mapX(0.5),
           mapY(Math.max(0.1, Math.min(0.99, polAuprc))),
           "var(--accent)",
-          `High-class AUPRC (from policy) ≈ ${polAuprc.toFixed(3)}`
+          `Policy AUPRC ${polAuprc.toFixed(3)}`
         );
         return;
       }
@@ -2042,7 +2044,7 @@
         tx.setAttribute("x", mapX(i));
         tx.setAttribute("y", cy + ch + 14);
         tx.setAttribute("text-anchor", "middle");
-        tx.setAttribute("fill", "#7a8393");
+        tx.setAttribute("fill", readCssVar("--chart-tick", "rgba(232, 232, 232, 0.42)"));
         tx.setAttribute("font-size", "10");
         tx.textContent = `W${i + 1}`;
         svg.appendChild(tx);
@@ -2097,8 +2099,6 @@
         warnVal.textContent = String(w);
         blockVal.textContent = String(blockSlider.value);
         const actualBlock = Number(blockSlider.value);
-        const curBlock = allEvents.filter((e) => e.score >= baselineBlock).length;
-        const curWarn = allEvents.filter((e) => e.score >= baselineWarn && e.score < baselineBlock).length;
         const newBlock = allEvents.filter((e) => e.score >= actualBlock).length;
         const newWarn = allEvents.filter((e) => e.score >= w && e.score < actualBlock).length;
         const newSafe = allEvents.length - newBlock - newWarn;
@@ -2108,10 +2108,10 @@
         const elW = document.getElementById("simWarn");
         const elS = document.getElementById("simSafe");
         const elF = document.getElementById("simFpr");
-        if (elB) elB.innerHTML = `Block <strong>${newBlock}</strong> <span class="mini-note">Δ ${newBlock - curBlock}</span>`;
-        if (elW) elW.innerHTML = `Warn <strong>${newWarn}</strong> <span class="mini-note">Δ ${newWarn - curWarn}</span>`;
-        if (elS) elS.innerHTML = `Safe <strong>${newSafe}</strong> <span class="mini-note">Δ ${newSafe - (allEvents.length - curBlock - curWarn)}</span>`;
-        if (elF) elF.innerHTML = `FPR proxy <strong>${fpProxy.toFixed(1)}%</strong>`;
+        if (elB) elB.innerHTML = `Block <strong>${newBlock}</strong>`;
+        if (elW) elW.innerHTML = `Warn <strong>${newWarn}</strong>`;
+        if (elS) elS.innerHTML = `Safe <strong>${newSafe}</strong>`;
+        if (elF) elF.innerHTML = `FPR <strong>${fpProxy.toFixed(1)}%</strong>`;
       };
       warnSlider.oninput = update;
       blockSlider.oninput = update;
@@ -2124,7 +2124,6 @@
           risk_score_silent_max: Math.max(0, Number(warnSlider.value) - 1),
           warn_threshold: Number(warnSlider.value),
           block_threshold: Number(blockSlider.value),
-          note: "Suggested values copied from ML Health Dashboard simulator"
         };
         try {
           await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
@@ -2378,7 +2377,7 @@
         console.error(err);
         const st = document.getElementById("mlSbStatus");
         if (st) {
-          st.textContent = `Dashboard load error: ${err && err.message ? err.message : String(err)}`;
+          st.textContent = `Load error: ${err && err.message ? err.message : String(err)}`;
           st.style.color = "var(--warn)";
         }
         try {
@@ -2410,20 +2409,18 @@
         const u = (localStorage.getItem("sb_url") || "").trim();
         const k = (localStorage.getItem("sb_key") || "").trim();
         if (u && k) {
-          el.textContent = getHubAdminSession()
-            ? "Live Supabase endpoints OK."
-            : "Using saved browser credentials (Admin unlock or Hub to change).";
+          el.textContent = getHubAdminSession() ? "Supabase OK." : "Cached credentials.";
           el.style.color = "var(--accent)";
         } else {
           el.textContent = getHubAdminSession()
-            ? "Enter URL + anon key, then Save & reload."
-            : "Admin: unlock the panel above or set credentials in Hub → Admin.";
+            ? "URL + anon key → Save."
+            : "Unlock admin or use Hub.";
           el.style.color = "var(--muted)";
         }
         return;
       }
       el.textContent = msg;
-      el.style.color = /HTTP \d|invalid|unexpected|Configure|No Supabase/i.test(msg) ? "var(--warn)" : "var(--accent)";
+      el.style.color = /HTTP \d|invalid|unexpected|unreachable|Demo|Legacy|Load error/i.test(msg) ? "var(--warn)" : "var(--accent)";
     }
 
     function applyMlSupabasePanelMode() {
@@ -2460,7 +2457,7 @@
         unlockBtn.addEventListener("click", () => {
           const k = (keyIn.value || "").trim();
           if (k !== HUB_ADMIN_ACCESS_KEY) {
-            if (gateErr) gateErr.textContent = "Invalid access key (same as Hub → Admin).";
+            if (gateErr) gateErr.textContent = "Invalid key.";
             return;
           }
           if (gateErr) gateErr.textContent = "";
