@@ -14,11 +14,16 @@ dist/
 build/
 
 # Generated / large ML artifacts (regenerate locally)
+# Covers e.g. tinybert_guardrail/model.safetensors, checkpoint-*/, tokenizer, pytorch_model.bin
 core-sentinel-guardrail/models/
 core-sentinel-guardrail/arrow_datasets/
 core-sentinel-guardrail/arrow_datasets_SAFE_RUN/
+core-sentinel-guardrail/outputs/
 arrow_datasets/
 arrow_datasets_nemotron/
+
+# Benchmark text dumps (keep *.py sources in repo unless they embed secrets — review before commit)
+core-sentinel-guardrail/benchmark_report*.txt
 core-sentinel-guardrail/config/kb_cache.yaml
 
 # Large / downloadable datasets (fetch or unzip locally; README + licenses stay in repo)
@@ -77,8 +82,6 @@ core-sentinel-guardrail/logs/
 logs/
 core-sentinel-guardrail/__pycache__/
 core-sentinel-guardrail/*.pyc
-core-sentinel-guardrail/models/
-core-sentinel-guardrail/config/user_settings.json
 core-sentinel-guardrail/logs/supabase_sync_state.json
 .venv/
 *.db
