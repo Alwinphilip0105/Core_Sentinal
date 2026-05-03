@@ -48,9 +48,11 @@ core-sentinel-guardrail/logs/clipboard_events.jsonl
 core-sentinel-guardrail/logs/risk_telemetry.jsonl
 core-sentinel-guardrail/logs/feedback_fulltext.jsonl
 
-# Generated eval / training reports (regenerate locally)
-core-sentinel-guardrail/reports/
-reports/
+# Generated eval / training reports (regenerate locally), except pinned demo PII report
+core-sentinel-guardrail/reports/*
+!core-sentinel-guardrail/reports/.gitkeep
+!core-sentinel-guardrail/reports/pii_category_report.json
+/reports/
 
 # Local user config & ad-hoc backups (not for sharing)
 core-sentinel-guardrail/config/user_settings.json

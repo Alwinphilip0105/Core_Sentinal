@@ -509,6 +509,153 @@
         color: #222;
       }
     }
+
+    /* ── Tab navigation ─────────────────────────── */
+    .tab-bar {
+      display: flex;
+      border-bottom: 2px solid #E2E8F0;
+      margin-bottom: 24px;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .tab {
+      padding: 10px 20px;
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      margin-bottom: -2px;
+      font-size: 14px;
+      font-weight: 500;
+      color: #64748B;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s,
+                  background 0.15s;
+      border-radius: 6px 6px 0 0;
+      white-space: nowrap;
+    }
+    .tab:hover:not(.active) {
+      color: #3B82F6;
+      background: rgba(59,130,246,0.06);
+    }
+    .tab.active {
+      color: #3B82F6;
+      border-bottom-color: #3B82F6;
+      font-weight: 600;
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Technical details accordion ───────────── */
+    .tech-details {
+      border: 1px solid #E2E8F0;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-top: 24px;
+      background: #F8FAFC;
+    }
+    .tech-details summary {
+      font-size: 13px;
+      font-weight: 600;
+      color: #64748B;
+      cursor: pointer;
+      user-select: none;
+      list-style: none;
+    }
+    .tech-details summary::-webkit-details-marker {
+      display: none;
+    }
+    .tech-details[open] summary::before {
+      content: "▼ ";
+    }
+    .tech-details:not([open]) summary::before {
+      content: "▶ ";
+    }
+    .tech-details-body {
+      padding-top: 12px;
+      font-size: 12px;
+      color: #475569;
+    }
+
+    /* ── Plain-English status table ─────────────── */
+    .summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-top: 16px;
+    }
+    .summary-table th {
+      text-align: left;
+      font-size: 11px;
+      font-weight: 600;
+      color: #94A3B8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 8px 12px;
+      border-bottom: 2px solid #E2E8F0;
+    }
+    .summary-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #F1F5F9;
+      color: #1E293B;
+      vertical-align: middle;
+    }
+    .summary-table tr:last-child td {
+      border-bottom: none;
+    }
+    .status-ok   { color: #10B981; font-weight: 600; }
+    .status-warn { color: #F59E0B; font-weight: 600; }
+    .status-bad  { color: #EF4444; font-weight: 600; }
+
+    /* ── Category status table ───────────────────── */
+    .cat-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .cat-table th {
+      text-align: left;
+      font-size: 11px;
+      font-weight: 600;
+      color: #94A3B8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 8px 12px;
+      border-bottom: 2px solid #E2E8F0;
+      background: #F8FAFC;
+    }
+    .cat-table td {
+      padding: 9px 12px;
+      border-bottom: 1px solid #F1F5F9;
+      color: #1E293B;
+    }
+    .cat-table tr:last-child td { border-bottom: none; }
+
+    /* ── Category bar chart ──────────────────────── */
+    .cat-bar-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .cat-bar-bg {
+      flex: 1;
+      height: 8px;
+      background: #F1F5F9;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .cat-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.4s ease;
+    }
+    .cat-bar-val {
+      font-size: 12px;
+      font-weight: 600;
+      color: #475569;
+      width: 36px;
+      text-align: right;
+    }
+    /* ─────────────────────────────────────────────── */
 </style>
 </head>
 <body class="page-ml">
@@ -571,47 +718,70 @@
   <main class="container">
     <h1 class="page-title">Model Health</h1>
 
-    <section class="row row-4">
-      <article class="card kpi-card">
-        <div class="kpi-num countup" id="precisionMetric" data-decimals="3">—</div>
-        <div class="kpi-lbl">Precision</div>
-      </article>
-      <article class="card kpi-card">
-        <div class="kpi-num countup" id="recallMetric" data-decimals="3">—</div>
-        <div class="kpi-lbl">Recall</div>
-      </article>
-      <article class="card kpi-card">
-        <div class="kpi-num countup" id="f1Metric" data-decimals="3">—</div>
-        <div class="kpi-lbl">F1</div>
-      </article>
-      <article class="card kpi-card">
-        <div class="kpi-num countup" id="aucMetric" data-decimals="3">—</div>
-        <div class="kpi-lbl">AUC</div>
-      </article>
-    </section>
+    <div class="tab-bar" role="tablist"
+         aria-label="ML Health sections">
+      <button class="tab active"
+              data-tab="summary"
+              role="tab" aria-selected="true">
+        Summary
+      </button>
+      <button class="tab"
+              data-tab="pr-curve"
+              role="tab" aria-selected="false">
+        Precision-Recall
+      </button>
+      <button class="tab"
+              data-tab="confusion"
+              role="tab" aria-selected="false">
+        Confusion Matrix
+      </button>
+      <button class="tab"
+              data-tab="categories"
+              role="tab" aria-selected="false">
+        By Category
+      </button>
+    </div>
 
-    <section class="row row-2">
-      <article class="card chart-card">
-        <h3>PR curve</h3>
-        <div class="chart-box" id="prChartCard">
-          <svg class="chart-svg" id="prChart"></svg>
-        </div>
-        <div class="legend">
-          <span class="l-pr">PR</span>
-          <span class="l-op">OP</span>
-          <span class="legend-tau">● τ</span>
-        </div>
-      </article>
+    <div id="panel-summary" class="tab-panel active">
+      <section class="row row-4">
+        <article class="card kpi-card">
+          <div class="kpi-num countup" id="precisionMetric" data-decimals="3">—</div>
+          <div class="kpi-lbl">Precision</div>
+        </article>
+        <article class="card kpi-card">
+          <div class="kpi-num countup" id="recallMetric" data-decimals="3">—</div>
+          <div class="kpi-lbl">Recall</div>
+        </article>
+        <article class="card kpi-card">
+          <div class="kpi-num countup" id="f1Metric" data-decimals="3">—</div>
+          <div class="kpi-lbl">F1</div>
+        </article>
+        <article class="card kpi-card">
+          <div class="kpi-num countup" id="aucMetric" data-decimals="3">—</div>
+          <div class="kpi-lbl">AUC</div>
+        </article>
+      </section>
 
-      <article class="card chart-card">
-        <h3>Confusion matrix</h3>
-        <div class="chart-box">
-          <svg class="heatmap-svg" id="cmChart"></svg>
-        </div>
-      </article>
-    </section>
+      <div class="card" style="margin-top:16px">
+        <h3 style="font-size:15px;font-weight:600;
+                   color:#0F172A;margin-bottom:12px">
+          What these numbers mean
+        </h3>
+        <table class="summary-table">
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>Value</th>
+              <th>Status</th>
+              <th>Plain English</th>
+            </tr>
+          </thead>
+          <tbody id="summaryTableBody">
+          </tbody>
+        </table>
+      </div>
 
-    <section class="row">
+    <section class="row" style="margin-top:16px">
       <article class="card" style="max-width:min(100%,640px);">
         <h3>Threshold simulator</h3>
         <div class="sim-grid">
@@ -636,6 +806,181 @@
         </div>
       </article>
     </section>
+
+    <details class="tech-details">
+      <summary>Technical Details</summary>
+      <div class="tech-details-body" id="techDetailsBody">
+        <p style="color:#64748B;font-size:12px;
+                  margin-bottom:8px">
+          Raw metrics for ML engineers.
+        </p>
+        <table class="summary-table" id="techMetricsTable">
+          <thead>
+            <tr>
+              <th>Metric</th><th>Value</th>
+            </tr>
+          </thead>
+          <tbody id="techTableBody">
+          </tbody>
+        </table>
+      </div>
+    </details>
+    </div>
+
+    <div id="panel-pr-curve" class="tab-panel">
+      <div style="display:flex;gap:24px;
+                  align-items:flex-start;flex-wrap:wrap">
+
+        <div style="flex:1;min-width:280px">
+          <article class="card chart-card">
+            <h3>PR curve</h3>
+            <div class="chart-box" id="prChartCard">
+              <svg class="chart-svg" id="prChart"></svg>
+            </div>
+            <div class="legend">
+              <span class="l-pr">PR</span>
+              <span class="l-op">OP</span>
+              <span class="legend-tau">● τ</span>
+            </div>
+          </article>
+        </div>
+
+        <div style="width:240px;flex-shrink:0;
+                    background:#FFFFFF;
+                    border:1px solid #E2E8F0;
+                    border-radius:12px;
+                    padding:16px">
+
+          <div style="font-size:14px;font-weight:600;
+                      color:#0F172A;margin-bottom:12px">
+            Operating Points
+          </div>
+
+          <div style="margin-bottom:12px">
+            <div style="color:#EF4444;font-size:13px;
+                        font-weight:600;margin-bottom:4px">
+              ● Warn (τ = <span id="opWarnTau">0.500</span>)
+            </div>
+            <div style="font-size:12px;color:#475569">
+              Amber alert above this score
+            </div>
+          </div>
+
+          <div style="margin-bottom:16px">
+            <div style="color:#10B981;font-size:13px;
+                        font-weight:600;margin-bottom:4px">
+              ● Block (τ = <span id="opBlockTau">0.920</span>)
+            </div>
+            <div style="font-size:12px;color:#475569">
+              Red hold above this score
+            </div>
+          </div>
+
+          <hr style="border:none;
+                     border-top:1px solid #E2E8F0;
+                     margin-bottom:12px">
+
+          <div style="font-size:13px;font-weight:600;
+                      color:#0F172A;margin-bottom:8px">
+            Simulate τ
+          </div>
+          <input type="range" id="tauSlider"
+                 min="5" max="95" value="50"
+                 style="width:100%;
+                        accent-color:#3B82F6;
+                        cursor:pointer">
+          <div id="tauReadout"
+               style="font-size:12px;color:#475569;
+                      margin-top:8px;line-height:1.5">
+            Move slider to simulate threshold
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <div id="panel-confusion" class="tab-panel">
+
+      <div style="margin-bottom:16px;
+                  display:flex;
+                  align-items:center;
+                  gap:12px;
+                  flex-wrap:wrap">
+        <label for="matrixConfig"
+               style="font-size:13px;font-weight:500;
+                      color:#475569">
+          Configuration:
+        </label>
+        <select id="matrixConfig"
+                style="padding:6px 12px;
+                       border:1px solid #E2E8F0;
+                       border-radius:6px;
+                       font-size:13px;
+                       color:#1E293B;
+                       background:#FFFFFF;
+                       cursor:pointer">
+          <option value="ml-warn">
+            ML Only (t_warn = 0.500)
+          </option>
+          <option value="ml-block">
+            ML Only (t_block = 0.920)
+          </option>
+          <option value="regex">
+            Regex + NER Only
+          </option>
+          <option value="combined">
+            Full Combined
+          </option>
+        </select>
+      </div>
+
+      <article class="card chart-card">
+        <h3>Confusion matrix</h3>
+        <div class="chart-box">
+          <svg class="heatmap-svg" id="cmChart"></svg>
+        </div>
+      </article>
+
+      <p style="font-size:12px;color:#94A3B8;
+                margin-top:12px;text-align:center">
+        Each cell shows the percentage of pastes in
+        that outcome category.
+      </p>
+
+    </div>
+
+    <div id="panel-categories" class="tab-panel">
+      <div style="display:flex;gap:32px;
+                  flex-wrap:wrap;align-items:flex-start">
+
+        <div style="flex:1;min-width:280px">
+          <h3 style="font-size:15px;font-weight:600;
+                     color:#0F172A;margin-bottom:16px">
+            F1 Score by PII Category
+          </h3>
+          <div id="catBars"></div>
+        </div>
+
+        <div style="width:340px;flex-shrink:0">
+          <h3 style="font-size:15px;font-weight:600;
+                     color:#0F172A;margin-bottom:16px">
+            Category Status
+          </h3>
+          <table class="cat-table">
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th>F1</th>
+                <th>Status</th>
+                <th>What this means</th>
+              </tr>
+            </thead>
+            <tbody id="catTableBody"></tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
   </main>
 
 <script>
@@ -697,6 +1042,54 @@
       [42, 3189, 77],
       [5, 36, 5128]
     ];
+
+    /** Benchmark 2×2 presets for confusion matrix dropdown (test-set style counts). */
+    const MATRIX_DATA = {
+      "ml-warn": {
+        tn: 186,
+        fp: 141,
+        fn: 265,
+        tp: 2799,
+        label: "ML Only (t_warn=0.500)",
+        n: 3391,
+      },
+      "ml-block": {
+        tn: 264,
+        fp: 63,
+        fn: 265,
+        tp: 2799,
+        label: "ML Only (t_block=0.920)",
+        n: 3391,
+      },
+      regex: {
+        tn: 323,
+        fp: 4,
+        fn: 2907,
+        tp: 157,
+        label: "Regex + NER Only",
+        n: 3391,
+      },
+      combined: {
+        tn: 324,
+        fp: 3,
+        fn: 2908,
+        tp: 156,
+        label: "Full Combined",
+        n: 3391,
+      },
+    };
+
+    let CAT_DATA = [
+      { name: "CONTACT", f1: 0.922, note: "Emails and phones detected well" },
+      { name: "ID", f1: 0.892, note: "IDs detected reliably" },
+      { name: "OTHER_PII", f1: 0.767, note: "General PII detected well" },
+      { name: "NAME", f1: 0.277, note: "High recall, lower precision" },
+      { name: "FINANCIAL", f1: 0.216, note: "Needs more training data" },
+      { name: "LOCATION", f1: 0.166, note: "Context-dependent detection" },
+      { name: "AUTH", f1: 0.135, note: "Very limited training examples" },
+      { name: "HEALTH", f1: 0.017, note: "Almost no training examples" },
+    ];
+
     const DEMO_FALSE_POSITIVE_LOG = [
       ["4 min ago", "MED (44)", "Email (work)", "warn", "✗ Wrong → Safe"],
       ["9 min ago", "MED (41)", "Phone (office)", "warn", "✗ Wrong → Safe"],
@@ -1095,11 +1488,175 @@
       return "";
     }
 
+    function updateSummaryTable(metrics) {
+      var tb = document.getElementById("summaryTableBody");
+      var tbt = document.getElementById("techTableBody");
+      if (!tb) return;
+
+      var main_rows = [
+        {
+          label: "Accuracy",
+          value: metrics.accuracy,
+          fmt: function (v) {
+            return (v * 100).toFixed(1) + "%";
+          },
+          explain: "Correct predictions out of all pastes",
+        },
+        {
+          label: "Recall",
+          value: metrics.recall,
+          fmt: function (v) {
+            return (v * 100).toFixed(1) + "%";
+          },
+          explain:
+            "Catches " +
+            (metrics.recall && !isNaN(metrics.recall)
+              ? (metrics.recall * 100).toFixed(1)
+              : "?") +
+            "% of all risky pastes",
+        },
+        {
+          label: "Precision",
+          value: metrics.precision,
+          fmt: function (v) {
+            return (v * 100).toFixed(1) + "%";
+          },
+          explain:
+            (metrics.precision && !isNaN(metrics.precision)
+              ? (metrics.precision * 100).toFixed(1)
+              : "?") + "% of flags are truly risky",
+        },
+        {
+          label: "AUC-ROC",
+          value: metrics.auc,
+          fmt: function (v) {
+            return v.toFixed(3);
+          },
+          explain:
+            "Ranks risky above safe " +
+            (metrics.auc && !isNaN(metrics.auc)
+              ? (metrics.auc * 100).toFixed(1)
+              : "?") +
+            "% of the time",
+        },
+        {
+          label: "F1 Score",
+          value: metrics.f1,
+          fmt: function (v) {
+            return (v * 100).toFixed(1) + "%";
+          },
+          explain: "Balance of detection and precision",
+        },
+      ];
+
+      tb.innerHTML = main_rows
+        .map(function (r) {
+          var v = r.value;
+          var disp = v != null && !isNaN(v) ? r.fmt(v) : "—";
+          var cls = "status-ok";
+          var icon = "✅";
+          var cmp =
+            r.label === "AUC-ROC"
+              ? v
+              : v != null && !isNaN(v)
+              ? r.label === "Accuracy" ||
+                  r.label === "Recall" ||
+                  r.label === "Precision" ||
+                  r.label === "F1 Score"
+                ? v
+                : v
+              : null;
+          if (cmp != null && !isNaN(cmp)) {
+            if (cmp < 0.75) {
+              cls = "status-bad";
+              icon = "❌";
+            } else if (cmp < 0.9) {
+              cls = "status-warn";
+              icon = "⚠️";
+            }
+          }
+          return (
+            "<tr>" +
+            '<td style="font-weight:500">' +
+            r.label +
+            "</td>" +
+            '<td style="font-family:monospace">' +
+            disp +
+            "</td>" +
+            '<td class="' +
+            cls +
+            '">' +
+            icon +
+            "</td>" +
+            '<td style="color:#64748B;font-size:12px">' +
+            r.explain +
+            "</td>" +
+            "</tr>"
+          );
+        })
+        .join("");
+
+      if (tbt) {
+        var tech = [
+          ["True Positives (TP)", metrics.tp],
+          ["False Positives (FP)", metrics.fp],
+          ["True Negatives (TN)", metrics.tn],
+          ["False Negatives (FN)", metrics.fn],
+          [
+            "F2 Score",
+            metrics.f2 != null && !isNaN(metrics.f2)
+              ? metrics.f2.toFixed(4)
+              : null,
+          ],
+          [
+            "MCC",
+            metrics.mcc != null && !isNaN(metrics.mcc)
+              ? metrics.mcc.toFixed(4)
+              : null,
+          ],
+          [
+            "AUPRC",
+            metrics.auprc != null && !isNaN(metrics.auprc)
+              ? metrics.auprc.toFixed(4)
+              : null,
+          ],
+        ];
+        tbt.innerHTML = tech
+          .map(function (row) {
+            return (
+              "<tr>" +
+              '<td style="font-weight:500">' +
+              row[0] +
+              "</td>" +
+              '<td style="font-family:monospace">' +
+              (row[1] != null && row[1] !== "" ? row[1] : "—") +
+              "</td>" +
+              "</tr>"
+            );
+          })
+          .join("");
+      }
+    }
+
     function applyRetrainSummary(summary) {
       if (!summary || typeof summary !== "object") {
         retrainSummary = null;
         const verChip = document.getElementById("modelVersionChip");
         if (verChip) verChip.textContent = "Version —";
+        updateSummaryTable({
+          accuracy: Number.NaN,
+          recall: Number.NaN,
+          precision: Number.NaN,
+          auc: Number.NaN,
+          f1: Number.NaN,
+          tp: null,
+          fp: null,
+          tn: null,
+          fn: null,
+          f2: null,
+          mcc: null,
+          auprc: null,
+        });
         return;
       }
       if (summary.charts && typeof summary.charts === "object") {
@@ -1159,6 +1716,94 @@
         const vt = summary.model?.version_tag;
         verChip.textContent = vt ? `Version ${vt}` : "Version —";
       }
+
+      const hold = metrics.confusion_holdout;
+      let tp = null;
+      let fp = null;
+      let tn = null;
+      let fn = null;
+      if (hold && typeof hold === "object") {
+        const tpv = Number(hold.tp);
+        const fpv = Number(hold.fp);
+        const tnv = Number(hold.tn);
+        const fnv = Number(hold.fn);
+        if (
+          Number.isFinite(tpv)
+          && Number.isFinite(fpv)
+          && Number.isFinite(tnv)
+          && Number.isFinite(fnv)
+        ) {
+          tp = tpv;
+          fp = fpv;
+          tn = tnv;
+          fn = fnv;
+        }
+      }
+      let f2 = null;
+      if (
+        Number.isFinite(precision)
+        && Number.isFinite(recall)
+        && precision + recall > 0
+      ) {
+        f2 = (5 * precision * recall) / (4 * precision + recall);
+      }
+      let mcc = null;
+      if (
+        tp != null
+        && [tp, fp, tn, fn].every(function (x) {
+          return typeof x === "number" && Number.isFinite(x);
+        })
+      ) {
+        const num = tp * tn - fp * fn;
+        const den = Math.sqrt(
+          (tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)
+        );
+        if (den > 0) mcc = num / den;
+      }
+      const auprcRaw = deriveMacroAuprc(summary);
+      const auprc = Number.isFinite(auprcRaw) ? auprcRaw : null;
+      const accUnit = Number.isFinite(METRICS_STATIC.accuracy)
+        ? METRICS_STATIC.accuracy <= 1
+          ? METRICS_STATIC.accuracy
+          : METRICS_STATIC.accuracy / 100
+        : Number.NaN;
+      updateSummaryTable({
+        accuracy: accUnit,
+        recall: METRICS_STATIC.recall,
+        precision: METRICS_STATIC.precision,
+        auc: METRICS_STATIC.auc,
+        f1: METRICS_STATIC.f1,
+        tp: tp,
+        fp: fp,
+        tn: tn,
+        fn: fn,
+        f2: f2,
+        mcc: mcc,
+        auprc: auprc,
+      });
+
+      // ── Live category F1 from model_records ──────────
+      (function () {
+        const liveCats = extractCatData(summary);
+        if (liveCats && liveCats.length > 0) {
+          CAT_DATA = liveCats;
+          const barsEl = document.getElementById("catBars");
+          const tbEl = document.getElementById("catTableBody");
+          if (barsEl) barsEl.innerHTML = "";
+          if (tbEl) tbEl.innerHTML = "";
+          buildCategoryPanel();
+          console.info(
+            "[ML dashboard] Category F1 loaded from model_records (" +
+              liveCats.length +
+              " categories)"
+          );
+        } else {
+          console.info(
+            "[ML dashboard] No per-category data in model_records — using hardcoded CAT_DATA"
+          );
+        }
+      })();
+      // ─────────────────────────────────────────────────
     }
 
     async function loadPolicyThresholds() {
@@ -1694,6 +2339,8 @@
 
     function drawPRChart() {
       const svg = document.getElementById("prChart");
+      if (!svg) return;
+      window._prSweepPoints = null;
       const w = svg.clientWidth || 560;
       const h = svg.clientHeight || 300;
       svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
@@ -1751,6 +2398,24 @@
             `Holdout τ=${Number(hop.threshold).toFixed(2)}  P=${Number(hop.precision).toFixed(3)} R=${Number(hop.recall).toFixed(3)}`
           );
         }
+        const rv = curve.recall;
+        const pv = curve.precision;
+        const th = curve.thresholds;
+        window._prSweepPoints = [];
+        for (let i = 0; i < rv.length; i++) {
+          let tauNum = Number.NaN;
+          if (th && th.length > i && isPresentMetric(th[i])) {
+            tauNum = Number(th[i]);
+          }
+          if (!Number.isFinite(tauNum)) {
+            tauNum = Number(rv[i]);
+          }
+          window._prSweepPoints.push({
+            tau: tauNum,
+            recall: Number(rv[i]),
+            prec: Number(pv[i] ?? 0),
+          });
+        }
         return;
       }
 
@@ -1779,41 +2444,86 @@
         PR_POINTS.forEach((p) => {
           addHoverablePoint(svg, mapX(p[0]), mapY(p[1]), "var(--accent)", `Demo point  P=${p[1].toFixed(3)}  R=${p[0].toFixed(3)}`);
         });
+        window._prSweepPoints = PR_POINTS.map((d) => ({
+          tau: d[0],
+          recall: d[0],
+          prec: d[1],
+        }));
       }
     }
 
-    function drawConfusionMatrix() {
+    function drawConfusionMatrix(override) {
       const svg = document.getElementById("cmChart");
+      if (!svg) return;
       const w = svg.clientWidth || 560;
       const h = svg.clientHeight || 240;
       svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
       svg.innerHTML = "";
       const ns = "http://www.w3.org/2000/svg";
-      const holdoutCm = retrainSummary?.metrics?.confusion_holdout;
-      if (
-        holdoutCm
-        && typeof holdoutCm === "object"
-        && [holdoutCm.tp, holdoutCm.tn, holdoutCm.fp, holdoutCm.fn].every((v) => Number.isFinite(Number(v)))
-      ) {
-        const tp = Number(holdoutCm.tp);
-        const tn = Number(holdoutCm.tn);
-        const fp = Number(holdoutCm.fp);
-        const fn = Number(holdoutCm.fn);
-        const labels = ["Pred: not risky", "Pred: risky"];
-        const rows = ["Actual: not risky", "Actual: risky"];
+
+      function countsValid(o) {
+        return (
+          o
+          && typeof o === "object"
+          && [o.tp, o.tn, o.fp, o.fn].every((v) => Number.isFinite(Number(v)))
+        );
+      }
+
+      let bin = null;
+      if (countsValid(override)) {
+        bin = {
+          tp: Number(override.tp),
+          tn: Number(override.tn),
+          fp: Number(override.fp),
+          fn: Number(override.fn),
+        };
+      } else {
+        const selEl = document.getElementById("matrixConfig");
+        const key = selEl && selEl.value ? selEl.value : "ml-warn";
+        const preset = MATRIX_DATA[key];
+        if (countsValid(preset)) {
+          bin = {
+            tp: Number(preset.tp),
+            tn: Number(preset.tn),
+            fp: Number(preset.fp),
+            fn: Number(preset.fn),
+          };
+        }
+      }
+
+      if (!bin) {
+        const holdoutCm = retrainSummary?.metrics?.confusion_holdout;
+        if (countsValid(holdoutCm)) {
+          bin = {
+            tp: Number(holdoutCm.tp),
+            tn: Number(holdoutCm.tn),
+            fp: Number(holdoutCm.fp),
+            fn: Number(holdoutCm.fn),
+          };
+        }
+      }
+
+      if (bin) {
+        const { tp, tn, fp, fn } = bin;
+        const labels = ["Predicted: Safe", "Predicted: Risky"];
+        const rows = ["Actual: Safe", "Actual: Risky"];
+        const cellSub = [
+          ["Correctly ignored", "False alarm"],
+          ["Missed", "Correctly flagged"],
+        ];
         const data = [
           [tn, fp],
           [fn, tp],
         ];
         const max = Math.max(...data.flat(), 1);
-        const x0 = 140,
-          y0 = 36,
-          cw = 140,
-          chm = 72;
+        const x0 = 140;
+        const y0 = 40;
+        const cw = Math.min(168, Math.max(120, Math.floor((w - x0 - 24) / 2)));
+        const chm = 88;
         labels.forEach((lb, i) => {
           const t = document.createElementNS(ns, "text");
           t.setAttribute("x", x0 + i * cw + cw / 2);
-          t.setAttribute("y", 20);
+          t.setAttribute("y", 22);
           t.setAttribute("text-anchor", "middle");
           t.setAttribute("fill", "#8e97a8");
           t.setAttribute("font-size", "11");
@@ -1823,7 +2533,7 @@
         rows.forEach((rb, r) => {
           const t = document.createElementNS(ns, "text");
           t.setAttribute("x", 8);
-          t.setAttribute("y", y0 + r * chm + chm / 2 + 4);
+          t.setAttribute("y", y0 + r * chm + chm / 2 + 5);
           t.setAttribute("fill", "#8e97a8");
           t.setAttribute("font-size", "11");
           t.textContent = rb;
@@ -1847,9 +2557,12 @@
             rect.setAttribute("fill", fill);
             rect.setAttribute("stroke", "rgba(255,255,255,0.15)");
             rect.setAttribute("stroke-width", "1");
-            const pct = totals[r] ? ((v / totals[r]) * 100).toFixed(2) : "0.00";
+            const rowTot = totals[r] || 1;
+            const pctStr = `${((v / rowTot) * 100).toFixed(1)}%`;
+            const cellCx = x0 + c * cw + cw / 2;
+            const cellMidY = y0 + r * chm + chm / 2;
             rect.addEventListener("mousemove", (e) => {
-              tooltip.textContent = `${rows[r]} → ${labels[c]} : ${v} (${pct}%)`;
+              tooltip.textContent = `${rows[r]} → ${labels[c]} : ${v} (${pctStr} of row)`;
               tooltip.style.display = "block";
               tooltip.style.left = `${e.clientX}px`;
               tooltip.style.top = `${e.clientY}px`;
@@ -1858,15 +2571,41 @@
               tooltip.style.display = "none";
             });
             svg.appendChild(rect);
-            const t = document.createElementNS(ns, "text");
-            t.setAttribute("x", x0 + c * cw + cw / 2);
-            t.setAttribute("y", y0 + r * chm + chm / 2 + 4);
-            t.setAttribute("text-anchor", "middle");
-            t.setAttribute("fill", "#ecf7f3");
-            t.setAttribute("font-size", "13");
-            t.setAttribute("font-weight", "700");
-            t.textContent = String(v);
-            svg.appendChild(t);
+
+            const tN = document.createElementNS(ns, "text");
+            tN.setAttribute("x", String(cellCx));
+            tN.setAttribute("y", String(cellMidY - 10));
+            tN.setAttribute("text-anchor", "middle");
+            tN.setAttribute("fill", "#ecf7f3");
+            tN.setAttribute("font-size", "14");
+            tN.setAttribute("font-weight", "700");
+            tN.textContent = String(v);
+            svg.appendChild(tN);
+
+            const tPct = document.createElementNS(ns, "text");
+            tPct.setAttribute("x", String(cellCx));
+            tPct.setAttribute("y", String(cellMidY + 8));
+            tPct.setAttribute("text-anchor", "middle");
+            tPct.setAttribute("fill", "rgba(236,247,243,0.85)");
+            tPct.setAttribute("font-size", "11");
+            tPct.textContent = `${pctStr}`;
+            svg.appendChild(tPct);
+
+            const sub = cellSub[r][c];
+            const tLab = document.createElementNS(ns, "text");
+            tLab.setAttribute("x", String(cellCx));
+            tLab.setAttribute("y", String(cellMidY + 26));
+            tLab.setAttribute("text-anchor", "middle");
+            tLab.setAttribute("font-size", "10");
+            if (r === 1 && c === 0) {
+              tLab.setAttribute("fill", "#EF4444");
+              tLab.setAttribute("font-weight", "600");
+              tLab.textContent = "⚠ Missed";
+            } else {
+              tLab.setAttribute("fill", "#cbd5e1");
+              tLab.textContent = sub;
+            }
+            svg.appendChild(tLab);
           }
         }
         return;
@@ -2370,6 +3109,11 @@
 
         drawPRChart();
         drawConfusionMatrix();
+        if (typeof window.refreshMlTauOperatingPoints === "function") {
+          window.refreshMlTauOperatingPoints();
+        }
+        const tauEl = document.getElementById("tauSlider");
+        if (tauEl) tauEl.dispatchEvent(new Event("input"));
         renderThresholdSimulator(metrics);
         animateCounters();
         updateMlSbStatusLine();
@@ -2505,6 +3249,13 @@
 
     (async function init() {
       initMlSupabasePanel();
+      const mx = document.getElementById("matrixConfig");
+      if (mx) {
+        mx.addEventListener("change", () => {
+          const d = MATRIX_DATA[mx.value];
+          if (d) drawConfusionMatrix(d);
+        });
+      }
       initDensityControl();
       const policyLoad = await loadPolicyThresholds();
       runtimePolicy = policyLoad.policy;
@@ -2515,6 +3266,324 @@
       startAutoRefresh();
       startModelRecordsPolling();
     })();
+
+    // ── Tab switching ─────────────────────────────
+    (function () {
+      function initTabs() {
+        var tabs = document.querySelectorAll('.tab');
+        tabs.forEach(function (tab) {
+          tab.addEventListener('click', function () {
+            tabs.forEach(function (t) {
+              t.classList.remove('active');
+              t.setAttribute('aria-selected', 'false');
+            });
+            document.querySelectorAll('.tab-panel')
+              .forEach(function (p) {
+                p.classList.remove('active');
+              });
+            tab.classList.add('active');
+            tab.setAttribute('aria-selected', 'true');
+            var panel = document.getElementById(
+              'panel-' + tab.dataset.tab
+            );
+            if (panel) panel.classList.add('active');
+            // Redraw SVG charts on reveal
+            // (avoids zero-size rendering in hidden panels)
+            window.dispatchEvent(new Event('resize'));
+            window.requestAnimationFrame(function () {
+              try {
+                drawPRChart();
+                drawConfusionMatrix();
+              } catch (e) {
+                /* ignore */
+              }
+            });
+          });
+        });
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener(
+          'DOMContentLoaded', initTabs
+        );
+      } else {
+        initTabs();
+      }
+    })();
+    // ─────────────────────────────────────────────
+
+    // ── Tau slider + operating points ─────────────
+    (function () {
+      function initTauSlider() {
+        var slider = document.getElementById('tauSlider');
+        var readout = document.getElementById('tauReadout');
+        var warnSpan = document.getElementById('opWarnTau');
+        var blockSpan = document.getElementById('opBlockTau');
+        if (!slider || !readout) return;
+
+        function getPolTau() {
+          try {
+            var raw =
+              localStorage.getItem('core_sentinel_risk_policy')
+              || localStorage.getItem('risk_policy_json')
+              || '';
+            if (!raw) return { warn: 0.50, block: 0.92 };
+            var p = JSON.parse(raw);
+            var ib =
+              p.inference_binary_two_threshold &&
+              typeof p.inference_binary_two_threshold === 'object'
+                ? p.inference_binary_two_threshold
+                : {};
+            var w =
+              typeof ib.prob_threshold_warn === 'number'
+                ? ib.prob_threshold_warn
+                : typeof p.prob_threshold_warn === 'number'
+                ? p.prob_threshold_warn
+                : 0.5;
+            var b =
+              typeof ib.prob_threshold_block === 'number'
+                ? ib.prob_threshold_block
+                : typeof p.prob_threshold_block === 'number'
+                ? p.prob_threshold_block
+                : 0.92;
+            return {
+              warn: parseFloat(String(w)),
+              block: parseFloat(String(b)),
+            };
+          } catch (e) {
+            return { warn: 0.5, block: 0.92 };
+          }
+        }
+
+        function refreshOpPoints() {
+          var pol = getPolTau();
+          if (warnSpan) warnSpan.textContent = pol.warn.toFixed(3);
+          if (blockSpan) blockSpan.textContent = pol.block.toFixed(3);
+        }
+        window.refreshMlTauOperatingPoints = refreshOpPoints;
+        refreshOpPoints();
+
+        function interpolate(pts, tau) {
+          if (!pts || !pts.length) return null;
+          var s = pts.slice().sort(function (a, b) {
+            return a.tau - b.tau;
+          });
+          for (var i = 0; i < s.length - 1; i++) {
+            if (tau >= s[i].tau && tau <= s[i + 1].tau) {
+              var den = s[i + 1].tau - s[i].tau;
+              var t = den ? (tau - s[i].tau) / den : 0;
+              return {
+                recall:
+                  s[i].recall +
+                  t * (s[i + 1].recall - s[i].recall),
+                prec:
+                  s[i].prec +
+                  t * (s[i + 1].prec - s[i].prec),
+              };
+            }
+          }
+          var last = s[s.length - 1];
+          return { recall: last.recall, prec: last.prec };
+        }
+
+        function updateReadout() {
+          var tau = Number(slider.value) / 100;
+          var pt = interpolate(window._prSweepPoints || [], tau);
+          if (pt) {
+            readout.textContent =
+              'At τ = ' +
+              tau.toFixed(2) +
+              ':  catches ' +
+              (pt.recall * 100).toFixed(1) +
+              '% of risky pastes · precision ' +
+              (pt.prec * 100).toFixed(1) +
+              '%';
+          } else {
+            readout.textContent =
+              'At τ = ' +
+              tau.toFixed(2) +
+              ' — load model data for live metrics';
+          }
+        }
+
+        slider.addEventListener('input', updateReadout);
+        updateReadout();
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initTauSlider);
+      } else {
+        initTauSlider();
+      }
+    })();
+
+    function extractCatData(summary) {
+      if (!summary || typeof summary !== "object") {
+        return null;
+      }
+
+      const candidates = [
+        function (s) {
+          return s.metrics && s.metrics.per_category;
+        },
+        function (s) {
+          return s.metrics && s.metrics.class_f1;
+        },
+        function (s) {
+          return s.metrics && s.metrics.classification_report;
+        },
+        function (s) {
+          return s.evaluation && s.evaluation.per_class;
+        },
+        function (s) {
+          return s.charts && s.charts.category_f1;
+        },
+        function (s) {
+          return s.per_category;
+        },
+      ];
+
+      let raw = null;
+      for (let i = 0; i < candidates.length; i++) {
+        try {
+          const val = candidates[i](summary);
+          if (
+            val &&
+            typeof val === "object" &&
+            !Array.isArray(val) &&
+            Object.keys(val).length > 0
+          ) {
+            raw = val;
+            break;
+          }
+        } catch (e) {
+          /* ignore */
+        }
+      }
+
+      if (!raw) {
+        return null;
+      }
+
+      const NOTES = {
+        CONTACT: "Emails and phones detected well",
+        ID: "IDs detected reliably",
+        OTHER_PII: "General PII detected well",
+        NAME: "High recall, lower precision",
+        FINANCIAL: "Needs more training data",
+        LOCATION: "Context-dependent detection",
+        AUTH: "Very limited training examples",
+        HEALTH: "Almost no training examples",
+      };
+
+      const skipClassReportKeys = /^(accuracy|macro avg|weighted avg)$/i;
+
+      function readF1(v) {
+        if (typeof v === "number" && Number.isFinite(v)) return v;
+        if (typeof v === "object" && v !== null) {
+          if (typeof v.f1 === "number" && Number.isFinite(v.f1)) return v.f1;
+          if (typeof v.f1_score === "number" && Number.isFinite(v.f1_score)) {
+            return v.f1_score;
+          }
+          const fs = v["f1-score"];
+          if (typeof fs === "number" && Number.isFinite(fs)) return fs;
+        }
+        return null;
+      }
+
+      const result = [];
+      Object.keys(raw).forEach(function (k) {
+        if (skipClassReportKeys.test(k.trim())) return;
+        const v = raw[k];
+        const f1 = readF1(v);
+        if (f1 === null || Number.isNaN(f1)) return;
+        result.push({
+          name: k,
+          f1: Math.round(f1 * 1000) / 1000,
+          note:
+            NOTES[k] ||
+            k.replace(/_/g, " ").toLowerCase() + " category",
+        });
+      });
+
+      if (result.length === 0) return null;
+
+      result.sort(function (a, b) {
+        return b.f1 - a.f1;
+      });
+
+      return result;
+    }
+
+    function buildCategoryPanel() {
+      var barsEl = document.getElementById('catBars');
+      var tbEl = document.getElementById('catTableBody');
+      if (!barsEl || !tbEl) return;
+      barsEl.innerHTML = '';
+      tbEl.innerHTML = '';
+      CAT_DATA.forEach(function (cat) {
+        var color =
+          cat.f1 > 0.8
+            ? '#10B981'
+            : cat.f1 > 0.5
+            ? '#F59E0B'
+            : '#EF4444';
+        var icon =
+          cat.f1 > 0.8 ? '✅' : cat.f1 > 0.5 ? '⚠️' : '❌';
+        var pct = (cat.f1 * 100).toFixed(0) + '%';
+        barsEl.insertAdjacentHTML(
+          'beforeend',
+          '<div style="margin-bottom:12px">' +
+            '<div style="display:flex;justify-content:space-between;margin-bottom:4px">' +
+            '<span style="font-size:13px;font-weight:500;color:#1E293B">' +
+            cat.name +
+            '</span>' +
+            '<span style="font-size:12px;font-weight:600;color:' +
+            color +
+            '">' +
+            pct +
+            '</span>' +
+            '</div>' +
+            '<div class="cat-bar-bg">' +
+            '<div class="cat-bar-fill" style="width:' +
+            pct +
+            ';background:' +
+            color +
+            '"></div>' +
+            '</div>' +
+            '</div>'
+        );
+        tbEl.insertAdjacentHTML(
+          'beforeend',
+          '<tr>' +
+            '<td style="font-weight:500">' +
+            cat.name +
+            '</td>' +
+            '<td style="font-family:monospace;color:' +
+            color +
+            ';font-weight:600">' +
+            cat.f1.toFixed(3) +
+            '</td>' +
+            '<td>' +
+            icon +
+            '</td>' +
+            '<td style="color:#64748B;font-size:12px">' +
+            cat.note +
+            '</td>' +
+            '</tr>'
+        );
+      });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener(
+        'DOMContentLoaded',
+        buildCategoryPanel
+      );
+    } else {
+      buildCategoryPanel();
+    }
+
+    // ─────────────────────────────────────────────
 </script>
 </body>
 </html>

@@ -44,6 +44,7 @@ from risk_policy_loader import (
     DEFAULT_RISK_POLICY,
     cached_load_risk_policy,
     clear_risk_policy_cache,
+    get_binary_two_thresholds,
     get_critical_secret_entropy_min,
     get_inference_3class_label_thresholds,
     get_pii_count_probability_threshold,
@@ -735,6 +736,48 @@ def _risk_score_force_block_min() -> int:
 _GUARDRAIL_ROOT = Path(__file__).resolve().parent
 MODEL_DIR = _GUARDRAIL_ROOT / "models" / "tinybert_guardrail"
 CONFIG_PATH = _GUARDRAIL_ROOT / "config" / "risk_policy.json"
+
+
+def _resolve_guardrail_model_path() -> Path:
+    """
+    If root model.safetensors is stale (e.g. 3-class on disk) but checkpoint-* has the trained
+    2-class head, load the checkpoint (Windows often locks the root file during training).
+    Set GUARDRAIL_INFER_MODEL_DIR or GUARDRAIL_CALIB_MODEL_DIR to override.
+    """
+    base = MODEL_DIR
+    env = (
+        os.environ.get("GUARDRAIL_INFER_MODEL_DIR")
+        or os.environ.get("GUARDRAIL_CALIB_MODEL_DIR")
+        or ""
+    ).strip()
+    if env:
+        p = Path(env)
+        if not p.is_dir():
+            raise FileNotFoundError(f"Model directory not found: {p}")
+        return p.resolve()
+    try:
+        import safetensors.torch as st
+
+        root_w = base / "model.safetensors"
+        root_n = None
+        if root_w.is_file():
+            root_n = int(st.load_file(str(root_w))["classifier.weight"].shape[0])
+        ck_dirs = sorted(
+            base.glob("checkpoint-*"),
+            key=lambda x: int(x.name.split("-", 1)[1])
+            if x.name.split("-", 1)[1].isdigit()
+            else -1,
+        )
+        for ck in reversed(ck_dirs):
+            wf = ck / "model.safetensors"
+            if not wf.is_file():
+                continue
+            cn = int(st.load_file(str(wf))["classifier.weight"].shape[0])
+            if cn == 2 and root_n is not None and root_n != 2:
+                return ck.resolve()
+    except Exception:
+        pass
+    return base.resolve()
 PII_POLICY_PATH = _GUARDRAIL_ROOT / "config" / "pii_policy.json"
 PII_TO_RISK_PATH = _GUARDRAIL_ROOT / "config" / "pii_to_risk.json"
 LOGS_DIR = _GUARDRAIL_ROOT / "logs"
@@ -1030,16 +1073,21 @@ def _finalize_action_for_risk_score(
     risk_score: int,
     *,
     critical_secret: bool,
+    binary_allow_zone: bool = False,
 ) -> str:
     """
     Final gate: risk_score > RISK_SCORE_SILENT_MAX → warn, else silent.
     Preserves block (forced high-score / policy block and critical-secret path).
+    When binary two-threshold decision is allow (prob below t_warn), do not upgrade
+    silent → warn from scalar score alone — that score reflects noisy logits, not UI tier.
     """
     if critical_secret:
         return "block"
     a = (action or "silent").lower()
     if a == "block":
         return "block"
+    if binary_allow_zone and a == "silent":
+        return "silent"
     try:
         rs = int(risk_score)
     except (TypeError, ValueError):
@@ -1160,12 +1208,16 @@ def _load_guardrail_model() -> None:
     with _model_init_lock:
         if _guardrail_model is not None:
             return
-        path = MODEL_DIR if isinstance(MODEL_DIR, Path) else Path(MODEL_DIR)
+        path = _resolve_guardrail_model_path()
         if not path.exists():
             raise FileNotFoundError(f"Model not found at {path}. Run train.py first.")
         resolved = str(path.resolve())
         config = AutoConfig.from_pretrained(resolved)
-        _model_num_labels = getattr(config, "num_labels", 3)
+        nlab = getattr(config, "num_labels", None)
+        if nlab is None:
+            id2l = getattr(config, "id2label", None) or {}
+            nlab = len(id2l) if id2l else 3
+        _model_num_labels = int(nlab)
         _model_id2label = getattr(config, "id2label", None) or ID_TO_RISK
         _model_id2label = {int(k): str(v) for k, v in _model_id2label.items()}
         if _model_num_labels == 9:
@@ -1182,6 +1234,7 @@ def _load_guardrail_model() -> None:
             _pii_to_risk = None
         _guardrail_tokenizer = AutoTokenizer.from_pretrained(resolved)
         _guardrail_model = AutoModelForSequenceClassification.from_pretrained(resolved)
+        _model_num_labels = int(_guardrail_model.classifier.out_features)
         _guardrail_model.eval()
         torch.set_grad_enabled(False)
         _torch_device = torch.device("cuda:0" if DEVICE == 0 else "cpu")
@@ -1809,12 +1862,25 @@ def _binary_probs_from_scores_list(scores_list: list | None) -> tuple[float, flo
     return (ps / s, pr / s)
 
 
+def _norm_layer_source(s: str) -> str:
+    """Normalize span source for layer_summary buckets."""
+    s = str(s or "").lower()
+    if s in ("regex", "critical_secret", "kb_rule"):
+        return "regex"
+    if s == "model_window":
+        return "ml"
+    if s == "ner":
+        return "ner"
+    return s
+
+
 def _binary_severity_from_regex_ner(
     text: str,
     triggers: list[str],
     labels: list[str] | None,
     p_risky: float,
-    risky_threshold: float,
+    t_warn: float,
+    t_block: float,
 ) -> str:
     """
     Severity for 2-class detector:
@@ -1900,7 +1966,10 @@ def _binary_severity_from_regex_ner(
     if "card ending" in t and "cvv" in t:
         return "high"
 
-    if p_risky >= float(risky_threshold):
+    pr = float(p_risky)
+    if pr >= float(t_block):
+        return "high"
+    if pr >= float(t_warn):
         return "med"
     return "low"
 
@@ -2251,6 +2320,13 @@ def score_clipboard_with_pii(
             "text_truncated": False,
             "window_scores": [],
             "spans": [],
+            "layer_summary": {
+                "regex_count": 0,
+                "ml_count": 0,
+                "ner_count": 0,
+                "total_unique": 0,
+                "source_breakdown": {},
+            },
         }
     eff_min = max(min_confidence, 0.65) if context == "document" else min_confidence
     ts = text.strip()
@@ -2301,20 +2377,28 @@ def score_clipboard_with_pii(
         labels = _labels_from_scores(scores_list)
     top_conf = _confidence_from_scores(scores_list)
     binary_model = int(_model_num_labels or 3) == 2
+    prob_risky_bin: float | None = None
+    t_warn_bin: float | None = None
+    t_block_bin: float | None = None
+    binary_two_threshold_allow = False
     # Our model outputs either:
     #   - token-level style labels (NAME/CONTACT/...), in which case we map via aggregate_span_risks
     #   - 3-class risk labels (low/med/high), in which case we treat the model output directly as risk
     if binary_model and got is not None and scores_list:
         probs2 = _binary_probs_from_scores_list(scores_list)
         p_risky = float(probs2[1]) if probs2 is not None else 0.0
-        risky_thr = _binary_risky_threshold(load_risk_policy())
+        _pol_bin = load_risk_policy()
+        t_warn, t_block = get_binary_two_thresholds(_pol_bin)
+        prob_risky_bin = float(p_risky)
+        t_warn_bin = float(t_warn)
+        t_block_bin = float(t_block)
         triggers = get_pii_override_triggers(ts)
         if hipaa_critical_triggers:
             triggers.extend(hipaa_critical_triggers)
             triggers = list(dict.fromkeys(triggers))
         if critical_secret_detected and not triggers:
             triggers = ["critical_secret"]
-        base_risk = _binary_severity_from_regex_ner(ts, triggers, labels, p_risky, risky_thr)
+        base_risk = _binary_severity_from_regex_ner(ts, triggers, labels, p_risky, t_warn, t_block)
         risk = base_risk
         if (
             risk == "med"
@@ -2359,7 +2443,8 @@ def score_clipboard_with_pii(
             merged_score_for_penalty = max(merged_score_for_penalty, 95)
         print(
             f"[infer] Binary model: P(risky)={p_risky:.2f} -> "
-            f"base_score={merged_score_for_penalty}, threshold={risky_thr:.2f}, severity from regex/NER: {risk}"
+            f"base_score={merged_score_for_penalty}, t_warn={t_warn:.2f} t_block={t_block:.2f}, "
+            f"severity from regex/NER: {risk}"
         )
     elif labels and str(labels[0]).strip().lower() in ("low", "med", "high"):
         triggers = []
@@ -2445,15 +2530,32 @@ def score_clipboard_with_pii(
                 effective_policy[level] = opts
     else:
         effective_policy = base_policy
-    decision_result = decision_from_pii_risk(risk, policy=effective_policy)
     risk_policy = load_risk_policy()
     n_lab = _model_num_labels if _model_num_labels is not None else 3
     if (
+        binary_model
+        and prob_risky_bin is not None
+        and t_warn_bin is not None
+        and t_block_bin is not None
+    ):
+        # Two-threshold zones from policy (warn / block); not overridden by allow_warn_instead.
+        pr = float(prob_risky_bin)
+        tw, tb = float(t_warn_bin), float(t_block_bin)
+        if pr >= tb:
+            decision = "block"
+        elif pr >= tw:
+            decision = "warn"
+        else:
+            decision = "allow"
+            binary_two_threshold_allow = True
+        block = decision == "block"
+    elif (
         n_lab == 9
         and isinstance(risk_policy.get("per_class_thresholds"), dict)
         and _model_id2label
         and class_probs
     ):
+        decision_result = decision_from_pii_risk(risk, policy=effective_policy)
         d_pc = decision_from_per_class_probs(class_probs, _model_id2label, risk_policy)
         decision = _merge_decisions(
             decision_result["decision"],
@@ -2462,6 +2564,7 @@ def score_clipboard_with_pii(
         )
         block = decision == "block"
     else:
+        decision_result = decision_from_pii_risk(risk, policy=effective_policy)
         decision = _merge_decisions(
             decision_result["decision"],
             critical_escalate_warn_to_block=critical_secret_detected,
@@ -2544,6 +2647,8 @@ def score_clipboard_with_pii(
         min_confidence=eff_min,
         max_model_window_chars=100,
     )
+
+    _span_src_counts = Counter(_norm_layer_source(sp.get("source", "")) for sp in (spans or []))
     # Critical path can set risk_score to 90+ while get_pii_spans returns [] (JWT/API patterns are
     # not always duplicated in strong-regex / model windows). Emit spans so the panel can build cards.
     if critical_secret_detected and not spans:
@@ -2596,6 +2701,7 @@ def score_clipboard_with_pii(
         action,
         risk_score,
         critical_secret=critical_secret_detected,
+        binary_allow_zone=binary_two_threshold_allow,
     )
     decision, block = _decision_and_block_from_ui_action(action)
     message = build_user_message(risk, decision, override_applied, triggers)
@@ -2631,9 +2737,40 @@ def score_clipboard_with_pii(
         "text_truncated": win_meta.get("text_truncated", False),
         "window_scores": win_meta.get("window_scores", []),
         "spans": spans,
+        "layer_summary": {
+            "regex_count": int(_span_src_counts.get("regex", 0)),
+            "ml_count": int(_span_src_counts.get("ml", 0)),
+            "ner_count": int(_span_src_counts.get("ner", 0)),
+            "total_unique": len(spans or []),
+            "source_breakdown": dict(
+                Counter(sp.get("source", "?") for sp in (spans or []))
+            ),
+        },
     }
+    if binary_model and prob_risky_bin is not None:
+        result["prob_risky"] = float(prob_risky_bin)
+        result["t_warn"] = float(t_warn_bin or 0.0)
+        result["t_block"] = float(t_block_bin or 0.0)
     if contact_only_capped:
         result["_capped"] = "contact-only cap applied"
+    if binary_model:
+        _pol2 = load_risk_policy()
+        _twb, _tbb = get_binary_two_thresholds(_pol2)
+        result.setdefault("t_warn", float(_twb))
+        result.setdefault("t_block", float(_tbb))
+    if critical_secret_detected:
+        _tw_cs, _tb_cs = get_binary_two_thresholds(load_risk_policy())
+        n_cs = len(spans or [])
+        result["prob_risky"] = None
+        result["t_warn"] = float(_tw_cs)
+        result["t_block"] = float(_tb_cs)
+        result["layer_summary"] = {
+            "regex_count": int(n_cs),
+            "ml_count": 0,
+            "ner_count": 0,
+            "total_unique": int(n_cs),
+            "source_breakdown": {"critical_secret": int(n_cs)},
+        }
     if context != "document":
         record_inference_scored_text(text, result, cache_kind="pii")
     return result

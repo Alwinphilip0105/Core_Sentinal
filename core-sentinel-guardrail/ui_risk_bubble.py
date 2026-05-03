@@ -72,6 +72,13 @@ CARD_W = 280
 CARD_SLIDE_PX = 36
 
 COLOR_PILL_PAUSED = QtGui.QColor(88, 88, 90)
+# Binary overlay zones (pill + ring accent)
+_STATE_TO_PILL_COLOR = {
+    "block": QtGui.QColor(0xEF, 0x44, 0x44),
+    "warn": QtGui.QColor(0xF5, 0x9E, 0x0B),
+    "safe": QtGui.QColor(0x02, 0xC3, 0x9A),
+    "idle": None,  # use paused / default
+}
 COLOR_SHIELD_OFF = QtGui.QColor(0x96, 0x98, 0x9A)
 COLOR_SHIELD_ON = QtGui.QColor(0x02, 0xC3, 0x9A)
 COLOR_SPINNER = QtGui.QColor(0x02, 0xC3, 0x9A)
@@ -80,16 +87,26 @@ COLOR_CRITICAL_COUNT = QtGui.QColor(0xFF, 0x8A, 0x80)
 COLOR_IDLE_GLYPH = QtGui.QColor(0x02, 0xC3, 0x9A)
 CARD_QSS = (
     "QFrame#actionCard { background: rgba(26,26,26,230); border: 1px solid #3a3a3a; "
-    "border-radius: 10px; }"
-    "QLabel { color: #d0d0d0; font-family: 'Segoe UI'; font-size: 11px; }"
+    "border-left: 3px solid #02C39A; border-radius: 10px; }"
+    "QLabel { color: #d0d0d0; font-family: 'Segoe UI'; font-size: 11px; padding: 2px 0; }"
     "QPlainTextEdit { background: #141414; color: #e8e8e8; border: 1px solid #333; "
     "border-radius: 6px; padding: 6px; font-family: 'Segoe UI'; font-size: 10px; }"
     "QPushButton { font-family: 'Segoe UI'; font-size: 11px; padding: 6px 12px; "
     "border-radius: 6px; background: #3d3d3d; color: #eee; border: 1px solid #555; }"
     "QPushButton:hover { background: #4a4a4a; }"
     "QPushButton#primary { background: #0d6efd; border-color: #0d6efd; color: white; }"
-    "QPushButton#primary:hover { background: #0b5ed7; }"
+    "QPushButton#primary:hover { background: #1D4ED8; }"
 )
+
+
+def _pill_risk_score_tier_label(score: int) -> str:
+    """Plain-english tier next to numeric score (aligned with RemediationDialog._score_tier)."""
+    s = max(0, min(100, int(score)))
+    if s <= 40:
+        return "Safe"
+    if s <= 70:
+        return "Medium"
+    return "High Risk"
 
 
 def _derive_critical_task_count(result: dict) -> int:
@@ -618,8 +635,21 @@ class RiskBubble(QtWidgets.QWidget):
         ring_r = ring_size / 2.0 - 2.0
 
         ds = max(0.0, min(100.0, self._displayed_score))
+        if getattr(self, "_prob_pct_display", None) and getattr(self, "_result", {}):
+            try:
+                pr = float((self._result or {}).get("prob_risky", 0.0))
+                ds = pr * 100.0
+            except (TypeError, ValueError):
+                pass
         sc = int(round(ds))
-        if sc <= 40:
+        oz = str(getattr(self, "_overlay_zone", "") or "").lower()
+        if oz == "safe":
+            ring_color = QtGui.QColor("#43A047")
+        elif oz == "warn":
+            ring_color = QtGui.QColor("#F59E0B")
+        elif oz == "block":
+            ring_color = QtGui.QColor("#E53935")
+        elif sc <= 40:
             ring_color = QtGui.QColor("#43A047")
         elif sc <= 70:
             ring_color = QtGui.QColor("#FFB300")
@@ -648,11 +678,21 @@ class RiskBubble(QtWidgets.QWidget):
         fam = self.font().family() or "Segoe UI"
         painter.setPen(ring_color)
         painter.setFont(paint_font_px(fam, 10, bold=True, floor=MIN_PX_LABEL))
+        ring_txt = getattr(self, "_prob_pct_display", None) or str(int(round(ds)))
         painter.drawText(
             QtCore.QRectF(ring_x, ring_y, float(ring_size), float(ring_size)),
             QtCore.Qt.AlignmentFlag.AlignCenter,
-            str(int(round(ds))),
+            ring_txt,
         )
+        zl = getattr(self, "_binary_zone_label", None)
+        if zl:
+            painter.setPen(ring_color)
+            painter.setFont(paint_font_px(fam, 7, floor=MIN_PX_LABEL))
+            painter.drawText(
+                QtCore.QRectF(ring_x, ring_y + ring_size * 0.58, float(ring_size), 12.0),
+                QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignTop,
+                str(zl),
+            )
         if self._issue_count > 0:
             painter.setPen(QtGui.QColor(255, 255, 255, 150))
             painter.setFont(paint_font_px(fam, 7, floor=MIN_PX_BADGE))
@@ -679,10 +719,11 @@ class RiskBubble(QtWidgets.QWidget):
         p.setPen(llm_color)
         p.setFont(paint_font_px(fam, 11, bold=True, floor=MIN_PX_LABEL))
         llm_name = getattr(self, "_llm_name", "") or "Not monitoring"
+        top_txt = getattr(self, "_prob_pct_display", None) or llm_name
         p.drawText(
             QtCore.QRectF(64.0, float(PILL_Y), 90.0, pill_h / 2.0),
             QtCore.Qt.AlignmentFlag.AlignVCenter,
-            llm_name,
+            top_txt,
         )
         # SILENT=green, WARN=amber, BLOCK=red
         action_colors = {
@@ -696,10 +737,12 @@ class RiskBubble(QtWidgets.QWidget):
         )
         p.setPen(action_color)
         p.setFont(paint_font_px(fam, 9, floor=MIN_PX_BODY))
+        zone = getattr(self, "_binary_zone_label", None)
+        line2 = zone if zone else action.upper()
         p.drawText(
             QtCore.QRectF(64.0, PILL_Y + pill_h / 2.0 - 2.0, 90.0, pill_h / 2.0),
             QtCore.Qt.AlignmentFlag.AlignVCenter,
-            action.upper(),
+            line2,
         )
         count = int(self._streak.get("streak_count", 0) or 0)
         if count > 0:
@@ -913,10 +956,16 @@ class RiskBubble(QtWidgets.QWidget):
         self._toolbar.encrypt_clicked.connect(self._on_toolbar_encrypt)
         self._toolbar.scan_file_clicked.connect(self._on_toolbar_scan_file)
         self._toolbar.settings_clicked.connect(self._on_toolbar_settings)
+        self._toolbar.inspector_clicked.connect(
+            self._open_layer_inspector
+        )
         self._toolbar.redact_clicked.connect(self._hide_toolbar_immediately)
         self._toolbar.encrypt_clicked.connect(self._hide_toolbar_immediately)
         self._toolbar.scan_file_clicked.connect(self._hide_toolbar_immediately)
         self._toolbar.settings_clicked.connect(self._hide_toolbar_immediately)
+        self._toolbar.inspector_clicked.connect(
+            self._hide_toolbar_immediately
+        )
         return self._toolbar
 
     def _restart_toolbar_idle_timer(self) -> None:
@@ -1074,11 +1123,7 @@ class RiskBubble(QtWidgets.QWidget):
                 def _progress(pct: int, msg: str) -> None:
                     self.document_scan_progress.emit(int(pct), str(msg))
 
-                result = scan_document(
-                    file_path,
-                    use_gemini=True,
-                    progress_cb=_progress,
-                )
+                result = scan_document(file_path, progress_cb=_progress)
                 self.document_scan_finished.emit(result)
             except Exception as e:
                 self.document_scan_failed.emit(str(e))
@@ -1123,6 +1168,31 @@ class RiskBubble(QtWidgets.QWidget):
 
     def _do_open_settings(self) -> None:
         self._on_toolbar_settings()
+
+    def _open_layer_inspector(self) -> None:
+        if not hasattr(self, "_inspector_win"):
+            self._inspector_win = None
+
+        if self._inspector_win is None:
+            from layer_inspector import (
+                LayerInspectorPage,
+            )
+            self._inspector_win = LayerInspectorPage()
+
+        result = getattr(self, "_result", None)
+        text = (
+            getattr(self, "_last_text", "")
+            or getattr(self, "_original_text", "")
+            or ""
+        )
+        if isinstance(result, dict):
+            self._inspector_win.load_result(
+                result, text=text
+            )
+
+        self._inspector_win.show()
+        self._inspector_win.raise_()
+        self._inspector_win.activateWindow()
 
     def _on_toolbar_power(self) -> None:
         self._toggle_monitoring_power()
@@ -1170,6 +1240,11 @@ class RiskBubble(QtWidgets.QWidget):
     def _pill_target_color(self) -> QtGui.QColor:
         if not self._has_risk_score:
             return QtGui.QColor(0, 0, 0, 0)
+        z = str(getattr(self, "_overlay_zone", "") or "").lower()
+        if z in _STATE_TO_PILL_COLOR and _STATE_TO_PILL_COLOR[z] is not None:
+            c = QtGui.QColor(_STATE_TO_PILL_COLOR[z])
+            c.setAlpha(210)
+            return c
         s = max(0, min(100, int(self._risk_score)))
         if s <= 40:
             return QtGui.QColor(27, 94, 32, 210)
@@ -1194,26 +1269,30 @@ class RiskBubble(QtWidgets.QWidget):
 
     def set_hold_state(self, locked: bool, critical: bool = False) -> None:
         """Paste-hold: red pill, pulsing score ring, lock glyph until user remediates."""
-        self._hold_critical = bool(critical)
-        self._hold_locked = bool(locked)
-        if locked:
-            self._traffic_indicator.set_state("high")
-            self._hold_pulse = True
-            if self._hold_timer is None:
-                self._hold_timer = QtCore.QTimer(self)
-                self._hold_timer.setInterval(500)
-                self._hold_timer.timeout.connect(self._pulse_hold)
-            try:
-                self._hold_timer.start()
-            except RuntimeError:
-                self._hold_timer = QtCore.QTimer(self)
-                self._hold_timer.setInterval(500)
-                self._hold_timer.timeout.connect(self._pulse_hold)
-                self._hold_timer.start()
-        else:
-            self._stop_hold_timer_safe()
-        self.update()
-        self._traffic_indicator.update()
+        try:
+            self._hold_critical = bool(critical)
+            self._hold_locked = bool(locked)
+            if locked:
+                self._traffic_indicator.set_state("high")
+                self._hold_pulse = True
+                if self._hold_timer is None:
+                    self._hold_timer = QtCore.QTimer(self)
+                    self._hold_timer.setInterval(500)
+                    self._hold_timer.timeout.connect(self._pulse_hold)
+                try:
+                    self._hold_timer.start()
+                except RuntimeError:
+                    self._hold_timer = QtCore.QTimer(self)
+                    self._hold_timer.setInterval(500)
+                    self._hold_timer.timeout.connect(self._pulse_hold)
+                    self._hold_timer.start()
+            else:
+                self._stop_hold_timer_safe()
+            self.update()
+            self._traffic_indicator.update()
+        except RuntimeError:
+            # Widget already destroyed (e.g. app exit while panel finished clears hold).
+            return
 
     def _pulse_hold(self) -> None:
         self._hold_pulse = not self._hold_pulse
@@ -1249,6 +1328,13 @@ class RiskBubble(QtWidgets.QWidget):
             return QtGui.QColor(0x7A, 0x7C, 0x7E)
         if not self._has_risk_score:
             return QtGui.QColor(0x96, 0x98, 0x9A)
+        z = str(getattr(self, "_overlay_zone", "") or "").lower()
+        if z == "safe":
+            return QtGui.QColor(0x69, 0xF0, 0xAE)
+        if z == "warn":
+            return QtGui.QColor(0xFF, 0xD5, 0x4F)
+        if z == "block":
+            return QtGui.QColor(0xEF, 0x9A, 0x9A)
         s = max(0, min(100, int(self._risk_score)))
         if s <= 40:
             return QtGui.QColor(0x69, 0xF0, 0xAE)
@@ -1546,10 +1632,30 @@ class RiskBubble(QtWidgets.QWidget):
             elif self._has_risk_score and int(self._risk_score) >= 30:
                 p.setPen(shield_fill)
                 p.setFont(paint_font_px(fam, 11, bold=True, floor=MIN_PX_LABEL))
+                num_h = max(12.0, float(score_slot.height()) - 14.0)
+                num_rect = QtCore.QRectF(
+                    float(score_slot.x()),
+                    float(score_slot.y()),
+                    float(score_slot.width()),
+                    num_h,
+                )
+                label_rect = QtCore.QRectF(
+                    float(score_slot.x()),
+                    float(score_slot.y() + num_h),
+                    float(score_slot.width()),
+                    14.0,
+                )
+                tier_lbl = _pill_risk_score_tier_label(self._risk_score)
                 p.drawText(
-                    score_slot,
+                    num_rect,
                     QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
                     str(int(self._risk_score)),
+                )
+                p.setFont(paint_font_px(fam, MIN_PX_LABEL, floor=MIN_PX_LABEL))
+                p.drawText(
+                    label_rect,
+                    QtCore.Qt.AlignmentFlag.AlignCenter,
+                    tier_lbl,
                 )
             else:
                 pm = self._get_idle_pixmap()
@@ -1758,6 +1864,16 @@ class RiskBubble(QtWidgets.QWidget):
         self.show_feedback_buttons(self._last_text, self._last_label)
         self._apply_opacity_target()
 
+    def _set_overlay_state(self, decision: str) -> None:
+        """Map clipboard decision to traffic-light state (warn uses amber lane)."""
+        d = str(decision or "allow").lower()
+        if d == "block":
+            self._traffic_indicator.set_state("high")
+        elif d == "warn":
+            self._traffic_indicator.set_state("warn")
+        else:
+            self._traffic_indicator.set_state("safe")
+
     def set_issues(self, count: int) -> None:
         n = max(0, int(count))
         if n <= 0:
@@ -1771,14 +1887,15 @@ class RiskBubble(QtWidgets.QWidget):
         self._all_clear_timer.stop()
         self._issue_count = n
         self._spinner_opacity = 0.0
-        rl = str(self._last_label or "low").lower()
         action = str(self._result.get("action", "") or "")
-        if rl in ("high", "block") or action == "block":
-            self._traffic_indicator.set_state("high")
-        elif rl == "med":
-            self._traffic_indicator.set_state("med")
-        else:
-            self._traffic_indicator.set_state("safe")
+        _decision = str(
+            self._result.get("decision", self._result.get("action", "allow")) or "allow"
+        ).lower()
+        if _decision not in ("allow", "warn", "block"):
+            _decision = {"silent": "allow", "warn": "warn", "block": "block"}.get(
+                str(action).lower(), "allow"
+            )
+        self._set_overlay_state(_decision)
         self.update()
         self.show_feedback_buttons(self._last_text, self._last_label)
         self._apply_opacity_target()
@@ -1933,6 +2050,29 @@ class RiskBubble(QtWidgets.QWidget):
         )
         self._last_action = str(action)
 
+        self._prob_pct_display = None
+        self._binary_zone_label = None
+        dz = str(r.get("decision", "allow")).lower()
+        if dz not in ("allow", "warn", "block"):
+            dz = {"silent": "allow", "warn": "warn", "block": "block"}.get(
+                str(action).lower(), "allow"
+            )
+        self._overlay_zone = {"allow": "safe", "warn": "warn", "block": "block"}.get(
+            dz, "safe"
+        )
+        try:
+            if r.get("prob_risky") is not None:
+                pr = float(r.get("prob_risky", 0.0))
+                self._prob_pct_display = f"{pr:.0%}"
+                self._binary_zone_label = {
+                    "block": "High risk",
+                    "warn": "Review",
+                    "allow": "Safe",
+                }.get(dz, "")
+        except (TypeError, ValueError):
+            self._prob_pct_display = None
+            self._binary_zone_label = None
+
         clear_path = action == "silent" and not critical and score < 30 and not triggers
         span_len = len(spans)
         if clear_path:
@@ -1968,6 +2108,18 @@ class RiskBubble(QtWidgets.QWidget):
         """
         del spans
         r = self._result if isinstance(self._result, dict) else {}
+        _ls = r.get("layer_summary", {})
+        if not isinstance(_ls, dict):
+            _ls = {}
+        _layer_info = (
+            {
+                "regex_count": int(_ls.get("regex_count", 0)),
+                "ner_count": int(_ls.get("ner_count", 0)),
+                "ml_count": int(_ls.get("ml_count", 0)),
+            }
+            if _ls
+            else None
+        )
         risk = str(risk_label or "low").lower()
         critical = bool(r.get("critical_secret_detected", False))
         try:
@@ -1995,6 +2147,7 @@ class RiskBubble(QtWidgets.QWidget):
                     "😌",
                     "All clear! Safe to paste.",
                     "#2E7D32",
+                    layer_info=_layer_info,
                 )
                 ch.show_near_traffic_light(self)
                 return
@@ -2009,6 +2162,7 @@ class RiskBubble(QtWidgets.QWidget):
                 "This would expose your credentials!",
                 "#C62828",
                 large_text=True,
+                layer_info=_layer_info,
             )
             ch.show_near_traffic_light(self)
             return
@@ -2028,6 +2182,7 @@ class RiskBubble(QtWidgets.QWidget):
                 msg,
                 "#C62828",
                 streak_badge=badge,
+                layer_info=_layer_info,
             )
             ch.show_near_traffic_light(self)
             return
@@ -2038,6 +2193,7 @@ class RiskBubble(QtWidgets.QWidget):
                 "😬",
                 "Heads up — check this before pasting.",
                 "#E65100",
+                layer_info=_layer_info,
             )
             ch.show_near_traffic_light(self)
             return
@@ -2440,6 +2596,76 @@ class RiskBubble(QtWidgets.QWidget):
         frame.show()
         self._slide_in_card(frame)
 
+    def _append_span_source_layer_bars(self, lay: QtWidgets.QVBoxLayout) -> None:
+        """Mini progress rows for Regex / NER / ML when inference spans include ``source``."""
+        res = self._result
+        critical_rule = res.get("prob_risky") is None and bool(res.get("critical_secret_detected"))
+
+        spans = res.get("spans") if isinstance(res.get("spans"), list) else []
+        dict_spans = [s for s in spans if isinstance(s, dict)]
+        has_span_sources = bool(dict_spans) and any("source" in s for s in dict_spans)
+        ls = res.get("layer_summary") if isinstance(res.get("layer_summary"), dict) else {}
+
+        if not has_span_sources and not critical_rule:
+            return
+
+        if critical_rule:
+            note = QtWidgets.QLabel("Blocked by security rule")
+            note.setStyleSheet("font-size:10px;color:#d32f2f;font-weight:600;")
+            lay.addWidget(note)
+
+        def _bucket(src: object) -> str | None:
+            s = str(src or "").lower()
+            if s in ("regex", "critical_secret"):
+                return "regex"
+            if s in ("ner", "kb_rule"):
+                return "ner"
+            if s in ("ml", "model_window"):
+                return "ml"
+            return None
+
+        if critical_rule and ls:
+            regex_n = int(ls.get("regex_count", 0))
+            ner_n = int(ls.get("ner_count", 0))
+            ml_n = int(ls.get("ml_count", 0))
+            total = max(int(ls.get("total_unique", 0)), regex_n + ner_n + ml_n, 1)
+        else:
+            regex_n = sum(1 for s in dict_spans if _bucket(s.get("source")) == "regex")
+            ner_n = sum(1 for s in dict_spans if _bucket(s.get("source")) == "ner")
+            ml_n = sum(1 for s in dict_spans if _bucket(s.get("source")) == "ml")
+            total = max(len(dict_spans), 1)
+
+        layer_widget = QtWidgets.QWidget()
+        llay = QtWidgets.QVBoxLayout(layer_widget)
+        llay.setContentsMargins(0, 4, 0, 0)
+        llay.setSpacing(3)
+
+        rows_spec: list[tuple[str, int, str]] = [("Regex", regex_n, "#3B82F6")]
+        if ner_n > 0:
+            rows_spec.append(("NER", ner_n, "#8B5CF6"))
+        if not critical_rule:
+            rows_spec.append(("ML", ml_n, "#10B981"))
+
+        for name, val, color in rows_spec:
+            row = QtWidgets.QHBoxLayout()
+            lbl = QtWidgets.QLabel(name)
+            lbl.setFixedWidth(36)
+            lbl.setStyleSheet("font-size:10px;color:#888;")
+            bar = QtWidgets.QProgressBar()
+            bar.setRange(0, total)
+            bar.setValue(val)
+            bar.setFixedHeight(4)
+            bar.setTextVisible(False)
+            bar.setStyleSheet(
+                f"QProgressBar{{background:#2a2a2a;border-radius:2px;}}"
+                f"QProgressBar::chunk{{background:{color};border-radius:2px;}}"
+            )
+            row.addWidget(lbl)
+            row.addWidget(bar)
+            llay.addLayout(row)
+
+        lay.addWidget(layer_widget)
+
     def handle_menu_action(self, action: str) -> None:
         text = (self._original_text or "").strip()
         if not text:
@@ -2474,6 +2700,7 @@ class RiskBubble(QtWidgets.QWidget):
         body.setPlainText(f"--- Hashed ---\n{hashed}\n\n--- Encrypted ---\n{enc}")
         body.setFixedHeight(140)
         lay.addWidget(body)
+        self._append_span_source_layer_bars(lay)
         row = QtWidgets.QHBoxLayout()
         row.addStretch(1)
         copy_btn = QtWidgets.QPushButton("Copy encrypted")
@@ -2501,5 +2728,6 @@ class RiskBubble(QtWidgets.QWidget):
         msg.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         msg.setStyleSheet("font-size: 12px; font-weight: bold; color: #5cb85c;")
         lay.addWidget(msg)
+        self._append_span_source_layer_bars(lay)
         self._mount_action_card(frame)
         self._redact_toast_timer.start(2000)

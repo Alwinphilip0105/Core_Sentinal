@@ -26,6 +26,7 @@ from guardrail_logs import log_remediation_event
 from infer import _log_scoring_event
 from pii_remediation import (
     _resolve_span_bounds,
+    encrypt_pii,
     mask_pii_spans,
     redact_for_clipboard,
     remediate_text,
@@ -278,6 +279,8 @@ class _IssueCardWidget(QtWidgets.QFrame):
         strip_col: QtGui.QColor,
         span: dict | None = None,
         trigger_text: str | None = None,
+        *,
+        category_risk: dict,
     ):
         super().__init__(dialog)
         self._dialog = dialog
@@ -302,10 +305,9 @@ class _IssueCardWidget(QtWidgets.QFrame):
         mid = QtWidgets.QVBoxLayout()
         mid.setContentsMargins(10, 6, 8, 6)
         mid.setSpacing(2)
+        self._category_risk = dict(category_risk)
         self._title_lbl = QtWidgets.QLabel(title)
-        self._title_lbl.setStyleSheet(
-            "font-size: 12px; font-weight: bold; color: #111827; font-family: Segoe UI;"
-        )
+        self._apply_category_title_pill_style()
         mid.addWidget(self._title_lbl)
         pv = (preview or "—").replace("\n", " ")
         if len(pv) > 30:
@@ -352,6 +354,17 @@ class _IssueCardWidget(QtWidgets.QFrame):
         btn_lay.addWidget(self._fixing_lbl)
         btn_lay.addWidget(self._status_lbl)
         row.addWidget(self._btn_host)
+
+    def _apply_category_title_pill_style(self) -> None:
+        _, risk_level = _strip_risk_colors(self._category_risk)
+        if risk_level == "high":
+            bg, text_col = "#7F1D1D", "#FCA5A5"
+        else:
+            bg, text_col = "#78350F", "#FCD34D"
+        self._title_lbl.setStyleSheet(
+            f"background: {bg}; color: {text_col}; border-radius: 4px; padding: 2px 8px; "
+            "font-size: 11px; font-weight: 600; font-family: Segoe UI;"
+        )
 
     def _on_fix_clicked(self) -> None:
         self._dialog._on_card_fix(self)
@@ -405,9 +418,7 @@ class _IssueCardWidget(QtWidgets.QFrame):
         self._fixing_lbl.setVisible(False)
         self._status_lbl.setVisible(False)
         self._status_lbl.setText("")
-        self._title_lbl.setStyleSheet(
-            "font-size: 12px; font-weight: bold; color: #111827; font-family: Segoe UI;"
-        )
+        self._apply_category_title_pill_style()
         self._opacity_effect = None
         self.setGraphicsEffect(None)
 
@@ -913,7 +924,15 @@ class RemediationDialog(QtWidgets.QDialog):
                 span_risk.setdefault("risk", glob_risk)
                 strip_col, _ = _strip_risk_colors(span_risk)
                 span_copy = dict(s)
-                w = _IssueCardWidget(self, cls, preview, strip_col, span=span_copy, trigger_text=None)
+                w = _IssueCardWidget(
+                    self,
+                    cls,
+                    preview,
+                    strip_col,
+                    span=span_copy,
+                    trigger_text=None,
+                    category_risk=span_risk,
+                )
                 self._issue_cards.append(w)
                 if not first:
                     line = QtWidgets.QFrame()
@@ -929,7 +948,15 @@ class RemediationDialog(QtWidgets.QDialog):
                 ts = str(t)
                 strip_col, _ = _strip_risk_colors({"risk": glob_risk})
                 title = ts[:24] + ("…" if len(ts) > 24 else "")
-                w = _IssueCardWidget(self, title, ts, strip_col, span=None, trigger_text=ts)
+                w = _IssueCardWidget(
+                    self,
+                    title,
+                    ts,
+                    strip_col,
+                    span=None,
+                    trigger_text=ts,
+                    category_risk={"risk": glob_risk},
+                )
                 self._issue_cards.append(w)
                 if not first:
                     line = QtWidgets.QFrame()
@@ -1720,6 +1747,88 @@ class RemediationDialog(QtWidgets.QDialog):
                 title="Feedback progress",
             )
 
+    def _ensure_footer_defaults_saved(self) -> None:
+        if getattr(self, "_footer_defaults_saved", False):
+            return
+        self._footer_defaults_saved = True
+        self._stock_redact_qss = self._redact_btn.styleSheet()
+        self._stock_fix_qss = self._fix_all_btn.styleSheet()
+        self._stock_skip_text = self._skip_all_btn.text()
+
+    def _restore_footer_stock(self) -> None:
+        """Reset footer buttons after Encrypt/warn-specific styling."""
+        self._ensure_footer_defaults_saved()
+        self._snooze_wrap.setVisible(True)
+        self._fix_all_btn.setVisible(True)
+        try:
+            self._fix_all_btn.clicked.disconnect()
+        except Exception:
+            pass
+        self._fix_all_btn.clicked.connect(self._on_fix_all_clicked)
+        self._fix_all_btn.setStyleSheet(self._stock_fix_qss)
+        self._fix_all_btn.setText(getattr(self, "_fix_all_btn_label_default", "Fix all"))
+        self._redact_btn.setStyleSheet(self._stock_redact_qss)
+        self._redact_btn.setText("Redact")
+        self._skip_all_btn.setText(self._stock_skip_text)
+        self._skip_all_btn.setStyleSheet(
+            "QPushButton { background: #ffffff; color: #757575; font-size: 12px; font-weight: 600; "
+            "border: 1px solid #d1d5db; border-radius: 8px; }"
+            "QPushButton:hover { background: #f5f5f5; }"
+        )
+
+    def _on_footer_encrypt(self) -> None:
+        raw = self._original_text or ""
+        t = encrypt_pii(raw)
+        self._show_preview(t, "Encrypted (PII replaced with ENC:: tokens):")
+        try:
+            log_remediation_event("footer_encrypt", {}, text=(raw or "")[:500])
+        except Exception:
+            pass
+
+    def _apply_footer_warn_flow(self) -> None:
+        """WARN panel: primary Redact PII (blue), hide snooze/fix-all row clutter; Skip tertiary."""
+        self._snooze_wrap.setVisible(False)
+        self._fix_all_btn.setVisible(False)
+        self._redact_btn.setText("Redact PII")
+        self._redact_btn.setStyleSheet(
+            "QPushButton { background: #2563EB; color: white; font-size: 12px; font-weight: bold; "
+            "border: none; border-radius: 8px; }"
+            "QPushButton:hover { background: #1D4ED8; }"
+        )
+        self._skip_all_btn.setText("Skip")
+        self._skip_all_btn.setStyleSheet(
+            "QPushButton { background: #ffffff; color: #6b7280; font-size: 11px; font-weight: 500; "
+            "border: 1px solid #d1d5db; border-radius: 8px; }"
+            "QPushButton:hover { background: #f5f5f5; }"
+        )
+
+    def _apply_footer_block_hold_flow(self) -> None:
+        """BLOCK hold: Redact PII (blue), Encrypt (gray), Skip; Fix-all slot repurposed."""
+        self._snooze_wrap.setVisible(False)
+        self._fix_all_btn.setVisible(True)
+        try:
+            self._fix_all_btn.clicked.disconnect()
+        except Exception:
+            pass
+        self._fix_all_btn.clicked.connect(self._on_footer_encrypt)
+        self._fix_all_btn.setText("Encrypt")
+        self._fix_all_btn.setStyleSheet(
+            "QPushButton { background: #f3f4f6; color: #374151; font-size: 12px; font-weight: 600; "
+            "border: 1px solid #E5E7EB; border-radius: 8px; }"
+            "QPushButton:hover { background: #e5e7eb; }"
+        )
+        self._redact_btn.setText("Redact PII")
+        self._redact_btn.setStyleSheet(
+            "QPushButton { background: #2563EB; color: white; font-size: 12px; font-weight: bold; "
+            "border: none; border-radius: 8px; }"
+            "QPushButton:hover { background: #1D4ED8; }"
+        )
+        self._skip_all_btn.setText("Skip")
+        self._skip_all_btn.setStyleSheet(
+            "QPushButton { background: #ffffff; color: #6b7280; font-size: 11px; font-weight: 500; "
+            "border: 1px solid #d1d5db; border-radius: 8px; }"
+        )
+
     def show_with_hold_mode(
         self,
         *,
@@ -1750,6 +1859,7 @@ class RemediationDialog(QtWidgets.QDialog):
             for s in sp[:3]:
                 print(f"  span: {s}", flush=True)
 
+        self._restore_footer_stock()
         if original_text:
             self._original_text = original_text
         self._hold_mode = True
@@ -1762,6 +1872,23 @@ class RemediationDialog(QtWidgets.QDialog):
         self._update_score_display(int(score), risk)
         self._update_issue_count()
         self._skip_all_btn.setVisible(not bool(critical))
+        self._apply_footer_block_hold_flow()
+        try:
+            import user_settings
+
+            block_pref = bool(user_settings.load().get("block_high_risk_pastes", True))
+            if block_pref:
+                self._proceed_row.setVisible(False)
+            else:
+                self._proceed_row.setVisible(self._hold_mode and not self._critical_hold)
+                self._proceed_anyway_btn.setEnabled(True)
+                self._proceed_anyway_btn.setStyleSheet(
+                    "QPushButton { background: transparent; color: #9ca3af; font-size: 11px; "
+                    "border: none; font-weight: 500; }"
+                    "QPushButton:hover { color: #6b7280; }"
+                )
+        except Exception:
+            self._proceed_row.setVisible(self._hold_mode and not self._critical_hold)
         self.show()
 
     def _show_banner(self, text: str, text_color: str, bg_color: str) -> None:
@@ -1809,6 +1936,7 @@ class RemediationDialog(QtWidgets.QDialog):
         risk: str = "low",
     ) -> None:
         """Paste already went through; show panel for review (non-hold): amber banner, no proceed row."""
+        self._restore_footer_stock()
         self._warn_review_mode = True
         self._hold_mode = False
         self._critical_hold = False
@@ -1823,8 +1951,9 @@ class RemediationDialog(QtWidgets.QDialog):
         rk = str(risk or "low").lower()
         self._update_score_display(sc, rk)
         self._update_issue_count()
-        self._proceed_row.setVisible(False)
-        self._proceed_anyway_btn.setVisible(False)
+        self._proceed_row.setVisible(True)
+        self._proceed_anyway_btn.setVisible(True)
+        self._proceed_anyway_btn.setToolTip("Dismiss panel — paste already proceeded")
         if rk == "high" or sc >= 70:
             self._show_banner(
                 "Review before sending — PII detected",
@@ -1840,10 +1969,7 @@ class RemediationDialog(QtWidgets.QDialog):
         if not hasattr(self, "_fix_all_btn_label_default"):
             self._fix_all_btn_label_default = self._fix_all_btn.text()
             self._fix_all_btn_tip_default = self._fix_all_btn.toolTip()
-        self._fix_all_btn.setText("Redact & Copy")
-        self._fix_all_btn.setToolTip(
-            "Redact PII and copy clean version to clipboard for manual paste"
-        )
+        self._apply_footer_warn_flow()
         self._skip_all_btn.setVisible(True)
         self.show()
 
@@ -1954,6 +2080,9 @@ class RemediationDialog(QtWidgets.QDialog):
         QtCore.QTimer.singleShot(800, self._auto_paste)
 
     def _on_proceed_anyway_clicked(self) -> None:
+        if getattr(self, "_warn_review_mode", False):
+            self.slide_out_and_hide()
+            return
         if not self._hold_mode or self._critical_hold:
             return
         self._override_confirm.setVisible(True)

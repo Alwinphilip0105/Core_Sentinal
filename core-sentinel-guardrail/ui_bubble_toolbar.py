@@ -188,6 +188,7 @@ class BubbleToolbar(QtWidgets.QWidget):
     encrypt_clicked = QtCore.pyqtSignal()
     scan_file_clicked = QtCore.pyqtSignal()
     settings_clicked = QtCore.pyqtSignal()
+    inspector_clicked = QtCore.pyqtSignal()
 
     def __init__(self, bubble: Any, parent: Optional[QtWidgets.QWidget] = None):
         # Separate frameless Tool window so the full vertical strip is never clipped by pill height.
@@ -244,11 +245,23 @@ class BubbleToolbar(QtWidgets.QWidget):
             "⬆",
             white,
             self._bubble,
-            "Upload/scan document for PII (Gemini)",
+            "Upload/scan document for PII (local extract + detector)",
             "[Alt+S]",
         )
         self._btn_scan.clicked.connect(self.scan_file_clicked.emit)
         lay.addWidget(self._btn_scan)
+
+        self._btn_inspector = ToolbarIconButton(
+            "⊞",
+            QtGui.QColor("#8B5CF6"),
+            self._bubble,
+            "Layer Inspector — see how each layer works",
+            "[Alt+L]",
+        )
+        self._btn_inspector.clicked.connect(
+            self.inspector_clicked.emit
+        )
+        lay.addWidget(self._btn_inspector)
 
         self._btn_settings = ToolbarIconButton(
             "⚙",

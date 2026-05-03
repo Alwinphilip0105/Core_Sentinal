@@ -114,6 +114,15 @@ class CharacterWidget(QtWidgets.QWidget):
         root.addWidget(self._triangle)
         root.addWidget(self._bubble)
 
+        # Layer source dots (hidden by default)
+        self._layer_row = QtWidgets.QWidget(self)
+        self._layer_row.setFixedHeight(14)
+        _lr_lay = QtWidgets.QHBoxLayout(self._layer_row)
+        _lr_lay.setContentsMargins(6, 1, 6, 1)
+        _lr_lay.setSpacing(8)
+        self._layer_row.hide()
+        root.addWidget(self._layer_row)
+
         self._opacity_effect = QtWidgets.QGraphicsOpacityEffect(self)
         self.setGraphicsEffect(self._opacity_effect)
         self._opacity_effect.setOpacity(0.0)
@@ -133,6 +142,7 @@ class CharacterWidget(QtWidgets.QWidget):
         *,
         large_text: bool = False,
         streak_badge: Optional[str] = None,
+        layer_info: Optional[dict] = None,
     ) -> None:
         self._emoji.setText(emoji)
         self._bubble.setText(bubble_text)
@@ -140,6 +150,44 @@ class CharacterWidget(QtWidgets.QWidget):
             f"color: {text_color}; background: white; border: 1px solid #AAAAAA; "
             f"border-radius: 10px; font-family: 'Segoe UI'; font-size: {14 if large_text else 12}px;"
         )
+
+        # ── Layer source dots ─────────────────────────────────
+        _LAYER_CFG = [
+            ("regex", "regex_count", "#3B82F6"),
+            ("ner", "ner_count", "#8B5CF6"),
+            ("ml", "ml_count", "#10B981"),
+        ]
+
+        _lr = self._layer_row.layout()
+        while _lr.count():
+            item = _lr.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        _has_data = False
+        if layer_info:
+            for _key, _count_key, _color in _LAYER_CFG:
+                _n = int(layer_info.get(_count_key, 0))
+                if _n > 0:
+                    _lbl = QtWidgets.QLabel(f"● {_n}")
+                    _lbl.setStyleSheet(
+                        f"color:{_color};"
+                        "font-size:9px;"
+                        "background:transparent;"
+                        "font-family:'Segoe UI';"
+                    )
+                    _lbl.setToolTip(
+                        f"{_key.upper()}: {_n} span(s) "
+                        "detected by this layer"
+                    )
+                    _lr.addWidget(_lbl)
+                    _has_data = True
+
+        _lr.addStretch(1)
+        self._layer_row.setVisible(_has_data)
+        # ──────────────────────────────────────────────────────
+
         if streak_badge:
             self._badge.setText(streak_badge)
             self._badge.show()

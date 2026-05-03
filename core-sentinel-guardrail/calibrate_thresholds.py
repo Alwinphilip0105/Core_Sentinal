@@ -32,6 +32,49 @@ from train import load_arrow_splits
 
 MODEL_DIR = _ROOT / "models" / "tinybert_guardrail"
 REPORTS_DIR = _ROOT / "reports"
+
+
+def _resolve_calib_model_dir() -> Path:
+    """
+    Directory passed to from_pretrained for calibration.
+
+    GUARDRAIL_CALIB_MODEL_DIR overrides. Otherwise, if the latest checkpoint under
+    MODEL_DIR has a 2-logit classifier but root model.safetensors is still 3-logit
+    (common on Windows when the overlay mmap-holds the root file), prefer that checkpoint.
+    """
+    env = (os.environ.get("GUARDRAIL_CALIB_MODEL_DIR") or "").strip()
+    if env:
+        p = Path(env)
+        if not p.is_dir():
+            raise SystemExit(f"GUARDRAIL_CALIB_MODEL_DIR is not a directory: {p}")
+        return p.resolve()
+    try:
+        import safetensors.torch as st
+
+        root_w = MODEL_DIR / "model.safetensors"
+        root_n = None
+        if root_w.is_file():
+            root_n = int(st.load_file(str(root_w))["classifier.weight"].shape[0])
+        ck_dirs = sorted(
+            MODEL_DIR.glob("checkpoint-*"),
+            key=lambda x: int(x.name.split("-", 1)[1])
+            if x.name.split("-", 1)[1].isdigit()
+            else -1,
+        )
+        for ck in reversed(ck_dirs):
+            wf = ck / "model.safetensors"
+            if not wf.is_file():
+                continue
+            cn = int(st.load_file(str(wf))["classifier.weight"].shape[0])
+            if cn == 2 and root_n != 2:
+                print(
+                    f"[calibrate] Using {ck.name} (2-class head); "
+                    f"root model.safetensors has classifier.out_features={root_n}"
+                )
+                return ck.resolve()
+    except Exception:
+        pass
+    return MODEL_DIR.resolve()
 CONFIG_PATH = _ROOT / "config" / "risk_policy.json"
 PR_CURVE_SUMMARY_PATH = REPORTS_DIR / "pr_curve_summary.json"
 THRESHOLD_CALIBRATION_PATH = REPORTS_DIR / "threshold_calibration.json"
@@ -49,8 +92,11 @@ def _binary_selection_rule() -> str:
     Binary calibration objective:
       - max_recall_under_fpr_cap (default, recall-first safety mode)
       - max_f1_under_fpr_cap
+      - max_f2_under_fpr_cap
     """
     raw = (os.environ.get("GUARDRAIL_BINARY_CALIB_OBJECTIVE") or "").strip().lower()
+    if raw in ("max_f2_under_fpr_cap", "f2"):
+        return "max_f2_under_fpr_cap"
     if raw in ("max_f1_under_fpr_cap", "f1"):
         return "max_f1_under_fpr_cap"
     return DEFAULT_BINARY_SELECTION_RULE
@@ -89,6 +135,12 @@ def _binary_metrics_at_threshold(
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
     f1 = (2.0 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+    beta = 2.0
+    f2 = (
+        (1.0 + beta**2) * precision * recall / (beta**2 * precision + recall)
+        if (precision + recall) > 0
+        else 0.0
+    )
     accuracy = (tp + tn) / n
     fpr = fp / (fp + tn) if (fp + tn) > 0 else 0.0
     return {
@@ -97,12 +149,160 @@ def _binary_metrics_at_threshold(
         "precision": float(precision),
         "recall": float(recall),
         "f1": float(f1),
+        "f2": float(f2),
         "fpr": float(fpr),
         "tp": tp,
         "tn": tn,
         "fp": fp,
         "fn": fn,
     }
+
+
+def _find_two_thresholds(
+    labels: np.ndarray,
+    prob_risky: np.ndarray,
+    max_fpr_block: float = 0.05,
+    max_fpr_warn: float = 0.15,
+    min_recall_block: float = 0.85,
+    min_recall_warn: float = 0.60,
+) -> dict:
+    """
+    Find (t_warn, t_block) pair for three-zone binary overlay.
+
+    Zones:
+      prob < t_warn              → safe  (silent, green)
+      t_warn <= prob < t_block   → warn  (amber, show panel)
+      prob >= t_block            → block (red, hold paste)
+    """
+    y_true = (np.asarray(labels) > 0).astype(np.int64)
+    n_pos = int(y_true.sum())
+
+    if n_pos == 0:
+        print("WARNING: no positive labels — " "two-threshold sweep skipped.")
+        return {}
+
+    best = None
+    best_score = -np.inf
+    results: list[dict] = []
+
+    t_blocks = np.linspace(0.35, 0.92, 24)
+
+    for t_block in t_blocks:
+        pred_b = (prob_risky >= t_block).astype(np.int64)
+        tp_b = int(((pred_b == 1) & (y_true == 1)).sum())
+        fp_b = int(((pred_b == 1) & (y_true == 0)).sum())
+        fn_b = int(((pred_b == 0) & (y_true == 1)).sum())
+        tn_b = int(((pred_b == 0) & (y_true == 0)).sum())
+        rec_b = tp_b / (tp_b + fn_b) if (tp_b + fn_b) > 0 else 0.0
+        fpr_b = fp_b / (fp_b + tn_b) if (fp_b + tn_b) > 0 else 0.0
+        prec_b = tp_b / (tp_b + fp_b) if (tp_b + fp_b) > 0 else 0.0
+
+        if fpr_b > max_fpr_block:
+            continue
+        if rec_b < min_recall_block:
+            continue
+
+        t_warns = np.linspace(0.05, t_block - 0.05, 18)
+        for t_warn in t_warns:
+            in_warn = ((prob_risky >= t_warn) & (prob_risky < t_block)).astype(np.int64)
+
+            tp_w = int(((in_warn == 1) & (y_true == 1)).sum())
+            fp_w = int(((in_warn == 1) & (y_true == 0)).sum())
+
+            pred_any = (prob_risky >= t_warn).astype(np.int64)
+            tp_any = int(((pred_any == 1) & (y_true == 1)).sum())
+            fp_any = int(((pred_any == 1) & (y_true == 0)).sum())
+            tn_any = int(((pred_any == 0) & (y_true == 0)).sum())
+            rec_any = tp_any / n_pos if n_pos > 0 else 0.0
+            fpr_any = fp_any / (fp_any + tn_any) if (fp_any + tn_any) > 0 else 0.0
+
+            if fpr_any > max_fpr_warn:
+                continue
+            if rec_any < min_recall_warn:
+                continue
+
+            prec_w = tp_w / (tp_w + fp_w) if (tp_w + fp_w) > 0 else 0.0
+
+            score = (
+                rec_b * 10.0
+                + rec_any * 3.0
+                + prec_b * 2.0
+                + prec_w * 1.0
+                - fpr_b * 5.0
+                - fpr_any * 2.0
+            )
+
+            candidate = {
+                "t_warn": float(t_warn),
+                "t_block": float(t_block),
+                "block_recall": float(rec_b),
+                "block_precision": float(prec_b),
+                "block_fpr": float(fpr_b),
+                "warn_tp": int(tp_w),
+                "warn_fp": int(fp_w),
+                "warn_precision": float(prec_w),
+                "combined_recall": float(rec_any),
+                "combined_fpr": float(fpr_any),
+                "score": float(score),
+            }
+            results.append(candidate)
+            if score > best_score:
+                best_score = score
+                best = candidate
+
+    if best is None:
+        print(
+            "WARNING: no feasible (t_warn, t_block) found "
+            f"under constraints. Returning unconstrained best from {len(results)} candidates."
+        )
+        best = max(results, key=lambda r: r["score"]) if results else {}
+
+    return best or {}
+
+
+def _write_human_summary(summary: dict, out_path: Path) -> None:
+    two = summary.get("two_threshold_recommended") or {}
+    rec = summary.get("recommended") or {}
+
+    t_warn = two.get("t_warn", rec.get("prob_threshold_risky", "?"))
+    t_block = two.get("t_block", "not set")
+    br = float(two.get("block_recall", rec.get("recall", 0)))
+    cr = float(two.get("combined_recall", 0))
+    cfp = float(two.get("combined_fpr", rec.get("fpr", 0)))
+    bfp = float(two.get("block_fpr", 0))
+
+    lines = [
+        "Core Sentinel — Binary Threshold Calibration",
+        "=" * 52,
+        f"Generated  : {summary.get('generated_at', '')}",
+        f"Mode       : binary (safe / risky)",
+        f"Val samples: {summary.get('n_val', '?')}",
+        "",
+        "RECOMMENDED THRESHOLDS:",
+        f"  Warn  (amber) : prob >= {t_warn}",
+        f"  Block (red)   : prob >= {t_block}",
+        "",
+        "THREE ZONES:",
+        f"  prob < {t_warn}  → SAFE  — silent, green dot",
+        f"  {t_warn} <= prob < {t_block}  → WARN  — amber, panel shown, proceed allowed",
+        f"  prob >= {t_block}  → BLOCK — red, paste held until user acts",
+        "",
+        "PERFORMANCE:",
+        f"  Block recall        : {br:.1%}  — catches {br:.1%} of dangerous pastes",
+        f"  Block false pos rate: {bfp:.1%}  — {bfp:.1%} of safe pastes wrongly blocked",
+        f"  Combined recall     : {cr:.1%}  — {cr:.1%} of risky pastes get any warning",
+        f"  Combined false pos  : {cfp:.1%}  — {cfp:.1%} of safe pastes see any warning",
+        "",
+        "NEXT STEPS:",
+        "  python calibrate_thresholds.py",
+        "  → writes to config/risk_policy.json",
+        "  Restart overlay to pick up new thresholds.",
+    ]
+
+    txt = "\n".join(str(l) for l in lines)
+    txt_path = out_path.with_suffix(".txt")
+    txt_path.write_text(txt, encoding="utf-8")
+    print(f"  Human summary -> {txt_path}")
 
 
 def apply_calibrated_thresholds() -> None:
@@ -134,12 +334,41 @@ def apply_calibrated_thresholds() -> None:
                         "precision": float(rec.get("precision", 0.0)),
                         "recall": float(rec.get("recall", 0.0)),
                         "f1": float(rec.get("f1", 0.0)),
+                        "f2": float(rec.get("f2", 0.0)),
                         "fpr": float(rec.get("fpr", 0.0)),
                     },
                     "source": "reports/threshold_calibration.json",
                 }
                 policy["_calibrated_at"] = calib.get("generated_at", "")
                 policy["_calibration_source"] = "reports/threshold_calibration.json"
+                policy["_mode"] = "binary"
+                policy["_3class_status"] = "deprecated — binary mode active"
+                policy["_note"] = (
+                    "Active thresholds: inference_binary_labels (single) "
+                    "and inference_binary_two_threshold (warn + block). "
+                    "inference_3class_labels is retained for reference only."
+                )
+                two = calib.get("two_threshold_recommended") or {}
+                if two and two.get("t_warn") is not None and two.get("t_block") is not None:
+                    policy["inference_binary_two_threshold"] = {
+                        "prob_threshold_warn": float(two["t_warn"]),
+                        "prob_threshold_block": float(two["t_block"]),
+                        "block_recall": float(two.get("block_recall", 0)),
+                        "block_fpr": float(two.get("block_fpr", 0)),
+                        "combined_recall": float(two.get("combined_recall", 0)),
+                        "combined_fpr": float(two.get("combined_fpr", 0)),
+                        "note": (
+                            "prob < prob_threshold_warn → safe (silent). "
+                            "prob_threshold_warn <= prob < prob_threshold_block "
+                            "→ warn (amber). "
+                            "prob >= prob_threshold_block → block (red)."
+                        ),
+                    }
+                    print(
+                        "Two-threshold written to risk_policy.json: "
+                        f"warn={two['t_warn']:.3f}, "
+                        f"block={two['t_block']:.3f}"
+                    )
                 with open(CONFIG_PATH, "w", encoding="utf-8") as f:
                     json.dump(policy, f, indent=2)
                 try:
@@ -147,6 +376,32 @@ def apply_calibrated_thresholds() -> None:
                 except Exception:
                     pass
                 print("Binary threshold updated in config/risk_policy.json from threshold_calibration.json")
+                applied_summary = {
+                    "generated_at": policy.get("_calibrated_at", ""),
+                    "n_val": calib.get("n_val"),
+                    "recommended": policy.get("inference_binary_labels", {}),
+                    "two_threshold_recommended": {
+                        "t_warn": (policy.get("inference_binary_two_threshold") or {}).get(
+                            "prob_threshold_warn"
+                        ),
+                        "t_block": (policy.get("inference_binary_two_threshold") or {}).get(
+                            "prob_threshold_block"
+                        ),
+                        "block_recall": (policy.get("inference_binary_two_threshold") or {}).get(
+                            "block_recall", 0
+                        ),
+                        "combined_recall": (policy.get("inference_binary_two_threshold") or {}).get(
+                            "combined_recall", 0
+                        ),
+                        "combined_fpr": (policy.get("inference_binary_two_threshold") or {}).get(
+                            "combined_fpr", 0
+                        ),
+                        "block_fpr": (policy.get("inference_binary_two_threshold") or {}).get(
+                            "block_fpr", 0
+                        ),
+                    },
+                }
+                _write_human_summary(applied_summary, REPORTS_DIR / "threshold_applied")
                 return
 
     if not PR_CURVE_SUMMARY_PATH.is_file():
@@ -219,13 +474,14 @@ def run_validation_threshold_sweep() -> None:
     if not MODEL_DIR.is_dir():
         raise SystemExit(f"Model not found at {MODEL_DIR}")
 
-    model = AutoModelForSequenceClassification.from_pretrained(str(MODEL_DIR.resolve()))
-    nl = int(getattr(model.config, "num_labels", 3))
+    calib_dir = _resolve_calib_model_dir()
+    model = AutoModelForSequenceClassification.from_pretrained(str(calib_dir))
+    nl = int(model.classifier.out_features)
     if nl == 2:
         selection_rule = _binary_selection_rule()
         max_fpr_binary = float(os.environ.get("GUARDRAIL_CALIB_MAX_FPR_BINARY", str(max_fpr)))
         args = TrainingArguments(
-            output_dir=str(MODEL_DIR / "calibrate_tmp"),
+            output_dir=str(calib_dir / "calibrate_tmp"),
             per_device_eval_batch_size=32,
             report_to="none",
         )
@@ -239,7 +495,11 @@ def run_validation_threshold_sweep() -> None:
         thresholds = [round(float(x), 2) for x in np.arange(0.10, 0.901, 0.05)]
         rows = [_binary_metrics_at_threshold(labels, prob_risky, t) for t in thresholds]
         feasible = [r for r in rows if float(r["fpr"]) <= max_fpr_binary]
-        if selection_rule == "max_f1_under_fpr_cap":
+        if selection_rule == "max_f2_under_fpr_cap":
+            sort_key = lambda r: (-float(r["f2"]), float(r["fpr"]), -float(r["recall"]), -float(r["precision"]))
+            fallback_note = "No threshold met FPR cap; recommended threshold is global best F2."
+            selected_note = "Recommended threshold maximizes F2 under FPR cap."
+        elif selection_rule == "max_f1_under_fpr_cap":
             sort_key = lambda r: (-float(r["f1"]), float(r["fpr"]), -float(r["recall"]), -float(r["precision"]))
             fallback_note = "No threshold met FPR cap; recommended threshold is global best F1."
             selected_note = "Recommended threshold maximizes F1 under FPR cap."
@@ -266,8 +526,28 @@ def run_validation_threshold_sweep() -> None:
         print(
             f"\n  Recommended threshold: prob_threshold_risky={float(best['threshold']):.2f}\n"
             f"    accuracy={float(best['accuracy']):.6f}  precision={float(best['precision']):.6f}  "
-            f"recall={float(best['recall']):.6f}  f1={float(best['f1']):.6f}  fpr={float(best['fpr']):.6f}"
+            f"recall={float(best['recall']):.6f}  f1={float(best['f1']):.6f}  "
+            f"f2={float(best['f2']):.6f}  fpr={float(best['fpr']):.6f}"
         )
+
+        print("\n--- Two-threshold sweep (warn + block) ---")
+        two_thr = _find_two_thresholds(
+            labels,
+            prob_risky,
+            max_fpr_block=float(os.environ.get("GUARDRAIL_MAX_FPR_BLOCK", "0.05")),
+            max_fpr_warn=float(os.environ.get("GUARDRAIL_MAX_FPR_WARN", "0.15")),
+            min_recall_block=float(os.environ.get("GUARDRAIL_MIN_RECALL_BLOCK", "0.85")),
+            min_recall_warn=float(os.environ.get("GUARDRAIL_MIN_RECALL_WARN", "0.60")),
+        )
+        if two_thr:
+            print(
+                f"  t_warn={two_thr['t_warn']:.3f}  "
+                f"t_block={two_thr['t_block']:.3f}\n"
+                f"  block_recall={two_thr['block_recall']:.1%}  "
+                f"block_fpr={two_thr['block_fpr']:.1%}\n"
+                f"  combined_recall={two_thr['combined_recall']:.1%}  "
+                f"combined_fpr={two_thr['combined_fpr']:.1%}"
+            )
 
         REPORTS_DIR.mkdir(parents=True, exist_ok=True)
         out_path = REPORTS_DIR / "threshold_calibration.json"
@@ -284,20 +564,32 @@ def run_validation_threshold_sweep() -> None:
                 "precision": float(best["precision"]),
                 "recall": float(best["recall"]),
                 "f1": float(best["f1"]),
+                "f2": float(best["f2"]),
                 "fpr": float(best["fpr"]),
             },
+            "two_threshold_recommended": two_thr,
             "note": note,
         }
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump(summary, f, indent=2)
         print(f"\n  Wrote {out_path}")
+        _write_human_summary(summary, out_path)
         return
     if nl != 3:
         print(f"Calibration script is for 3-class models; this checkpoint has num_labels={nl}. Exiting.")
         return
 
+    # ── 3-CLASS PATH (DEPRECATED IN BINARY MODE) ─────────
+    # Core Sentinel standardised on binary (safe/risky) mode.
+    # label_config.json: binary_mode=true, num_labels=2.
+    # This branch executes only if a 3-class checkpoint is
+    # loaded (num_labels=3 in config.json).
+    # To restore 3-class: rebuild Arrow with 3-class labels,
+    # retrain, and update label_config.json accordingly.
+    # ─────────────────────────────────────────────────────
+
     args = TrainingArguments(
-        output_dir=str(MODEL_DIR / "calibrate_tmp"),
+        output_dir=str(calib_dir / "calibrate_tmp"),
         per_device_eval_batch_size=32,
         report_to="none",
     )

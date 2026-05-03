@@ -12,7 +12,7 @@ from guardrail_runtime import clear_guard_snooze, is_guard_snoozed
 _BUNDLED_IDLE = Path(user_settings.__file__).resolve().parent / "assets" / "coresentinel_idle.png"
 
 _QSS = """
-QDialog { background: #1e1e1e; }
+QDialog { background: #111827; }
 QLabel { color: #e0e0e0; font-family: 'Segoe UI'; font-size: 12px; }
 QCheckBox { color: #e0e0e0; font-family: 'Segoe UI'; font-size: 12px; spacing: 8px; }
 QCheckBox::indicator { width: 16px; height: 16px; }
@@ -46,7 +46,7 @@ QPushButton {
 }
 QPushButton:hover { background: #4a4a4a; }
 QPushButton#primary { background: #0d6efd; border-color: #0d6efd; color: white; }
-QPushButton#primary:hover { background: #0b5ed7; }
+QPushButton#primary:hover { background: #1D4ED8; }
 QLineEdit {
   background: #2d2d2d; color: #e8e8e8; border: 1px solid #444; border-radius: 4px;
   padding: 6px 8px; font-family: 'Segoe UI'; font-size: 11px;

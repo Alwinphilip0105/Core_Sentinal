@@ -385,6 +385,76 @@
     }
     .activity-card { min-height: auto; }
 
+    /* ── Skeleton shimmer ──────────────────────── */
+    .page-hub .stat-val .skeleton {
+      background: linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.06) 25%,
+        rgba(255, 255, 255, 0.14) 50%,
+        rgba(255, 255, 255, 0.06) 75%
+      );
+    }
+    .skeleton {
+      display: inline-block;
+      background: linear-gradient(
+        90deg,
+        #f0f0f0 25%,
+        #e0e0e0 50%,
+        #f0f0f0 75%
+      );
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: 4px;
+      height: 24px;
+      width: 64px;
+      vertical-align: middle;
+    }
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    /* ─────────────────────────────────────────── */
+
+    /* ── Hub collapsible sections ──────────────── */
+    .hub-section-summary {
+      font-size: 15px;
+      font-weight: 600;
+      color: #1e293b;
+      cursor: pointer;
+      padding: 14px 0;
+      user-select: none;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .page-hub .hub-section-summary {
+      color: rgba(248, 250, 252, 0.95);
+      border-bottom-color: rgba(255, 255, 255, 0.1);
+    }
+    .hub-section-summary::-webkit-details-marker {
+      display: none;
+    }
+    .hub-section-summary::before {
+      content: "▶";
+      font-size: 11px;
+      color: #94a3b8;
+      transition: transform 0.2s ease;
+      display: inline-block;
+      width: 12px;
+    }
+    .page-hub .hub-section-summary::before {
+      color: rgba(148, 163, 184, 0.9);
+    }
+    details[open] > .hub-section-summary::before {
+      transform: rotate(90deg);
+    }
+    .hub-section-body {
+      padding: 16px 0;
+    }
+    /* ─────────────────────────────────────────── */
+
     @media (max-width: 980px) {
       .stats-grid { grid-template-columns: repeat(2, 1fr); }
       .cards-grid { grid-template-columns: 1fr; }
@@ -430,15 +500,15 @@
     <section class="stats-grid" id="miniStats">
       <article class="stat-card">
         <div class="stat-lbl">Safe Streak</div>
-        <div class="stat-val" id="msStreak">—</div>
+        <div class="stat-val" id="msStreak"><span class="skeleton"></span></div>
       </article>
       <article class="stat-card">
         <div class="stat-lbl">Total Pastes Scanned</div>
-        <div class="stat-val" id="msTotal">—</div>
+        <div class="stat-val" id="msTotal"><span class="skeleton"></span></div>
       </article>
       <article class="stat-card">
         <div class="stat-lbl">Admin Events</div>
-        <div class="stat-val" id="msLive">—</div>
+        <div class="stat-val" id="msLive"><span class="skeleton"></span></div>
         <div class="stat-sub" id="msLiveSub"><span class="live-dot"></span>Live</div>
       </article>
       <article class="stat-card">
@@ -465,7 +535,7 @@
           </span>
           <h2 class="card-title">Privacy Dashboard</h2>
         </div>
-        <p class="card-sub">Monitor your personal risk trends, paste history, and PII exposure over time.</p>
+        <p class="card-sub">Monitor and review all PII detected in your clipboard activity.</p>
         <span class="hub-card-cta">Open Dashboard</span>
       </a>
 
@@ -476,7 +546,7 @@
           </span>
           <h2 class="card-title">ML Health Dashboard</h2>
         </div>
-        <p class="card-sub">Validate model precision, recall, and drift before demos or releases.</p>
+        <p class="card-sub">View model performance, thresholds, and detection accuracy metrics.</p>
         <span class="hub-card-cta">View ML Metrics</span>
       </a>
 
@@ -499,34 +569,33 @@
           </span>
           <h2 class="card-title">Settings</h2>
         </div>
-        <p class="card-sub">Configure thresholds, monitoring scope, and Supabase sync.</p>
+        <p class="card-sub">Adjust monitoring preferences and sensitivity.</p>
         <span class="hub-card-cta">Open Settings</span>
       </button>
     </section>
 
     <section class="activity-section">
       <article class="hub-card activity-card">
-        <div class="card-head">
-          <span class="card-ic" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h8M8 9h2"/></svg>
-          </span>
-          <h2 class="card-title">Recent activity</h2>
-        </div>
-        <div id="activityPlaceholder" class="activity-placeholder">No recent activity. Install the desktop agent to begin monitoring.</div>
-        <div id="activityTableWrap" class="table-wrap" hidden>
-          <table aria-label="Recent paste activity">
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Risk</th>
-                <th>PII Type</th>
-                <th>Action</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody id="activityRows"></tbody>
-          </table>
-        </div>
+        <details id="hub-activity" open>
+          <summary class="hub-section-summary">Recent Activity</summary>
+          <div class="hub-section-body">
+            <div id="activityPlaceholder" class="activity-placeholder">No recent activity. Install the desktop agent to begin monitoring.</div>
+            <div id="activityTableWrap" class="table-wrap" hidden>
+              <table aria-label="Recent paste activity">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Risk</th>
+                    <th>PII Type</th>
+                    <th>Action</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="activityRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </details>
       </article>
     </section>
 
@@ -657,7 +726,8 @@
       const err = document.getElementById("admErr");
       err.textContent = "";
       if (key !== ADMIN_KEY) {
-        err.textContent = "Invalid access key.";
+        showToast("Invalid access key.", "#EF4444");
+        if (err) err.textContent = "";
         return;
       }
       const email = (document.getElementById("admEmail").value || "").trim();
@@ -718,8 +788,8 @@
       const key = (document.getElementById("cfgKey").value || "").trim();
       const st = document.getElementById("cfgSaveStatus");
       if (!url || !key) {
-        st.textContent = "Both fields required.";
-        st.style.color = "#FFB300";
+        showToast("Both fields required.", "#EF4444");
+        if (st) st.textContent = "";
         return;
       }
       localStorage.setItem("sb_url", url);
@@ -1008,14 +1078,15 @@
       let total = Number(localStorage.getItem("sentinel_total") || 0);
       const streakEl = document.getElementById("msStreak");
       const totalEl = document.getElementById("msTotal");
-      if (streakEl) streakEl.textContent = String(streak);
-      if (totalEl) totalEl.textContent = String(total);
-
       const liveEl = document.getElementById("msLive");
       const liveSub = document.getElementById("msLiveSub");
       const url = localStorage.getItem("sb_url");
       const key = localStorage.getItem("sb_key");
+      const skHtml = '<span class="skeleton"></span>';
+
       if (!url || !key) {
+        if (streakEl) streakEl.textContent = String(streak);
+        if (totalEl) totalEl.textContent = String(total);
         try {
           const localRows = JSON.parse(localStorage.getItem("sentinel_recent_events") || "[]");
           if (Array.isArray(localRows) && localRows.length) {
@@ -1032,9 +1103,12 @@
         }
         if (liveEl) liveEl.textContent = "—";
         if (liveSub) liveSub.innerHTML = "<span class='live-dot' style='background:#555;animation:none;'></span>Not configured";
-    return;
-  }
-      if (liveEl) liveEl.textContent = "...";
+        return;
+      }
+
+      if (streakEl) streakEl.innerHTML = skHtml;
+      if (totalEl) totalEl.innerHTML = skHtml;
+      if (liveEl) liveEl.innerHTML = skHtml;
       if (liveSub) liveSub.innerHTML = "<span class='live-dot' style='background:#FFB300;animation:none;'></span>Loading";
       try {
         const r = await fetch(url.replace(/\/$/, "") + "/rest/v1/guardrail_events?select=id&limit=1", {
@@ -1240,6 +1314,26 @@
         await refreshHubLive();
       });
 })();
+
+    (function () {
+      function initHubDetails() {
+        document.querySelectorAll('details[id^="hub-"]').forEach(function (d) {
+          var key = "hub_" + d.id + "_open";
+          var saved = localStorage.getItem(key);
+          if (saved !== null) {
+            d.open = saved === "true";
+          }
+          d.addEventListener("toggle", function () {
+            localStorage.setItem(key, String(d.open));
+          });
+        });
+      }
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", initHubDetails);
+      } else {
+        initHubDetails();
+      }
+    })();
 </script>
 </body>
 </html>

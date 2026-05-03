@@ -25,6 +25,7 @@ from infer import (  # noqa: E402
     preload_guardrail_model,
     score_clipboard_with_pii,
 )
+from risk_policy_loader import get_binary_two_thresholds  # noqa: E402
 
 
 def _must(cond: bool, msg: str) -> None:
@@ -59,34 +60,40 @@ def _run_runtime_wiring_checks() -> None:
 
 def _run_severity_mapping_checks() -> None:
     print("\n[2] Binary severity mapping")
-    thr = _binary_risky_threshold(load_risk_policy())
+    pol = load_risk_policy()
+    thr = _binary_risky_threshold(pol)
+    t_warn, t_block = get_binary_two_thresholds(pol)
     s1 = _binary_severity_from_regex_ner(
         "general text",
         ["email pattern"],
         ["safe"],
         p_risky=0.2,
-        risky_threshold=thr,
+        t_warn=t_warn,
+        t_block=t_block,
     )
     s2 = _binary_severity_from_regex_ner(
         "patient summary from hospital",
         [],
         ["PERSON"],
         p_risky=0.45,
-        risky_threshold=thr,
+        t_warn=t_warn,
+        t_block=t_block,
     )
     s3 = _binary_severity_from_regex_ner(
         "nothing sensitive",
         [],
         [],
         p_risky=max(0.01, thr - 0.02),
-        risky_threshold=thr,
+        t_warn=t_warn,
+        t_block=t_block,
     )
     s4 = _binary_severity_from_regex_ner(
         "payload",
         ["credit card pattern"],
         [],
         p_risky=0.1,
-        risky_threshold=thr,
+        t_warn=t_warn,
+        t_block=t_block,
     )
     print(f"  email-> {s1}, person+medical-> {s2}, below-threshold-> {s3}, credit-card-> {s4}")
     _must(s1 == "med", "email/phone cues should map to med")

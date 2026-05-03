@@ -13,6 +13,7 @@ or (accepting risk) set env ALLOW_TORCH_LOAD_PRE26=1 before running.
 import json
 import os
 import io
+import shutil
 import warnings
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -466,6 +467,8 @@ def main():
                 model = BertForSequenceClassification.from_pretrained(
                     MODEL_ID,
                     num_labels=num_labels,
+                    id2label=id2label,
+                    label2id={str(v): k for k, v in id2label.items()},
                     ignore_mismatched_sizes=True,
                 )
             except RuntimeError as e:
@@ -475,6 +478,8 @@ def main():
                     model = BertForSequenceClassification.from_pretrained(
                         MODEL_ID,
                         num_labels=num_labels,
+                        id2label=id2label,
+                        label2id={str(v): k for k, v in id2label.items()},
                         ignore_mismatched_sizes=True,
                         local_files_only=True,
                     )
@@ -510,12 +515,11 @@ def main():
         train_cfg["weight_decay"] = 0.01
         train_cfg["classifier_dropout"] = 0.3
         train_cfg["label_smoothing_factor"] = 0.1
-        train_cfg["early_stopping_patience"] = 2
-        train_cfg["use_class_weights"] = False
+        train_cfg["early_stopping_patience"] = 3
         train_cfg["rebalance_train_3class"] = False
         print(
             "[train] Binary hyperparams: epochs=4 lr=1e-5 dropout=0.3 "
-            "label_smoothing=0.1 weight_decay=0.01 early_stop=2"
+            "label_smoothing=0.1 weight_decay=0.01 early_stop=3"
         )
     if num_labels == 3 and train_cfg.get("rebalance_train_3class", True):
         train_ds = rebalance_three_class_train_dataset(
@@ -544,6 +548,15 @@ def main():
         class_weights = compute_class_weights(train_ds, num_labels)
         if class_weights is not None:
             print("Using class weights for imbalanced 9-class:", class_weights.tolist())
+    elif num_labels == 2:
+        from sklearn.utils.class_weight import compute_class_weight
+
+        y = np.asarray([int(x) for x in train_ds["labels"]])
+        cw = compute_class_weight("balanced", classes=np.array([0, 1]), y=y)
+        class_weights = torch.tensor(cw, dtype=torch.float32)
+        print(
+            f"Binary class weights (balanced): safe={cw[0]:.4f}, risky={cw[1]:.4f}"
+        )
 
     best_metric = str(train_cfg.get("metric_for_best_model", BEST_MODEL_METRIC) or BEST_MODEL_METRIC).strip()
     Path(SAVE_DIR).mkdir(parents=True, exist_ok=True)
@@ -616,6 +629,53 @@ def main():
             else:
                 raise
     tokenizer.save_pretrained(SAVE_DIR)
+
+    # If root model.safetensors could not be updated (Windows mmap / file lock), sync from best checkpoint.
+    def _sync_root_safetensors_from_checkpoint() -> None:
+        try:
+            import safetensors.torch as st
+        except ImportError:
+            return
+        save_p = Path(SAVE_DIR)
+        root_st = save_p / "model.safetensors"
+        best = getattr(trainer.state, "best_model_checkpoint", None) or ""
+        if not best or not Path(best).is_dir():
+            cks = sorted(
+                save_p.glob("checkpoint-*"),
+                key=lambda p: int(p.name.split("-", 1)[1])
+                if p.name.split("-", 1)[1].isdigit()
+                else -1,
+            )
+            best = str(cks[-1]) if cks else ""
+        if not best:
+            return
+        ck_st = Path(best) / "model.safetensors"
+        if not ck_st.is_file():
+            return
+        try:
+            cn = int(st.load_file(str(ck_st))["classifier.weight"].shape[0])
+        except Exception:
+            return
+        if cn != num_labels:
+            return
+        try:
+            rn = int(st.load_file(str(root_st))["classifier.weight"].shape[0]) if root_st.is_file() else -1
+        except Exception:
+            rn = -1
+        if rn == num_labels:
+            return
+        side = save_p / "model_2class.safetensors"
+        try:
+            shutil.copyfile(ck_st, side)
+            print(
+                f"[train] Copied trained weights to {side.name} (root model.safetensors is "
+                f"stale/locked; classifier on disk was {rn} classes, expected {num_labels}). "
+                "Close the app and replace model.safetensors, or use this file / checkpoint-*."
+            )
+        except OSError as e:
+            print(f"[train] warning: could not copy sidecar weights: {e}")
+
+    _sync_root_safetensors_from_checkpoint()
 
     # Reports dir (package dir, same as model)
     reports_dir = _MODEL_ROOT / "reports"

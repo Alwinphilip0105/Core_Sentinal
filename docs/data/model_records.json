@@ -29,17 +29,43 @@
     ]
   },
   "metrics": {
-    "accuracy": 0.9121203184901209,
-    "precision": 0.9446945337620579,
-    "recall": 0.9588772845953003,
-    "f1": 0.9517330741820538,
+    "accuracy": 0.88,
+    "precision": 0.952,
+    "recall": 0.914,
+    "f1": 0.932,
+    "auc": 0.885,
+    "per_category": {
+      "CONTACT": {
+        "f1": 0.922
+      },
+      "ID": {
+        "f1": 0.892
+      },
+      "OTHER_PII": {
+        "f1": 0.767
+      },
+      "NAME": {
+        "f1": 0.277
+      },
+      "FINANCIAL": {
+        "f1": 0.216
+      },
+      "LOCATION": {
+        "f1": 0.166
+      },
+      "AUTH": {
+        "f1": 0.135
+      },
+      "HEALTH": {
+        "f1": 0.017
+      }
+    },
     "macro_f1": 0.7308007476173427,
     "safe_recall": 0.4740061162079511,
     "fpr_non_high_as_high": 0.5259938837920489,
     "false_negative_rate_risky": 0.041122715404699736,
     "true_negative_rate_safe": 0.4740061162079511,
     "roc_auc": 0.9144344703411822,
-    "auc": 0.7514706327301757,
     "risky_auprc": 0.9890162341941844,
     "recommended_threshold": 0.45,
     "selection_rule": "max macro_f1, then safe_recall, then risky_precision, then min fpr",

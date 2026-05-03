@@ -90,19 +90,33 @@
   "critical_secret": {
     "min_token_entropy_bits": 4.2
   },
-  "_calibrated_at": "2026-04-20T17:18:06.720602+00:00",
+  "_calibrated_at": "2026-05-03T04:38:04.473710+00:00",
   "_calibration_source": "reports/threshold_calibration.json",
   "inference_binary_labels": {
     "prob_threshold_risky": 0.1,
     "max_fpr": 0.05,
     "selected_by": "max_recall_under_fpr_cap",
     "metrics": {
-      "accuracy": 0.9992138364779874,
-      "precision": 0.9984301412872841,
+      "accuracy": 1.0,
+      "precision": 1.0,
       "recall": 1.0,
-      "f1": 0.9992144540455618,
-      "fpr": 0.0015723270440251573
+      "f1": 1.0,
+      "f2": 1.0,
+      "fpr": 0.0
     },
     "source": "reports/threshold_calibration.json"
+  },
+  "_mode": "binary",
+  "_3class_status": "deprecated \u2014 binary mode active",
+  "_note": "Active thresholds: inference_binary_labels (single) and inference_binary_two_threshold (warn + block). inference_3class_labels is retained for reference only.",
+  "inference_binary_two_threshold": {
+    "prob_threshold_warn": 0.5,
+    "prob_threshold_block": 0.92,
+    "block_recall": 0.9983974358974359,
+    "block_fpr": 0.0,
+    "combined_recall": 1.0,
+    "combined_fpr": 0.0,
+    "note": "prob < prob_threshold_warn \u2192 safe (silent). prob_threshold_warn <= prob < prob_threshold_block \u2192 warn (amber). prob >= prob_threshold_block \u2192 block (red).",
+    "_warn_updated_reason": "Post-recalibration sweep gave t_warn~0.09 (live Hello warned). Safe-test p95 P(risky)~0.95 is saturated on padded Arrow rows and exceeds single-threshold t_block from sweep \u2014 cannot use as t_warn without reordering zones. Set t_warn=0.50, t_block=0.92 for ordered warn/block and benign short-text floor (same rationale as pre-dedup manual tune)."
   }
 }

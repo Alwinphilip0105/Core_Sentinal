@@ -10,6 +10,7 @@ Professional metrics (targets for downstream model):
 """
 
 import csv
+import hashlib
 import json
 import math
 import os
@@ -251,6 +252,34 @@ def _rebalance_binary_train_equal_halves(
     risky_pick = rng.sample(risky_rows, target) if risky_count >= target else rng.choices(risky_rows, k=target)
     out = [dict(r) for r in safe_pick] + [dict(r) for r in risky_pick]
     rng.shuffle(out)
+    return out
+
+
+def _dedup_pool(
+    rows: list[dict],
+    key: str = "text",
+) -> list[dict]:
+    """
+    Remove duplicate rows by exact text hash before splitting. Keeps first
+    occurrence. Preserves order so downstream random.seed(42) shuffle is stable.
+    """
+    seen: set[str] = set()
+    out: list[dict] = []
+    for r in rows:
+        h = hashlib.md5(str(r.get(key, "")).encode()).hexdigest()
+        if h not in seen:
+            seen.add(h)
+            out.append(r)
+    removed = len(rows) - len(out)
+    if removed:
+        print(
+            f"[dedup] Removed {removed} duplicate rows "
+            f"before split "
+            f"({removed / max(len(rows), 1):.1%} of pool). "
+            f"{len(out)} unique rows remain."
+        )
+    else:
+        print("[dedup] Pool is clean — no duplicates.")
     return out
 
 
@@ -2166,6 +2195,55 @@ def balance_train_risk_classes(train_rows: list[dict]) -> list[dict]:
     return [{"text": t, "risk": lab, "sap_id": ""} for t, lab in zip(texts, labels)]
 
 
+def check_split_leakage(arrow_dir: str) -> float:
+    """
+    Overlap fraction between train and validation splits based on hashes of tokenized
+    ``input_ids``. Warns if overlap exceeds 5% (validation metrics may be optimistic).
+    """
+    try:
+        from datasets import load_from_disk
+
+        root = Path(arrow_dir)
+        if not root.is_dir():
+            print(f"[data] SKIP leakage check: not a directory ({arrow_dir})")
+            return 0.0
+        ds = load_from_disk(str(root))
+    except Exception as ex:
+        print(f"[data] SKIP leakage check: {ex}")
+        return 0.0
+
+    def ids_hash(ids: object) -> str:
+        try:
+            import numpy as np
+
+            arr = np.asarray(ids, dtype=np.int64)
+            return hashlib.md5(arr.tobytes()).hexdigest()
+        except Exception:
+            return hashlib.md5(str(ids).encode()).hexdigest()
+
+    if "train" not in ds or "validation" not in ds:
+        print("[data] SKIP leakage check: missing train or validation split")
+        return 0.0
+
+    train_ids_col = ds["train"]["input_ids"]
+    val_ids_col = ds["validation"]["input_ids"]
+    train_h = {ids_hash(x) for x in train_ids_col}
+    val_hashes = [ids_hash(x) for x in val_ids_col]
+    overlap = sum(1 for h in val_hashes if h in train_h)
+    nv = len(val_hashes)
+    frac = overlap / nv if nv else 0.0
+
+    if frac > 0.05:
+        print(
+            f"[data] WARNING: {frac:.1%} train/val overlap ({overlap}/{nv} val rows). "
+            "Val metrics may be optimistic. Rebuild with shuffle_seed / stratified split."
+        )
+    else:
+        print(f"[data] Leakage check: {frac:.1%} train/val overlap — OK")
+
+    return frac
+
+
 def stratified_split(rows: list[dict], ratios: tuple[float, float, float] | None = None):
     """Split rows into train/val/test with stratification on risk when possible."""
     if ratios is None:
@@ -2497,6 +2575,9 @@ def build_and_save(
                     "[data] Binary mode safe-pool expansion: "
                     f"pre-split safe={safe_before} risky={risky_before}, no extra safe rows needed"
                 )
+        # Shuffle then stratify on binary label (safe/risky) — same intent as
+        # Dataset.shuffle(seed=42) + train_test_split(..., stratify_by_column="label").
+        pool = _dedup_pool(pool)
         random.seed(42)
         random.shuffle(pool)
         pool_risks = [r["risk"] for r in pool]
@@ -2696,6 +2777,11 @@ def build_and_save(
     out_path = Path(arrow_dir)
     out_path.mkdir(parents=True, exist_ok=True)
     combined.save_to_disk(str(out_path))
+
+    try:
+        check_split_leakage(str(out_path))
+    except Exception as ex:
+        print(f"[data] leakage check error (non-fatal): {ex}")
 
     if data_source in ("ai4privacy_text_only", "ai4privacy_text_plus_real", "ai4privacy_kaggle_en"):
         label_config = {

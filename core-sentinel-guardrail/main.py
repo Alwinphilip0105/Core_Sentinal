@@ -52,14 +52,18 @@ if str(_guardrail_dir) not in sys.path:
 
 
 def _load_env_files() -> None:
-    """Load .env from core-sentinel-guardrail/ or repo root so SUPABASE_* apply when not set in the shell."""
+    """Load .env from repo root then core-sentinel-guardrail/ (later files override earlier).
+
+    Uses override=True so committed/local .env wins over stale Windows User env vars
+    (e.g. SUPABASE_URL left at https://<your-project>.supabase.co).
+    """
     try:
         from dotenv import load_dotenv
     except ImportError:
         return
     for path in (_guardrail_dir.parent / ".env", _guardrail_dir / ".env"):
         if path.is_file():
-            load_dotenv(path, override=False)
+            load_dotenv(path, override=True)
 
 
 _load_env_files()
@@ -750,7 +754,13 @@ class _PasteAnalysisController(QObject):
     def _clear_paste_hold_state(self) -> None:
         self._blocked_text = ""
         self._blocked_result = None
-        self._bubble.set_hold_state(False)
+        b = self._bubble
+        if b is None:
+            return
+        try:
+            b.set_hold_state(False)
+        except RuntimeError:
+            pass
 
     def _clear_clipboard_for_hold(self) -> None:
         try:
@@ -1290,6 +1300,8 @@ def main():
     _s.activated.connect(bubble._do_encrypt)
     _s = QShortcut(QKeySequence("Alt+S"), bubble)
     _s.activated.connect(bubble._do_scan_file)
+    _s = QShortcut(QKeySequence("Alt+L"), bubble)
+    _s.activated.connect(bubble._open_layer_inspector)
     _s = QShortcut(QKeySequence("Alt+,"), bubble)
     _s.activated.connect(bubble._do_open_settings)
 
