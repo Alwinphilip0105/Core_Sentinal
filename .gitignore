@@ -14,8 +14,11 @@ dist/
 build/
 
 # Generated / large ML artifacts (regenerate locally)
-# Covers e.g. tinybert_guardrail/model.safetensors, checkpoint-*/, tokenizer, pytorch_model.bin
-core-sentinel-guardrail/models/
+# Covers weights/checkpoints under models/; exception: track binary head config only.
+core-sentinel-guardrail/models/*
+!core-sentinel-guardrail/models/tinybert_guardrail/
+core-sentinel-guardrail/models/tinybert_guardrail/*
+!core-sentinel-guardrail/models/tinybert_guardrail/config.json
 core-sentinel-guardrail/arrow_datasets/
 core-sentinel-guardrail/arrow_datasets_SAFE_RUN/
 core-sentinel-guardrail/outputs/
