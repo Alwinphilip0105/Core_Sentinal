@@ -1,0 +1,25 @@
+Core Sentinel — Binary Threshold Calibration
+====================================================
+Generated  : 2026-05-04T03:21:04.487922+00:00
+Mode       : binary (safe / risky)
+Val samples: 1045
+
+RECOMMENDED THRESHOLDS:
+  Warn  (amber) : prob >= 0.06616368286445012
+  Block (red)   : prob >= 0.37478260869565216
+
+THREE ZONES:
+  prob < 0.06616368286445012  → SAFE  — silent, green dot
+  0.06616368286445012 <= prob < 0.37478260869565216  → WARN  — amber, panel shown, proceed allowed
+  prob >= 0.37478260869565216  → BLOCK — red, paste held until user acts
+
+PERFORMANCE:
+  Block recall        : 99.7%  — catches 99.7% of dangerous pastes
+  Block false pos rate: 0.0%  — 0.0% of safe pastes wrongly blocked
+  Combined recall     : 99.8%  — 99.8% of risky pastes get any warning
+  Combined false pos  : 0.0%  — 0.0% of safe pastes see any warning
+
+NEXT STEPS:
+  python calibrate_thresholds.py
+  → writes to config/risk_policy.json
+  Restart overlay to pick up new thresholds.

@@ -37,7 +37,9 @@ from data import ARROW_SAVE_DIR, RISK_TO_ID
 _MODEL_ROOT = Path(__file__).resolve().parent
 CONFIG_DIR = _MODEL_ROOT / "config"
 TRAIN_CONFIG_PATH = CONFIG_DIR / "train_config.json"
-MODEL_ID = os.environ.get("GUARDRAIL_MODEL_ID", "huawei-noah/TinyBERT_General_4L_312D")
+# Base checkpoint for fine-tuning (override with GUARDRAIL_MODEL_ID).
+_DEFAULT_HUB_MODEL_ID = "huawei-noah/TinyBERT_General_4L_312D"
+MODEL_ID = os.environ.get("GUARDRAIL_MODEL_ID", _DEFAULT_HUB_MODEL_ID)
 NUM_LABELS_DEFAULT = 3
 SAVE_DIR = str(_MODEL_ROOT / "models" / "tinybert_guardrail")
 EPOCHS = 6
