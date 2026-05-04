@@ -735,11 +735,6 @@
               role="tab" aria-selected="false">
         Confusion Matrix
       </button>
-      <button class="tab"
-              data-tab="categories"
-              role="tab" aria-selected="false">
-        By Category
-      </button>
     </div>
 
     <div id="panel-summary" class="tab-panel active">
@@ -949,38 +944,6 @@
 
     </div>
 
-    <div id="panel-categories" class="tab-panel">
-      <div style="display:flex;gap:32px;
-                  flex-wrap:wrap;align-items:flex-start">
-
-        <div style="flex:1;min-width:280px">
-          <h3 style="font-size:15px;font-weight:600;
-                     color:#0F172A;margin-bottom:16px">
-            F1 Score by PII Category
-          </h3>
-          <div id="catBars"></div>
-        </div>
-
-        <div style="width:340px;flex-shrink:0">
-          <h3 style="font-size:15px;font-weight:600;
-                     color:#0F172A;margin-bottom:16px">
-            Category Status
-          </h3>
-          <table class="cat-table">
-            <thead>
-              <tr>
-                <th>Category</th>
-                <th>F1</th>
-                <th>Status</th>
-                <th>What this means</th>
-              </tr>
-            </thead>
-            <tbody id="catTableBody"></tbody>
-          </table>
-        </div>
-
-      </div>
-    </div>
   </main>
 
 <script>
