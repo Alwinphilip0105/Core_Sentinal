@@ -2165,6 +2165,38 @@
       svg.appendChild(g);
     }
 
+    /** Numeric tick labels 0.0–1.0 for precision–recall plots (both axes). */
+    function addPrChartAxisValueLabels(svg, cx, cy, cw, ch) {
+      const ns = "http://www.w3.org/2000/svg";
+      const g = document.createElementNS(ns, "g");
+      g.setAttribute("class", "pr-axis-ticks");
+      const tickFill = readCssVar("--chart-tick", "rgba(180, 190, 200, 0.8)");
+      const fs = "10";
+      const steps = [0, 0.2, 0.4, 0.6, 0.8, 1.0];
+      steps.forEach((v) => {
+        const tx = document.createElementNS(ns, "text");
+        tx.setAttribute("x", cx + v * cw);
+        tx.setAttribute("y", cy + ch + 14);
+        tx.setAttribute("text-anchor", "middle");
+        tx.setAttribute("fill", tickFill);
+        tx.setAttribute("font-size", fs);
+        tx.textContent = v.toFixed(1);
+        g.appendChild(tx);
+      });
+      steps.forEach((p) => {
+        const ly = cy + (1 - p) * ch;
+        const ty = document.createElementNS(ns, "text");
+        ty.setAttribute("x", cx - 6);
+        ty.setAttribute("y", ly + 3);
+        ty.setAttribute("text-anchor", "end");
+        ty.setAttribute("fill", tickFill);
+        ty.setAttribute("font-size", fs);
+        ty.textContent = p.toFixed(1);
+        g.appendChild(ty);
+      });
+      svg.appendChild(g);
+    }
+
     function addGrid(svg, x, y, w, h, xTicks = 8, yTicks = 6) {
       const ns = "http://www.w3.org/2000/svg";
       const g = document.createElementNS(ns, "g");
@@ -2384,10 +2416,11 @@
       const h = svg.clientHeight || 300;
       svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
       svg.innerHTML = "";
-      const pad = { l: 54, r: 16, t: 16, b: 44 };
+      const pad = { l: 58, r: 16, t: 16, b: 48 };
       const cx = pad.l, cy = pad.t, cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
       addGrid(svg, cx, cy, cw, ch, 8, 6);
       drawAxes(svg, cx, cy, cw, ch, "Recall", "Precision");
+      addPrChartAxisValueLabels(svg, cx, cy, cw, ch);
 
       const mapX = (r) => cx + r * cw;
       const mapY = (p) => cy + (1 - p) * ch;
