@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,9 @@ ROOT = Path(__file__).resolve().parent
 REPORTS = ROOT / "reports"
 DOCS = ROOT.parent / "docs"
 OUT_PATH = DOCS / "data" / "model_records.json"
+BENCHMARK_PR_PNG_SRC = ROOT / "outputs" / "precision_recall_curve.png"
+ML_ASSETS_DIR = DOCS / "ml" / "assets"
+BENCHMARK_PR_PNG_DST = ML_ASSETS_DIR / "precision_recall_curve.png"
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -262,11 +266,23 @@ def build_model_records() -> dict[str, Any]:
     }
 
 
+def copy_benchmark_pr_figure_to_docs() -> Path | None:
+    """Copy matplotlib PR benchmark PNG (professor_final_benchmark.py) into docs/ml/assets/."""
+    if not BENCHMARK_PR_PNG_SRC.is_file():
+        return None
+    ML_ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(BENCHMARK_PR_PNG_SRC, BENCHMARK_PR_PNG_DST)
+    return BENCHMARK_PR_PNG_DST
+
+
 def publish_records() -> Path:
     payload = build_model_records()
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(OUT_PATH, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
+    pr_fig = copy_benchmark_pr_figure_to_docs()
+    if pr_fig:
+        print(f"Copied benchmark PR figure: {pr_fig.as_posix()}")
     return OUT_PATH
 
 

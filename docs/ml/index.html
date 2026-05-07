@@ -514,6 +514,17 @@
       }
     }
 
+    .page-ml .pr-benchmark-card .pr-benchmark-figure {
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      padding: 8px;
+      background: #ffffff;
+      overflow: auto;
+    }
+    .page-ml .pr-benchmark-card h3 {
+      margin-bottom: 6px;
+    }
+
     /* ── Tab navigation ─────────────────────────── */
     .tab-bar {
       display: flex;
@@ -967,6 +978,37 @@
 
         </div>
       </div>
+
+      <article class="card pr-benchmark-card" style="margin-top:20px">
+        <h3>Benchmark PR curve (matplotlib)</h3>
+        <p class="sub" style="margin-bottom:12px;font-size:12px;line-height:1.45;color:var(--muted)">
+          Full evaluation plot matching the professor report: PR line with AUPRC in the title, orange
+          <strong>min precision 0.85</strong> target,
+          <span style="color:#f87171">red</span> = ML val-calib <code>t</code>,
+          <span style="color:#34d399">green</span> = ML test-rec <code>t</code>.
+          Produced by <code>core-sentinel-guardrail/professor_final_benchmark.py</code> as
+          <code>outputs/precision_recall_curve.png</code>; copied into
+          <code>docs/ml/assets/</code> when you run <code>publish_website_records.py</code>.
+        </p>
+        <div class="pr-benchmark-figure">
+          <img id="prBenchmarkPng"
+               src="assets/precision_recall_curve.png"
+               alt="Precision–Recall curve for the ML classifier with AUPRC, min precision target, val-calib and test-rec points"
+               width="1000"
+               height="700"
+               loading="lazy"
+               decoding="async"
+               style="max-width:100%;height:auto;display:block;border-radius:6px"
+               onerror="this.style.display='none';var el=document.getElementById('prBenchmarkPngMissing');if(el){el.style.display='block';}" />
+          <p id="prBenchmarkPngMissing" class="sub" style="display:none;margin:0;padding:12px;background:rgba(251,191,36,0.12);border-radius:8px;color:#fcd34d;border:1px solid rgba(251,191,36,0.35)">
+            <strong>Figure not found.</strong> From repo root run:
+            <code style="color:#e2e8f0">python core-sentinel-guardrail/professor_final_benchmark.py</code>
+            then
+            <code style="color:#e2e8f0">python core-sentinel-guardrail/publish_website_records.py</code>
+            to generate and copy <code style="color:#e2e8f0">precision_recall_curve.png</code> here.
+          </p>
+        </div>
+      </article>
     </div>
 
   </main>
