@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Overlay three states — documentation capture</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #07080d;
+      --accent: #02C39A;
+      --warn: #ffb300;
+      --danger: #e53935;
+      --card: #1C1C1E;
+      --line: #2a2a33;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Inter", system-ui, sans-serif;
+      background: radial-gradient(1200px 420px at 50% -10%, rgba(2, 195, 154, 0.1), transparent 50%), var(--bg);
+      color: #e8e8e8;
+      padding: 28px 20px 40px;
+      min-height: 100vh;
+    }
+    .doc-note {
+      text-align: center;
+      font-size: 11px;
+      color: #64748b;
+      margin-bottom: 22px;
+    }
+    .row {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      align-items: stretch;
+      flex-wrap: wrap;
+      max-width: 1320px;
+      margin: 0 auto;
+    }
+    .col {
+      flex: 1 1 300px;
+      max-width: 400px;
+      display: flex;
+      flex-direction: column;
+    }
+    .col h2 {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #94a3b8;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    .stage {
+      position: relative;
+      height: 360px;
+      background: linear-gradient(180deg, #14141a 0%, #0c0c10 100%);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+    }
+    .backdrop {
+      position: absolute;
+      inset: 0;
+      opacity: 0.35;
+      background: repeating-linear-gradient(
+        -45deg,
+        transparent,
+        transparent 8px,
+        rgba(255, 255, 255, 0.02) 8px,
+        rgba(255, 255, 255, 0.02) 9px
+      );
+    }
+    .traffic {
+      position: absolute;
+      right: 12px;
+      top: 12px;
+      background: #121218;
+      border: 1px solid #2a2a31;
+      border-radius: 999px;
+      padding: 7px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: center;
+      z-index: 3;
+    }
+    .dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: #2f313a;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+    }
+    .dot.on.green { background: #22c55e; box-shadow: 0 0 10px rgba(34, 197, 94, 0.6); }
+    .dot.on.amber { background: var(--warn); box-shadow: 0 0 10px rgba(255, 179, 0, 0.55); }
+    .dot.on.red { background: var(--danger); box-shadow: 0 0 10px rgba(229, 57, 53, 0.55); }
+
+    .overlay {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      display: flex;
+      align-items: flex-end;
+      gap: 6px;
+      z-index: 6;
+    }
+    .pill {
+      min-height: 44px;
+      border-radius: 26px;
+      padding: 7px 12px;
+      background: var(--card);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 200px;
+      color: #dfe6f2;
+      box-shadow: 0 10px 22px rgba(0, 0, 0, 0.42);
+      border: 2px solid transparent;
+    }
+    /* Teal / amber / red “pill” treatments matching report captions */
+    .pill.pill-allow {
+      border-color: rgba(2, 195, 154, 0.9);
+      box-shadow: 0 0 26px rgba(2, 195, 154, 0.28), 0 10px 22px rgba(0, 0, 0, 0.42);
+    }
+    .pill.pill-warn {
+      border-color: rgba(255, 179, 0, 0.95);
+      box-shadow: 0 0 22px rgba(255, 179, 0, 0.22), 0 10px 22px rgba(0, 0, 0, 0.42);
+    }
+    .pill.pill-block {
+      border-color: rgba(229, 57, 53, 0.95);
+      box-shadow: 0 0 22px rgba(229, 57, 53, 0.25), 0 10px 22px rgba(0, 0, 0, 0.42);
+    }
+    .pill-ico {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: #12151a;
+      border: 1px solid #2a3138;
+      font-size: 13px;
+      flex: 0 0 auto;
+    }
+    .pill-main {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+    }
+    .pill-main .shield { color: #9cebe1; font-size: 14px; }
+    .pill-score {
+      margin-left: auto;
+      background: #101318;
+      border: 1px solid #29313a;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 9px;
+      min-width: 44px;
+      text-align: center;
+    }
+    .tb {
+      width: 34px;
+      border-radius: 10px;
+      border: 1px solid #303039;
+      background: #17171f;
+      padding: 6px 0;
+      display: grid;
+      gap: 4px;
+      justify-items: center;
+    }
+    .tb span {
+      width: 26px;
+      height: 26px;
+      border-radius: 7px;
+      border: 1px solid #31313b;
+      background: #20212a;
+      font-size: 13px;
+      display: grid;
+      place-items: center;
+      color: #cfd6e3;
+    }
+
+    .remed {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: min(92%, 320px);
+      height: 100%;
+      background: #101118;
+      border-left: 1px solid #2d3038;
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      box-shadow: -10px 0 24px rgba(0, 0, 0, 0.45);
+      transform: translateX(100%);
+      transition: transform 0.2s ease;
+    }
+    .remed.open { transform: translateX(0); }
+    .remed-head {
+      padding: 10px;
+      border-bottom: 1px solid #2f323b;
+      background: #151720;
+    }
+    .head-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .head-row h3 { font-size: 14px; font-weight: 800; }
+    .risk-badge {
+      font-size: 10px;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .risk-medium { background: rgba(255, 179, 0, 0.18); color: #ffe0a3; border-color: rgba(255, 179, 0, 0.45); }
+    .risk-critical { background: rgba(229, 57, 53, 0.2); color: #ffb0ae; border-color: rgba(229, 57, 53, 0.5); }
+    .banner {
+      border-radius: 7px;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 6px 8px;
+      margin-bottom: 6px;
+    }
+    .banner.block-msg {
+      background: rgba(229, 57, 53, 0.2);
+      border: 1px solid rgba(229, 57, 53, 0.45);
+      color: #ffc9c6;
+    }
+    .issues { flex: 1; overflow: hidden; padding: 8px; display: grid; gap: 6px; align-content: start; }
+    .issue {
+      background: #f6f8fb;
+      color: #14161c;
+      border-radius: 8px;
+      border: 1px solid #d9deea;
+      padding: 6px 8px;
+      font-size: 11px;
+      position: relative;
+    }
+    .issue::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: var(--warn);
+      border-radius: 8px 0 0 8px;
+    }
+    .issue.critical::before { background: var(--danger); }
+    .i-top { display: flex; justify-content: space-between; font-weight: 700; }
+    .i-prev { opacity: 0.85; margin-top: 4px; font-size: 10px; }
+  </style>
+</head>
+<body>
+  <p class="doc-note">
+    Static composition for reports (browser simulation). Production overlay is the Windows floating bubble / remediation UI.
+  </p>
+  <div class="row">
+    <div class="col">
+      <h2>Allow · paste proceeds</h2>
+      <div class="stage">
+        <div class="backdrop"></div>
+        <div class="traffic">
+          <span class="dot"></span>
+          <span class="dot"></span>
+          <span class="dot on green"></span>
+        </div>
+        <div class="overlay">
+          <div class="pill pill-allow">
+            <span class="pill-ico">✓</span>
+            <div class="pill-main"><span class="shield">🛡</span><span>SILENT</span></div>
+            <div class="pill-score">8</div>
+          </div>
+          <div class="tb"><span>✂</span><span>🔐</span><span>📋</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <h2>Warn · remediation panel</h2>
+      <div class="stage">
+        <div class="backdrop"></div>
+        <div class="traffic">
+          <span class="dot"></span>
+          <span class="dot on amber"></span>
+          <span class="dot"></span>
+        </div>
+        <aside class="remed open">
+          <div class="remed-head">
+            <div class="head-row">
+              <h3>Sentinel</h3>
+              <span class="risk-badge risk-medium">Medium</span>
+            </div>
+            <div style="font-size:10px;color:#94a3b8">Review before sending.</div>
+          </div>
+          <div class="issues">
+            <div class="issue">
+              <div class="i-top"><span>🟡 Email</span><span>Open</span></div>
+              <div class="i-prev">john.smith@company.com</div>
+            </div>
+            <div class="issue">
+              <div class="i-top"><span>🟡 Phone</span><span>Open</span></div>
+              <div class="i-prev">555-0142</div>
+            </div>
+          </div>
+        </aside>
+        <div class="overlay">
+          <div class="pill pill-warn">
+            <span class="pill-ico">⚠</span>
+            <div class="pill-main"><span class="shield">🛡</span><span>WARN</span></div>
+            <div class="pill-score">62</div>
+          </div>
+          <div class="tb"><span>✂</span><span>🔐</span><span>📋</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <h2>Block · paste held</h2>
+      <div class="stage">
+        <div class="backdrop"></div>
+        <div class="traffic">
+          <span class="dot on red"></span>
+          <span class="dot"></span>
+          <span class="dot"></span>
+        </div>
+        <aside class="remed open">
+          <div class="remed-head">
+            <div class="head-row">
+              <h3>Sentinel</h3>
+              <span class="risk-badge risk-critical">Critical</span>
+            </div>
+            <div class="banner block-msg">⊘ Paste blocked — fix required</div>
+          </div>
+          <div class="issues">
+            <div class="issue critical">
+              <div class="i-top"><span>🔴 API Key</span><span>Must fix</span></div>
+              <div class="i-prev">sk-proj-abc…</div>
+            </div>
+            <div class="issue critical">
+              <div class="i-top"><span>🔴 Database URL</span><span>Must fix</span></div>
+              <div class="i-prev">postgresql://admin:…</div>
+            </div>
+          </div>
+        </aside>
+        <div class="overlay">
+          <div class="pill pill-block">
+            <span class="pill-ico">🔒</span>
+            <div class="pill-main"><span class="shield">🛡</span><span>BLOCK</span></div>
+            <div class="pill-score">94</div>
+          </div>
+          <div class="tb"><span>✂</span><span>🔐</span><span>📋</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

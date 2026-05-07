@@ -24,6 +24,7 @@ Core Sentinel is a desktop-first, privacy-focused guardrail that intercepts clip
 - [Start Here (New Users)](#start-here-new-users)
 - [Model Card](#model-card)
 - [Dashboards](#dashboards)
+- [Documentation for reports](#documentation-for-reports)
 - [Website data and Supabase](#website-data-and-supabase)
 - [Interactive Widget Demo](#-interactive-widget-demo)
 - [Quick Start](#quick-start)
@@ -119,12 +120,26 @@ Core Sentinel ships with multiple dashboards for users, operators, and admins. S
 
 ### ML Health Dashboard
 
-- Precision/Recall views
-- Confusion matrix
-- Drift and threshold simulation
-- Loads **`docs/data/model_records.json`** from the same origin when possible, with an embedded JSON fallback if fetches fail (hard refresh after deploy if you see stale zeros)
+Open [`docs/ml/index.html`](docs/ml/index.html) locally or on GitHub Pages under **`/ml/`**.
 
-![ML Dashboard Preview](docs/ml-health-preview-final.png)
+The current UI (**v2**) focuses on two tabs:
+
+- **Summary** — KPI cards (precision, recall, F1, AUC), plain-English metric table, threshold simulator, optional **Technical Details** for raw metrics, and **per-category F1** when `model_records.json` includes `metrics.per_category`.
+- **Precision–Recall** — Interactive PR curve with matplotlib-style **precision zoom (0.85–1.0)**, min-precision target line, calibration (**val-calib**) and holdout (**test-rec**) markers when the published curve includes thresholds, policy warn/block markers, and a **slider** to probe points along the sweep.
+
+Live data loads **`docs/data/model_records.json`** from the same origin when possible, with an embedded JSON fallback if fetches fail (hard refresh after deploy if you see stale zeros).
+
+**Screenshots (repo):** [`docs/ml/screenshots/`](docs/ml/screenshots/README.txt) — regenerate full-page captures with:
+
+```powershell
+python scripts/capture_ml_dashboard_screenshots.py
+```
+
+(Starts a local HTTP server on port **8765** if free, writes Summary / PR / Technical Details PNGs, and also updates **[`docs/report-figures/ui-overlay-states.png`](docs/report-figures/ui-overlay-states.png)** from the static overlay triptych.)
+
+| Legacy marketing preview | Current capture (example) |
+|--------------------------|---------------------------|
+| ![ML Dashboard — legacy](docs/ml-health-preview-final.png) | ![ML Health — Summary tab](docs/ml/screenshots/01-summary-tab.png) |
 
 ### Admin Dashboard
 
@@ -133,6 +148,10 @@ Core Sentinel ships with multiple dashboards for users, operators, and admins. S
 - Risk category rollups
 
 ![Admin Dashboard Preview](docs/admin-preview-redesign-demo.png)
+
+## Documentation for reports
+
+For capstone, thesis, or defense write-ups, a ready-made **Results** section (model tables, PR/ROC figure paths, system screenshot checklist) lives in **[`docs/CAPSTONE_RESULTS_CHAPTER.md`](docs/CAPSTONE_RESULTS_CHAPTER.md)**. Placeholder and generated figures go under **[`docs/report-figures/`](docs/report-figures/FIGURES_README.txt)** (e.g. **overlay three states** from [`docs/report-figures/overlay-three-states-capture.html`](docs/report-figures/overlay-three-states-capture.html)). Formal ML and threshold reference: **[`docs/ML_SYSTEM_REFERENCE.md`](docs/ML_SYSTEM_REFERENCE.md)**.
 
 ## Website data and Supabase
 
@@ -236,12 +255,16 @@ The pill UI should appear in the bottom-right corner. Open an LLM web app and pa
 Core_Sentinal/
 |- run_guardrail.py
 |- launchers/
+|- scripts/                    # e.g. capture_ml_dashboard_screenshots.py
 |- docs/
 |  |- index.html
 |  |- hub.html
-|  |- data/
+|  |- data/                    # model_records.json, train_eval_summary.json, …
 |  |- dashboard/
-|  |- ml/
+|  |- ml/                      # ML Health static site (index.html, screenshots/)
+|  |- report-figures/          # Report PNGs + overlay triptych HTML capture
+|  |- CAPSTONE_RESULTS_CHAPTER.md
+|  |- ML_SYSTEM_REFERENCE.md
 |- core-sentinel-guardrail/
 |  |- main.py
 |  |- infer.py
@@ -323,6 +346,9 @@ For backup and recovery boundaries (what is versioned vs local-only), see [docs/
 ## Documentation Index
 
 - [Docs index](docs/README.md)
+- [Results chapter template (capstone / thesis)](docs/CAPSTONE_RESULTS_CHAPTER.md)
+- [ML system reference (thresholds, metrics, benchmarks)](docs/ML_SYSTEM_REFERENCE.md)
+- [Three-layer pipeline](docs/THREE_LAYER_PIPELINE.md)
 - [Clipboard guardrail guide](core-sentinel-guardrail/CLIPBOARD_GUARDRAIL.md)
 - [Risk telemetry](core-sentinel-guardrail/RISK_TELEMETRY.md)
 - [Windows setup](docs/WINDOWS_SETUP.md)
