@@ -66,6 +66,27 @@ def _pair_downsample(prec: list[Any], rec: list[Any], max_points: int = 96) -> t
     )
 
 
+def _pr_curve_downsample(
+    prec: list[Any], rec: list[Any], thr: list[Any] | None, max_points: int = 96
+) -> tuple[list[float], list[float], list[float] | None]:
+    """Downsample PR tuples together so score-threshold axis stays aligned for the ML dashboard."""
+    if len(prec) != len(rec) or not prec:
+        return [], [], None
+    n = len(prec)
+    thr_ok = bool(thr) and len(thr) == n
+    if n <= max_points:
+        tprec = [float(prec[i]) for i in range(n)]
+        trec = [float(rec[i]) for i in range(n)]
+        tthr = [float(thr[i]) for i in range(n)] if thr_ok else None
+        return tprec, trec, tthr
+    idx = [int(round(i * (n - 1) / max(1, max_points - 1))) for i in range(max_points)]
+    idx = sorted(set(idx))
+    tprec = [float(prec[i]) for i in idx]
+    trec = [float(rec[i]) for i in idx]
+    tthr = [float(thr[i]) for i in idx] if thr_ok else None
+    return tprec, trec, tthr
+
+
 def _derive_macro_auprc(pr: dict[str, Any]) -> float | None:
     classes = pr.get("classes")
     if not isinstance(classes, dict):
@@ -128,9 +149,9 @@ def build_model_records() -> dict[str, Any]:
     )
     pr_prec = pr_hc.get("precision_values") or []
     pr_rec = pr_hc.get("recall_values") or []
-    dsp, dsr = _pair_downsample(pr_prec, pr_rec, 96)
-    charts_pr: dict[str, Any] = {
-        "high_class_curve": {
+    pr_thr = pr_hc.get("thresholds") or []
+    dsp, dsr, dthr = _pr_curve_downsample(pr_prec, pr_rec, pr_thr if isinstance(pr_thr, list) else None, 96)
+    charts_pr_hc: dict[str, Any] = {
             "positive_class": pr_hc.get("positive_class") or "risky",
             "precision_values": dsp,
             "recall_values": dsr,
@@ -141,8 +162,10 @@ def build_model_records() -> dict[str, Any]:
                 "threshold": _to_float(rec.get("threshold")),
                 "note": "binary holdout sweep at recommended threshold",
             },
-        }
     }
+    if dthr is not None and len(dthr) == len(dsp):
+        charts_pr_hc["thresholds"] = dthr
+    charts_pr: dict[str, Any] = {"high_class_curve": charts_pr_hc}
 
     roc_fpr = roc_hc.get("fpr_values") or []
     roc_tpr = roc_hc.get("tpr_values") or []

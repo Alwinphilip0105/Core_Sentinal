@@ -836,8 +836,10 @@
             </div>
             <div class="legend">
               <span class="l-pr">PR</span>
-              <span class="l-op">OP</span>
-              <span class="legend-tau">● τ</span>
+              <span class="l-op">90% P target</span>
+              <span class="legend-tau">● sim</span>
+              <span style="color:#f59e0b;font-size:11px">◆ warn</span>
+              <span style="color:#10b981;font-size:11px">■ block</span>
             </div>
           </article>
         </div>
@@ -878,11 +880,12 @@
                      margin-bottom:12px">
 
           <div style="font-size:13px;font-weight:600;
-                      color:#0F172A;margin-bottom:8px">
-            Simulate τ
+                      color:#0F172A;margin-bottom:8px"
+               id="tauSimulateTitle">
+            Simulate score threshold τ
           </div>
           <input type="range" id="tauSlider"
-                 min="5" max="95" value="50"
+                 min="0" max="100" value="50"
                  style="width:100%;
                         accent-color:#3B82F6;
                         cursor:pointer">
@@ -2210,10 +2213,172 @@
       svg.appendChild(pt);
     }
 
+    function interpolateAlongPolyline(frac, poly) {
+      if (!poly || poly.length < 1) return null;
+      if (poly.length === 1) {
+        return { recall: poly[0].recall, prec: poly[0].prec };
+      }
+      const f = Math.max(0, Math.min(1, Number(frac)));
+      const n = poly.length;
+      const pos = f * (n - 1);
+      const j = Math.floor(pos);
+      const tt = pos - j;
+      if (j >= n - 1) {
+        return { recall: poly[n - 1].recall, prec: poly[n - 1].prec };
+      }
+      const a = poly[j];
+      const b = poly[j + 1];
+      return {
+        recall: a.recall + tt * (b.recall - a.recall),
+        prec: a.prec + tt * (b.prec - a.prec),
+      };
+    }
+
+    function interpolateByScoreThreshold(tau, pts) {
+      if (!pts || !pts.length) return null;
+      const s = pts
+        .filter((p) => Number.isFinite(p.tau))
+        .slice()
+        .sort(function (a, b) {
+          return a.tau - b.tau;
+        });
+      if (!s.length) return null;
+      const t = Number(tau);
+      if (t <= s[0].tau) {
+        return { recall: s[0].recall, prec: s[0].prec };
+      }
+      if (t >= s[s.length - 1].tau) {
+        const last = s[s.length - 1];
+        return { recall: last.recall, prec: last.prec };
+      }
+      for (var i = 0; i < s.length - 1; i++) {
+        if (t >= s[i].tau && t <= s[i + 1].tau) {
+          var den = s[i + 1].tau - s[i].tau;
+          var tt = den ? (t - s[i].tau) / den : 0;
+          return {
+            recall: s[i].recall + tt * (s[i + 1].recall - s[i].recall),
+            prec: s[i].prec + tt * (s[i + 1].prec - s[i].prec),
+          };
+        }
+      }
+      return null;
+    }
+
+    function nearestPrOnPolylineFromPolicyTau(policyTau, poly) {
+      const pt = interpolateAlongPolyline(Math.max(0, Math.min(1, 1 - Number(policyTau))), poly);
+      return pt;
+    }
+
+    function addMarkerShape(
+      svg,
+      kind,
+      cx,
+      cy,
+      color,
+      label,
+      mapX,
+      mapY,
+      px,
+      py
+    ) {
+      const ns = "http://www.w3.org/2000/svg";
+      const g = document.createElementNS(ns, "g");
+      const mx = mapX(px);
+      const my = mapY(py);
+      if (kind === "diamond") {
+        const s = 6;
+        const path = document.createElementNS(ns, "path");
+        path.setAttribute(
+          "d",
+          `M${mx} ${my - s} L${mx + s} ${my} L${mx} ${my + s} L${mx - s} ${my} Z`
+        );
+        path.setAttribute("fill", color);
+        path.setAttribute("stroke", "#fff");
+        path.setAttribute("stroke-width", "1.2");
+        g.appendChild(path);
+      } else {
+        const r = document.createElementNS(ns, "rect");
+        const w = 10;
+        r.setAttribute("x", mx - w / 2);
+        r.setAttribute("y", my - w / 2);
+        r.setAttribute("width", w);
+        r.setAttribute("height", w);
+        r.setAttribute("rx", 2);
+        r.setAttribute("fill", color);
+        r.setAttribute("stroke", "#fff");
+        r.setAttribute("stroke-width", "1.2");
+        g.appendChild(r);
+      }
+      g.addEventListener("mousemove", (e) => {
+        tooltip.textContent = label;
+        tooltip.style.display = "block";
+        tooltip.style.left = `${e.clientX}px`;
+        tooltip.style.top = `${e.clientY}px`;
+      });
+      g.addEventListener("mouseleave", () => {
+        tooltip.style.display = "none";
+      });
+      svg.appendChild(g);
+    }
+
+    function drawPrPolicyMarkers(svg, mapX, mapY) {
+      const pol =
+        typeof window.getMlPolicyThresholds === "function"
+          ? window.getMlPolicyThresholds()
+          : { warn: 0.5, block: 0.92 };
+      const warnT = Number(pol.warn);
+      const blockT = Number(pol.block);
+      const poly = window._prPolyline || [];
+      const hasTau = !!window._prHasThresholdAxis;
+      const sweep = window._prSweepPoints || [];
+
+      var warnPr;
+      var blockPr;
+      if (hasTau && sweep.length) {
+        warnPr = interpolateByScoreThreshold(warnT, sweep);
+        blockPr = interpolateByScoreThreshold(blockT, sweep);
+      } else if (poly.length) {
+        warnPr = nearestPrOnPolylineFromPolicyTau(warnT, poly);
+        blockPr = nearestPrOnPolylineFromPolicyTau(blockT, poly);
+      } else {
+        return;
+      }
+      if (warnPr) {
+        addMarkerShape(
+          svg,
+          "diamond",
+          0,
+          0,
+          "#f59e0b",
+          `Warn policy: τ=${warnT.toFixed(3)} → P=${warnPr.prec.toFixed(3)} R=${warnPr.recall.toFixed(3)}`,
+          mapX,
+          mapY,
+          warnPr.recall,
+          warnPr.prec
+        );
+      }
+      if (blockPr) {
+        addMarkerShape(
+          svg,
+          "square",
+          0,
+          0,
+          "#10b981",
+          `Block policy: τ=${blockT.toFixed(3)} → P=${blockPr.prec.toFixed(3)} R=${blockPr.recall.toFixed(3)}`,
+          mapX,
+          mapY,
+          blockPr.recall,
+          blockPr.prec
+        );
+      }
+    }
+
     function drawPRChart() {
       const svg = document.getElementById("prChart");
       if (!svg) return;
       window._prSweepPoints = null;
+      window._prPolyline = null;
+      window._prHasThresholdAxis = false;
       const w = svg.clientWidth || 560;
       const h = svg.clientHeight || 300;
       svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
@@ -2275,21 +2440,40 @@
         const rv = curve.recall;
         const pv = curve.precision;
         const th = curve.thresholds;
-        window._prSweepPoints = [];
+        window._prPolyline = [];
         for (let i = 0; i < rv.length; i++) {
-          let tauNum = Number.NaN;
-          if (th && th.length > i && isPresentMetric(th[i])) {
-            tauNum = Number(th[i]);
-          }
-          if (!Number.isFinite(tauNum)) {
-            tauNum = Number(rv[i]);
-          }
-          window._prSweepPoints.push({
-            tau: tauNum,
-            recall: Number(rv[i]),
-            prec: Number(pv[i] ?? 0),
+          window._prPolyline.push({
+            recall: Math.max(0, Math.min(1, Number(rv[i]))),
+            prec: Math.max(0, Math.min(1, Number(pv[i] ?? 0))),
           });
         }
+        let hasTauAxis = false;
+        window._prSweepPoints = [];
+        if (th && th.length === rv.length) {
+          hasTauAxis = th.every((x, i) => isPresentMetric(th[i]));
+          if (hasTauAxis) {
+            for (let i = 0; i < rv.length; i++) {
+              window._prSweepPoints.push({
+                tau: Number(th[i]),
+                recall: window._prPolyline[i].recall,
+                prec: window._prPolyline[i].prec,
+              });
+            }
+          }
+        }
+        if (!hasTauAxis) {
+          const n = window._prPolyline.length;
+          for (let i = 0; i < n; i++) {
+            const frac = n > 1 ? i / (n - 1) : 0.5;
+            window._prSweepPoints.push({
+              tau: frac,
+              recall: window._prPolyline[i].recall,
+              prec: window._prPolyline[i].prec,
+            });
+          }
+        }
+        window._prHasThresholdAxis = hasTauAxis;
+        drawPrPolicyMarkers(svg, mapX, mapY);
         if (
           Number.isFinite(Number(window._currentTau))
           && typeof window.interpolatePrAtTau === "function"
@@ -2326,11 +2510,17 @@
         PR_POINTS.forEach((p) => {
           addHoverablePoint(svg, mapX(p[0]), mapY(p[1]), "var(--accent)", `Demo point  P=${p[1].toFixed(3)}  R=${p[0].toFixed(3)}`);
         });
-        window._prSweepPoints = PR_POINTS.map((d) => ({
-          tau: d[0],
+        window._prPolyline = PR_POINTS.map((d) => ({
           recall: d[0],
           prec: d[1],
         }));
+        window._prSweepPoints = PR_POINTS.map((d, i) => ({
+          tau: PR_POINTS.length > 1 ? i / (PR_POINTS.length - 1) : 0.5,
+          recall: d[0],
+          prec: d[1],
+        }));
+        window._prHasThresholdAxis = false;
+        drawPrPolicyMarkers(svg, mapX, mapY);
         if (
           Number.isFinite(Number(window._currentTau))
           && typeof window.interpolatePrAtTau === "function"
@@ -2388,8 +2578,35 @@
       t.setAttribute("y", Math.max(st.cy + 14, y - 10));
       t.setAttribute("fill", "#94a3b8");
       t.setAttribute("font-size", "11");
-      t.textContent = `tau=${Number(tau).toFixed(2)}  P=${Number(pt.prec).toFixed(3)}  R=${Number(pt.recall).toFixed(3)}`;
+      const useThr = !!window._prHasThresholdAxis;
+      if (useThr) {
+        t.textContent =
+          "Simulated (active): τ=" +
+          Number(tau).toFixed(2) +
+          "  P=" +
+          Number(pt.prec).toFixed(3) +
+          "  R=" +
+          Number(pt.recall).toFixed(3);
+      } else {
+        t.textContent =
+          "Simulated (active): sweep " +
+          (Number(tau) * 100).toFixed(0) +
+          "% along curve  P=" +
+          Number(pt.prec).toFixed(3) +
+          "  R=" +
+          Number(pt.recall).toFixed(3);
+      }
       g.appendChild(t);
+
+      const t2 = document.createElementNS(ns, "text");
+      t2.setAttribute("x", Math.min(st.cx + st.cw - 220, x + 8));
+      t2.setAttribute("y", Math.max(st.cy + 28, y + 4));
+      t2.setAttribute("fill", "#64748b");
+      t2.setAttribute("font-size", "10");
+      t2.textContent = useThr
+        ? "Diamond = warn policy · Square = block policy (from risk_policy.json)"
+        : "No per-score τ in export — slider moves along PR path; markers use ~ (1−τ) position";
+      g.appendChild(t2);
 
       st.svg.appendChild(g);
     }
@@ -3069,55 +3286,57 @@
           if (blockSpan) blockSpan.textContent = pol.block.toFixed(3);
         }
         window.refreshMlTauOperatingPoints = refreshOpPoints;
+        window.getMlPolicyThresholds = getPolTau;
         refreshOpPoints();
 
-        function interpolate(pts, tau) {
-          if (!pts || !pts.length) return null;
-          var s = pts.slice().sort(function (a, b) {
-            return a.tau - b.tau;
-          });
-          for (var i = 0; i < s.length - 1; i++) {
-            if (tau >= s[i].tau && tau <= s[i + 1].tau) {
-              var den = s[i + 1].tau - s[i].tau;
-              var t = den ? (tau - s[i].tau) / den : 0;
-              return {
-                recall:
-                  s[i].recall +
-                  t * (s[i + 1].recall - s[i].recall),
-                prec:
-                  s[i].prec +
-                  t * (s[i + 1].prec - s[i].prec),
-              };
-            }
+        window.interpolatePrAtTau = function (slider01) {
+          var s = Number(slider01);
+          if (!Number.isFinite(s)) return null;
+          s = Math.max(0, Math.min(1, s));
+          var poly = window._prPolyline || [];
+          if (!poly.length) return null;
+          if (window._prHasThresholdAxis) {
+            return interpolateByScoreThreshold(s, window._prSweepPoints || []);
           }
-          var last = s[s.length - 1];
-          return { recall: last.recall, prec: last.prec };
-        }
-        window.interpolatePrAtTau = function (tau) {
-          return interpolate(window._prSweepPoints || [], Number(tau));
+          return interpolateAlongPolyline(s, poly);
         };
 
         function updateReadout() {
           var tau = Number(slider.value) / 100;
           window._currentTau = tau;
-          var pt = interpolate(window._prSweepPoints || [], tau);
+          var pt = window.interpolatePrAtTau(tau);
+          var titleEl = document.getElementById("tauSimulateTitle");
+          if (titleEl) {
+            titleEl.textContent = window._prHasThresholdAxis
+              ? "Simulate score threshold τ"
+              : "Simulate position along PR curve";
+          }
           if (pt) {
-            readout.textContent =
-              'At τ = ' +
-              tau.toFixed(2) +
-              ':  catches ' +
-              (pt.recall * 100).toFixed(1) +
-              '% of risky pastes · precision ' +
-              (pt.prec * 100).toFixed(1) +
-              '%';
-            if (typeof window.renderDynamicPrTauMarker === 'function') {
+            if (window._prHasThresholdAxis) {
+              readout.textContent =
+                "At τ = " +
+                tau.toFixed(2) +
+                ": catches " +
+                (pt.recall * 100).toFixed(1) +
+                "% of risky pastes · precision " +
+                (pt.prec * 100).toFixed(1) +
+                "%";
+            } else {
+              readout.textContent =
+                "Sweep " +
+                (tau * 100).toFixed(0) +
+                "% along curve: catches " +
+                (pt.recall * 100).toFixed(1) +
+                "% of risky · precision " +
+                (pt.prec * 100).toFixed(1) +
+                "% (export has no τ axis — re-run publish_website_records after evaluate_test)";
+            }
+            if (typeof window.renderDynamicPrTauMarker === "function") {
               window.renderDynamicPrTauMarker(tau, pt);
             }
           } else {
             readout.textContent =
-              'At τ = ' +
-              tau.toFixed(2) +
-              ' — load model data for live metrics';
+              "Load model data or open the Precision-Recall tab to render the curve.";
           }
         }
 
