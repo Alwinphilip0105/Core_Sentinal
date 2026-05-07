@@ -842,9 +842,11 @@
               <span style="color:#f59e0b;font-size:11px">◆ warn</span>
               <span style="color:#10b981;font-size:11px">■ block</span>
             </div>
-            <p class="sub" style="margin-top:10px;font-size:11px;line-height:1.45;color:#94a3b8;max-width:56ch">
+            <p class="sub" style="margin-top:10px;font-size:11px;line-height:1.45;color:#94a3b8;max-width:62ch">
               <strong style="color:#cbd5e1">Green dot:</strong>
-              Precision/recall on the <strong>full held-out test split</strong> at the <strong>recommended probability threshold</strong> (from threshold tuning / model records). The blue dot is your interactive sweep along the curve.
+              Precision/recall on the <strong>held-out test split</strong> at the <strong>recommended score threshold</strong> (model records).
+              <strong style="color:#cbd5e1">Blue dot:</strong>
+              Interactive sweep only — <strong>not</strong> “the best” point. As recall rises (moving right), precision often <strong>drops</strong>; that slope is the usual tradeoff. The far right is the <strong>most permissive</strong> end (often ~100% recall), not the operating point you would usually ship unless missing risky content is unacceptable.
             </p>
           </article>
         </div>
