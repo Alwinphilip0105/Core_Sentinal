@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Force browsers/CDN to re-fetch this dashboard HTML after updates (matrix tab removed in UI v2). -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
 <meta name="core-sentinel-supabase-url" content="">
 <meta name="core-sentinel-model-records-url" content="">
 <title>Model Health — Core Sentinel</title>
@@ -717,6 +721,9 @@
 
   <main class="container">
     <h1 class="page-title">Model Health</h1>
+    <p class="sub" style="margin-top:-6px;margin-bottom:14px;font-size:12px;opacity:0.85">
+      UI v2 (2026-05) — Summary and Precision-Recall only. If you still see a Confusion Matrix tab, you are viewing a cached copy: use a hard refresh (Ctrl+F5) or load <code>index.html?ui=20260507</code> in this folder, then redeploy GitHub Pages if needed.
+    </p>
 
     <div class="tab-bar" role="tablist"
          aria-label="ML Health sections">
