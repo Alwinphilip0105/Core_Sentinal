@@ -522,6 +522,9 @@
       gap: 4px;
       flex-wrap: wrap;
     }
+    .page-ml .tab-bar {
+      border-bottom-color: rgba(255, 255, 255, 0.12);
+    }
     .tab {
       padding: 10px 20px;
       background: none;
@@ -606,9 +609,32 @@
     .summary-table tr:last-child td {
       border-bottom: none;
     }
-    .status-ok   { color: #10B981; font-weight: 600; }
-    .status-warn { color: #F59E0B; font-weight: 600; }
-    .status-bad  { color: #EF4444; font-weight: 600; }
+    /* Screen: metrics table on dark cards (summary-table was styled for light backgrounds) */
+    .page-ml .summary-table th {
+      color: rgba(232, 232, 232, 0.72);
+      border-bottom-color: rgba(255, 255, 255, 0.14);
+    }
+    .page-ml .summary-table td {
+      color: var(--text);
+      border-bottom-color: rgba(255, 255, 255, 0.08);
+    }
+    .page-ml .summary-table td.summary-plain {
+      color: rgba(232, 232, 232, 0.78);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .page-ml .summary-table td.metric-value {
+      font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+      color: var(--text);
+      font-weight: 500;
+    }
+    .page-ml .summary-table .metric-name {
+      font-weight: 600;
+      color: rgba(232, 232, 232, 0.95);
+    }
+    .status-ok   { color: #34d399; font-weight: 600; }
+    .status-warn { color: #fbbf24; font-weight: 600; }
+    .status-bad  { color: #f87171; font-weight: 600; }
 
     /* ── Category status table ───────────────────── */
     .cat-table {
@@ -633,6 +659,16 @@
       color: #1E293B;
     }
     .cat-table tr:last-child td { border-bottom: none; }
+
+    .page-ml .cat-table th {
+      background: rgba(255, 255, 255, 0.05);
+      color: rgba(232, 232, 232, 0.75);
+      border-bottom-color: rgba(255, 255, 255, 0.12);
+    }
+    .page-ml .cat-table td {
+      color: var(--text);
+      border-bottom-color: rgba(255, 255, 255, 0.08);
+    }
 
     /* ── Category bar chart ──────────────────────── */
     .cat-bar-wrap {
@@ -760,8 +796,7 @@
       </section>
 
       <div class="card" style="margin-top:16px">
-        <h3 style="font-size:15px;font-weight:600;
-                   color:#0F172A;margin-bottom:12px">
+        <h3>
           What these numbers mean
         </h3>
         <table class="summary-table">
@@ -1454,10 +1489,10 @@
           }
           return (
             "<tr>" +
-            '<td style="font-weight:500">' +
+            '<td class="metric-name">' +
             r.label +
             "</td>" +
-            '<td style="font-family:monospace">' +
+            '<td class="metric-value">' +
             disp +
             "</td>" +
             '<td class="' +
@@ -1465,7 +1500,7 @@
             '">' +
             icon +
             "</td>" +
-            '<td style="color:#64748B;font-size:12px">' +
+            '<td class="summary-plain">' +
             r.explain +
             "</td>" +
             "</tr>"
