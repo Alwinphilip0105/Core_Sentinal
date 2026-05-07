@@ -730,11 +730,6 @@
               role="tab" aria-selected="false">
         Precision-Recall
       </button>
-      <button class="tab"
-              data-tab="confusion"
-              role="tab" aria-selected="false">
-        Confusion Matrix
-      </button>
     </div>
 
     <div id="panel-summary" class="tab-panel active">
@@ -894,56 +889,6 @@
       </div>
     </div>
 
-    <div id="panel-confusion" class="tab-panel">
-
-      <div style="margin-bottom:16px;
-                  display:flex;
-                  align-items:center;
-                  gap:12px;
-                  flex-wrap:wrap">
-        <label for="matrixConfig"
-               style="font-size:13px;font-weight:500;
-                      color:#475569">
-          Configuration:
-        </label>
-        <select id="matrixConfig"
-                style="padding:6px 12px;
-                       border:1px solid #E2E8F0;
-                       border-radius:6px;
-                       font-size:13px;
-                       color:#1E293B;
-                       background:#FFFFFF;
-                       cursor:pointer">
-          <option value="ml-warn">
-            ML Only (t_warn = 0.500)
-          </option>
-          <option value="ml-block">
-            ML Only (t_block = 0.920)
-          </option>
-          <option value="regex">
-            Regex + NER Only
-          </option>
-          <option value="combined">
-            Full Combined
-          </option>
-        </select>
-      </div>
-
-      <article class="card chart-card">
-        <h3>Confusion matrix</h3>
-        <div class="chart-box">
-          <svg class="heatmap-svg" id="cmChart"></svg>
-        </div>
-      </article>
-
-      <p style="font-size:12px;color:#94A3B8;
-                margin-top:12px;text-align:center">
-        Each cell shows the percentage of pastes in
-        that outcome category.
-      </p>
-
-    </div>
-
   </main>
 
 <script>
@@ -1000,48 +945,6 @@
       ["Indian Aadhaar", "High", "block", "block", "30-55", "ok"],
       ["Canadian SIN", "High", "block", "block", "25-50", "ok"]
     ];
-    const CONFUSION_MATRIX = [
-      [4767, 61, 12],
-      [42, 3189, 77],
-      [5, 36, 5128]
-    ];
-
-    /** Benchmark 2×2 presets for confusion matrix dropdown (test-set style counts). */
-    const MATRIX_DATA = {
-      "ml-warn": {
-        tn: 186,
-        fp: 141,
-        fn: 265,
-        tp: 2799,
-        label: "ML Only (t_warn=0.500)",
-        n: 3391,
-      },
-      "ml-block": {
-        tn: 264,
-        fp: 63,
-        fn: 265,
-        tp: 2799,
-        label: "ML Only (t_block=0.920)",
-        n: 3391,
-      },
-      regex: {
-        tn: 323,
-        fp: 4,
-        fn: 2907,
-        tp: 157,
-        label: "Regex + NER Only",
-        n: 3391,
-      },
-      combined: {
-        tn: 324,
-        fp: 3,
-        fn: 2908,
-        tp: 156,
-        label: "Full Combined",
-        n: 3391,
-      },
-    };
-
     let CAT_DATA = [
       { name: "CONTACT", f1: 0.922, note: "Emails and phones detected well" },
       { name: "ID", f1: 0.892, note: "IDs detected reliably" },
@@ -2315,6 +2218,7 @@
 
       const mapX = (r) => cx + r * cw;
       const mapY = (p) => cy + (1 - p) * ch;
+      window._prChartState = { svg, mapX, mapY, cx, cy, cw, ch };
 
       const ns = "http://www.w3.org/2000/svg";
       const targetLine = document.createElementNS(ns, "line");
@@ -2379,6 +2283,14 @@
             prec: Number(pv[i] ?? 0),
           });
         }
+        if (
+          Number.isFinite(Number(window._currentTau))
+          && typeof window.interpolatePrAtTau === "function"
+          && typeof window.renderDynamicPrTauMarker === "function"
+        ) {
+          const ptNow = window.interpolatePrAtTau(Number(window._currentTau));
+          if (ptNow) window.renderDynamicPrTauMarker(Number(window._currentTau), ptNow);
+        }
         return;
       }
 
@@ -2412,232 +2324,69 @@
           recall: d[0],
           prec: d[1],
         }));
+        if (
+          Number.isFinite(Number(window._currentTau))
+          && typeof window.interpolatePrAtTau === "function"
+          && typeof window.renderDynamicPrTauMarker === "function"
+        ) {
+          const ptNow = window.interpolatePrAtTau(Number(window._currentTau));
+          if (ptNow) window.renderDynamicPrTauMarker(Number(window._currentTau), ptNow);
+        }
       }
     }
 
-    function drawConfusionMatrix(override) {
-      const svg = document.getElementById("cmChart");
-      if (!svg) return;
-      const w = svg.clientWidth || 560;
-      const h = svg.clientHeight || 240;
-      svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
-      svg.innerHTML = "";
+    function renderDynamicPrTauMarker(tau, pt) {
+      const st = window._prChartState;
+      if (!st || !st.svg || !pt) return;
+      const x = st.mapX(Math.max(0, Math.min(1, Number(pt.recall) || 0)));
+      const y = st.mapY(Math.max(0, Math.min(1, Number(pt.prec) || 0)));
       const ns = "http://www.w3.org/2000/svg";
+      const old = st.svg.querySelector("#prDynamicTauLayer");
+      if (old && old.parentNode) old.parentNode.removeChild(old);
 
-      function countsValid(o) {
-        return (
-          o
-          && typeof o === "object"
-          && [o.tp, o.tn, o.fp, o.fn].every((v) => Number.isFinite(Number(v)))
-        );
-      }
+      const g = document.createElementNS(ns, "g");
+      g.setAttribute("id", "prDynamicTauLayer");
 
-      let bin = null;
-      if (countsValid(override)) {
-        bin = {
-          tp: Number(override.tp),
-          tn: Number(override.tn),
-          fp: Number(override.fp),
-          fn: Number(override.fn),
-        };
-      } else {
-        const selEl = document.getElementById("matrixConfig");
-        const key = selEl && selEl.value ? selEl.value : "ml-warn";
-        const preset = MATRIX_DATA[key];
-        if (countsValid(preset)) {
-          bin = {
-            tp: Number(preset.tp),
-            tn: Number(preset.tn),
-            fp: Number(preset.fp),
-            fn: Number(preset.fn),
-          };
-        }
-      }
+      const v = document.createElementNS(ns, "line");
+      v.setAttribute("x1", x);
+      v.setAttribute("y1", st.cy);
+      v.setAttribute("x2", x);
+      v.setAttribute("y2", st.cy + st.ch);
+      v.setAttribute("stroke", "rgba(59,130,246,0.35)");
+      v.setAttribute("stroke-width", "1.2");
+      v.setAttribute("stroke-dasharray", "4 4");
+      g.appendChild(v);
 
-      if (!bin) {
-        const holdoutCm = retrainSummary?.metrics?.confusion_holdout;
-        if (countsValid(holdoutCm)) {
-          bin = {
-            tp: Number(holdoutCm.tp),
-            tn: Number(holdoutCm.tn),
-            fp: Number(holdoutCm.fp),
-            fn: Number(holdoutCm.fn),
-          };
-        }
-      }
+      const h = document.createElementNS(ns, "line");
+      h.setAttribute("x1", st.cx);
+      h.setAttribute("y1", y);
+      h.setAttribute("x2", st.cx + st.cw);
+      h.setAttribute("y2", y);
+      h.setAttribute("stroke", "rgba(16,185,129,0.32)");
+      h.setAttribute("stroke-width", "1.2");
+      h.setAttribute("stroke-dasharray", "4 4");
+      g.appendChild(h);
 
-      if (bin) {
-        const { tp, tn, fp, fn } = bin;
-        const labels = ["Predicted: Safe", "Predicted: Risky"];
-        const rows = ["Actual: Safe", "Actual: Risky"];
-        const cellSub = [
-          ["Correctly ignored", "False alarm"],
-          ["Missed", "Correctly flagged"],
-        ];
-        const data = [
-          [tn, fp],
-          [fn, tp],
-        ];
-        const max = Math.max(...data.flat(), 1);
-        const x0 = 140;
-        const y0 = 40;
-        const cw = Math.min(168, Math.max(120, Math.floor((w - x0 - 24) / 2)));
-        const chm = 88;
-        labels.forEach((lb, i) => {
-          const t = document.createElementNS(ns, "text");
-          t.setAttribute("x", x0 + i * cw + cw / 2);
-          t.setAttribute("y", 22);
-          t.setAttribute("text-anchor", "middle");
-          t.setAttribute("fill", "#8e97a8");
-          t.setAttribute("font-size", "11");
-          t.textContent = lb;
-          svg.appendChild(t);
-        });
-        rows.forEach((rb, r) => {
-          const t = document.createElementNS(ns, "text");
-          t.setAttribute("x", 8);
-          t.setAttribute("y", y0 + r * chm + chm / 2 + 5);
-          t.setAttribute("fill", "#8e97a8");
-          t.setAttribute("font-size", "11");
-          t.textContent = rb;
-          svg.appendChild(t);
-        });
-        const totals = data.map((row) => row.reduce((a, b) => a + b, 0));
-        for (let r = 0; r < data.length; r++) {
-          for (let c = 0; c < data[r].length; c++) {
-            const v = data[r][c];
-            const isDiag = (r === 0 && c === 0) || (r === 1 && c === 1);
-            const alpha = max ? Math.max(0.08, v / max) : 0.08;
-            const fill = isDiag
-              ? `rgba(2,195,154,${Math.min(0.9, alpha + 0.1)})`
-              : `rgba(229,57,53,${Math.min(0.75, alpha + 0.06)})`;
-            const rect = document.createElementNS(ns, "rect");
-            rect.setAttribute("x", x0 + c * cw + 2);
-            rect.setAttribute("y", y0 + r * chm + 2);
-            rect.setAttribute("width", cw - 4);
-            rect.setAttribute("height", chm - 4);
-            rect.setAttribute("rx", 7);
-            rect.setAttribute("fill", fill);
-            rect.setAttribute("stroke", "rgba(255,255,255,0.15)");
-            rect.setAttribute("stroke-width", "1");
-            const rowTot = totals[r] || 1;
-            const pctStr = `${((v / rowTot) * 100).toFixed(1)}%`;
-            const cellCx = x0 + c * cw + cw / 2;
-            const cellMidY = y0 + r * chm + chm / 2;
-            rect.addEventListener("mousemove", (e) => {
-              tooltip.textContent = `${rows[r]} → ${labels[c]} : ${v} (${pctStr} of row)`;
-              tooltip.style.display = "block";
-              tooltip.style.left = `${e.clientX}px`;
-              tooltip.style.top = `${e.clientY}px`;
-            });
-            rect.addEventListener("mouseleave", () => {
-              tooltip.style.display = "none";
-            });
-            svg.appendChild(rect);
+      const dot = document.createElementNS(ns, "circle");
+      dot.setAttribute("cx", x);
+      dot.setAttribute("cy", y);
+      dot.setAttribute("r", "5.2");
+      dot.setAttribute("fill", "#2563EB");
+      dot.setAttribute("stroke", "#ffffff");
+      dot.setAttribute("stroke-width", "1.5");
+      g.appendChild(dot);
 
-            const tN = document.createElementNS(ns, "text");
-            tN.setAttribute("x", String(cellCx));
-            tN.setAttribute("y", String(cellMidY - 10));
-            tN.setAttribute("text-anchor", "middle");
-            tN.setAttribute("fill", "#ecf7f3");
-            tN.setAttribute("font-size", "14");
-            tN.setAttribute("font-weight", "700");
-            tN.textContent = String(v);
-            svg.appendChild(tN);
+      const t = document.createElementNS(ns, "text");
+      t.setAttribute("x", Math.min(st.cx + st.cw - 170, x + 8));
+      t.setAttribute("y", Math.max(st.cy + 14, y - 10));
+      t.setAttribute("fill", "#94a3b8");
+      t.setAttribute("font-size", "11");
+      t.textContent = `tau=${Number(tau).toFixed(2)}  P=${Number(pt.prec).toFixed(3)}  R=${Number(pt.recall).toFixed(3)}`;
+      g.appendChild(t);
 
-            const tPct = document.createElementNS(ns, "text");
-            tPct.setAttribute("x", String(cellCx));
-            tPct.setAttribute("y", String(cellMidY + 8));
-            tPct.setAttribute("text-anchor", "middle");
-            tPct.setAttribute("fill", "rgba(236,247,243,0.85)");
-            tPct.setAttribute("font-size", "11");
-            tPct.textContent = `${pctStr}`;
-            svg.appendChild(tPct);
-
-            const sub = cellSub[r][c];
-            const tLab = document.createElementNS(ns, "text");
-            tLab.setAttribute("x", String(cellCx));
-            tLab.setAttribute("y", String(cellMidY + 26));
-            tLab.setAttribute("text-anchor", "middle");
-            tLab.setAttribute("font-size", "10");
-            if (r === 1 && c === 0) {
-              tLab.setAttribute("fill", "#EF4444");
-              tLab.setAttribute("font-weight", "600");
-              tLab.textContent = "⚠ Missed";
-            } else {
-              tLab.setAttribute("fill", "#cbd5e1");
-              tLab.textContent = sub;
-            }
-            svg.appendChild(tLab);
-          }
-        }
-        return;
-      }
-
-      const labels = ["Pred:Low", "Pred:Med", "Pred:High"];
-      const rows = ["Actual:Low", "Actual:Med", "Actual:High"];
-      const data = CONFUSION_MATRIX;
-      const max = Math.max(...data.flat());
-      const x0 = 120, y0 = 36, cw = 120, cellH = 54;
-
-      labels.forEach((lb, i) => {
-        const t = document.createElementNS(ns, "text");
-        t.setAttribute("x", x0 + i * cw + cw / 2);
-        t.setAttribute("y", 20);
-        t.setAttribute("text-anchor", "middle");
-        t.setAttribute("fill", "#8e97a8");
-        t.setAttribute("font-size", "11");
-        t.textContent = lb;
-        svg.appendChild(t);
-      });
-      rows.forEach((rb, r) => {
-        const t = document.createElementNS(ns, "text");
-        t.setAttribute("x", 10);
-        t.setAttribute("y", y0 + r * cellH + cellH / 2 + 4);
-        t.setAttribute("fill", "#8e97a8");
-        t.setAttribute("font-size", "11");
-        t.textContent = rb;
-        svg.appendChild(t);
-      });
-
-      const totals = data.map((row) => row.reduce((a,b)=>a+b,0));
-      for (let r = 0; r < data.length; r++) {
-        for (let c = 0; c < data[r].length; c++) {
-          const v = data[r][c];
-          const isDiag = r === c;
-          const alpha = max ? Math.max(0.08, v / max) : 0.08;
-          const fill = isDiag ? `rgba(2,195,154,${Math.min(0.9, alpha + 0.1)})` : `rgba(229,57,53,${Math.min(0.75, alpha + 0.06)})`;
-          const rect = document.createElementNS(ns, "rect");
-          rect.setAttribute("x", x0 + c * cw + 2);
-          rect.setAttribute("y", y0 + r * cellH + 2);
-          rect.setAttribute("width", cw - 4);
-          rect.setAttribute("height", cellH - 4);
-          rect.setAttribute("rx", 7);
-          rect.setAttribute("fill", fill);
-          rect.setAttribute("stroke", "rgba(255,255,255,0.15)");
-          rect.setAttribute("stroke-width", "1");
-          const pct = totals[r] ? ((v / totals[r]) * 100).toFixed(2) : "0.00";
-          rect.addEventListener("mousemove", (e) => {
-            tooltip.textContent = `${rows[r]} -> ${labels[c]} : ${v} (${pct}%)`;
-            tooltip.style.display = "block";
-            tooltip.style.left = `${e.clientX}px`;
-            tooltip.style.top = `${e.clientY}px`;
-          });
-          rect.addEventListener("mouseleave", () => { tooltip.style.display = "none"; });
-          svg.appendChild(rect);
-
-          const t = document.createElementNS(ns, "text");
-          t.setAttribute("x", x0 + c * cw + cw / 2);
-          t.setAttribute("y", y0 + r * cellH + cellH / 2 + 4);
-          t.setAttribute("text-anchor", "middle");
-          t.setAttribute("fill", "#ecf7f3");
-          t.setAttribute("font-size", "13");
-          t.setAttribute("font-weight", "700");
-          t.textContent = String(v);
-          svg.appendChild(t);
-        }
-      }
+      st.svg.appendChild(g);
     }
+    window.renderDynamicPrTauMarker = renderDynamicPrTauMarker;
 
     function drawDistributionHeatmap(events) {
       const svg = document.getElementById("distHeatmap");
@@ -2935,7 +2684,6 @@
         const next = document.body.classList.contains("compact") ? "comfortable" : "compact";
         applyDensityMode(next);
         drawPRChart();
-        drawConfusionMatrix();
       });
     }
 
@@ -3071,7 +2819,6 @@
         setKpiTarget("aucMetric", METRICS_STATIC.auc);
 
         drawPRChart();
-        drawConfusionMatrix();
         if (typeof window.refreshMlTauOperatingPoints === "function") {
           window.refreshMlTauOperatingPoints();
         }
@@ -3212,13 +2959,6 @@
 
     (async function init() {
       initMlSupabasePanel();
-      const mx = document.getElementById("matrixConfig");
-      if (mx) {
-        mx.addEventListener("change", () => {
-          const d = MATRIX_DATA[mx.value];
-          if (d) drawConfusionMatrix(d);
-        });
-      }
       initDensityControl();
       const policyLoad = await loadPolicyThresholds();
       runtimePolicy = policyLoad.policy;
@@ -3256,7 +2996,6 @@
             window.requestAnimationFrame(function () {
               try {
                 drawPRChart();
-                drawConfusionMatrix();
               } catch (e) {
                 /* ignore */
               }
@@ -3347,9 +3086,13 @@
           var last = s[s.length - 1];
           return { recall: last.recall, prec: last.prec };
         }
+        window.interpolatePrAtTau = function (tau) {
+          return interpolate(window._prSweepPoints || [], Number(tau));
+        };
 
         function updateReadout() {
           var tau = Number(slider.value) / 100;
+          window._currentTau = tau;
           var pt = interpolate(window._prSweepPoints || [], tau);
           if (pt) {
             readout.textContent =
@@ -3360,6 +3103,9 @@
               '% of risky pastes · precision ' +
               (pt.prec * 100).toFixed(1) +
               '%';
+            if (typeof window.renderDynamicPrTauMarker === 'function') {
+              window.renderDynamicPrTauMarker(tau, pt);
+            }
           } else {
             readout.textContent =
               'At τ = ' +

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import random
 import time
 import traceback
@@ -180,8 +181,13 @@ def score_configs(rows: list[SpanRow], ml: MlScorer, ner: NerEngine, tau_cal: fl
 
     # Parallel fusion: Regex/NER and ML each score all rows.
     # Final full decision is OR fusion across detector outputs.
+    #
+    # For ROC/AUC ranking, use a continuous blend rather than max(ml, union_binary),
+    # otherwise many positives collapse to identical score=1.0 and distort curve shape.
     cand_idx = np.where(union == 1)[0]
-    full_score = np.maximum(ml_scores, union.astype(np.float64))
+    alpha = float(np.clip(float(os.environ.get("GUARDRAIL_FUSION_ALPHA_ML", "0.7")), 0.0, 1.0))
+    beta = 1.0 - alpha
+    full_score = (alpha * ml_scores) + (beta * union.astype(np.float64))
 
     cfg = {
         col["regex_ner"]: {"pred": union, "score": union.astype(float)},
@@ -435,26 +441,22 @@ def step4(ctx: dict) -> None:
     fig.savefig(OUT / "category_f1_comparison.png")
     plt.close(fig)
 
-    # Chart D: precision-recall curve
+    # Chart D: precision-recall curve (ML-only for report clarity)
     fig, ax = plt.subplots(figsize=(10, 7), dpi=150)
-    for label, score in [
-        ("ML classifier", ml_score),
-        ("Full OR-fusion", full_score),
-    ]:
-        pr, rc, thr = precision_recall_curve(y, score)
-        au = average_precision_score(y, score)
-        ax.plot(rc, pr, label=f"{label} (AUPRC={au:.4f})")
-        if len(thr) > 0:
-            def _mark(tau, color, txt):
-                idx = int(np.argmin(np.abs(thr - tau)))
-                ax.scatter(rc[idx + 1], pr[idx + 1], color=color, s=40)
-                ax.annotate(txt, (rc[idx + 1], pr[idx + 1]))
-            _mark(tau_cal, "red", f"{label} val-calib t")
-            _mark(tau_hold, "green", f"{label} test-rec t")
+    pr, rc, thr = precision_recall_curve(y, ml_score)
+    au = average_precision_score(y, ml_score)
+    ax.plot(rc, pr, label=f"ML classifier (AUPRC={au:.4f})", color="tab:blue", linewidth=2.2)
+    if len(thr) > 0:
+        def _mark(tau, color, txt):
+            idx = int(np.argmin(np.abs(thr - tau)))
+            ax.scatter(rc[idx + 1], pr[idx + 1], color=color, s=40)
+            ax.annotate(txt, (rc[idx + 1], pr[idx + 1]))
+        _mark(tau_cal, "red", "ML val-calib t")
+        _mark(tau_hold, "green", "ML test-rec t")
     ax.axhline(0.85, linestyle="--", color="orange", label="Min precision target")
     ax.set_xlabel("Recall")
     ax.set_ylabel("Precision")
-    ax.set_title("Precision-Recall Curve")
+    ax.set_title(f"Precision-Recall curve for the ML classifier (AUPRC={au:.4f}) on the held-out test set.")
     ax.legend()
     fig.tight_layout()
     fig.savefig(OUT / "precision_recall_curve.png")

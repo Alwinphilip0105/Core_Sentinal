@@ -314,7 +314,31 @@ Example committed summary (see file for full `mismatches`):
 
 ---
 
-## 12. Files to update when you retrain
+## 12. Benchmark delta table (professor Q&A ready)
+
+From `core-sentinel-guardrail/benchmark_report_hipaa_full.txt` on the full Arrow test fallback (`n=3391`).
+Baseline is **Regex+NER**; deltas are shown in **percentage points (pp)** and relative `%`.
+
+| Metric | Regex+NER | ML val-calib | ML test-rec | Full val-calib | Full test-rec |
+|--------|-----------|--------------|-------------|----------------|---------------|
+| Accuracy | 0.9030 | 0.8832 (**-1.98 pp**, -2.19%) | 0.8641 (**-3.89 pp**, -4.31%) | 0.9071 (**+0.41 pp**, +0.45%) | 0.9068 (**+0.38 pp**, +0.42%) |
+| Precision | 0.9108 | 0.9270 (**+1.62 pp**, +1.78%) | 0.9437 (**+3.29 pp**, +3.61%) | 0.9077 (**-0.31 pp**, -0.34%) | 0.9087 (**-0.21 pp**, -0.23%) |
+| Recall (TPR) | 0.9896 | 0.9452 (**-4.44 pp**, -4.49%) | 0.9034 (**-8.62 pp**, -8.71%) | 0.9987 (**+0.91 pp**, +0.92%) | 0.9971 (**+0.75 pp**, +0.76%) |
+| F1 | 0.9485 | 0.9360 (**-1.25 pp**, -1.32%) | 0.9231 (**-2.54 pp**, -2.68%) | 0.9510 (**+0.25 pp**, +0.26%) | 0.9508 (**+0.23 pp**, +0.24%) |
+| F2 | 0.9727 | 0.9415 (**-3.12 pp**, -3.21%) | 0.9112 (**-6.15 pp**, -6.32%) | 0.9791 (**+0.64 pp**, +0.66%) | 0.9780 (**+0.53 pp**, +0.54%) |
+| FNR (lower is better) | 0.0104 | 0.0548 (**+4.44 pp**, +426.9% worse) | 0.0966 (**+8.62 pp**, +828.8% worse) | 0.0013 (**-0.91 pp**, -87.5% better) | 0.0029 (**-0.75 pp**, -72.1% better) |
+| AUC-ROC | 0.5406 | 0.8462 (**+0.3056**, +56.5%) | 0.8462 (**+0.3056**, +56.5%) | 0.5409 (**+0.0003**, +0.1%) | 0.5409 (**+0.0003**, +0.1%) |
+| AUPRC | 0.9107 | 0.9789 (**+0.0682**, +7.49%) | 0.9789 (**+0.0682**, +7.49%) | 0.9108 (**+0.0001**, +0.01%) | 0.9108 (**+0.0001**, +0.01%) |
+
+Professor-facing interpretation:
+
+- ML-only increases precision/ranking (AUC/AUPRC) but loses recall at stricter operating points on this pattern-heavy slice.
+- Full OR-fusion recovers and slightly improves recall/F1 over Regex+NER baseline.
+- On this fallback benchmark, true negatives are relatively scarce; quote FPR/Specificity with that caveat.
+
+---
+
+## 13. Files to update when you retrain
 
 1. Run training, evaluation, calibration, and `publish_website_records.py` (or your CI/sync path) so **`docs/data/model_records.json`** and **`reports/*.json`** refresh.  
 2. **`config/risk_policy.json`** is updated by `calibrate_thresholds.py --apply` when calibration selects a new binary threshold.  

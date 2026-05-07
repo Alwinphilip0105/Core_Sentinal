@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import random
 import re
 import sys
@@ -583,12 +584,20 @@ def evaluate(
     ml_pred_test = (ml_scores >= thr_test_recommended).astype(np.int64)
 
     # Parallel fusion: regex/NER and ML each evaluate all candidates.
-    # Final "Full" decision is OR fusion rather than ML prefilter gating.
+    # Final "Full" decision remains OR fusion (binary decision surface).
+    #
+    # IMPORTANT for ROC/AUC: do not use max(ml_score, prefilter_binary) as the score because it
+    # collapses ranking when prefilter==1 (many points become exactly 1.0).
+    # Use a continuous blend for score-based metrics, while keeping OR fusion for decisions.
     prefilter = regex_ner_pred.astype(np.int64)
     full_pred_val = ((prefilter == 1) | (ml_pred_val == 1)).astype(np.int64)
     full_pred_test = ((prefilter == 1) | (ml_pred_test == 1)).astype(np.int64)
-    full_score_val = np.maximum(ml_scores, prefilter.astype(np.float64))
-    full_score_test = np.maximum(ml_scores, prefilter.astype(np.float64))
+    alpha = float(os.environ.get("GUARDRAIL_FUSION_ALPHA_ML", "0.7"))
+    alpha = max(0.0, min(1.0, alpha))
+    beta = 1.0 - alpha
+    regex_ner_conf = regex_ner_score.astype(np.float64)
+    full_score_val = (alpha * ml_scores) + (beta * regex_ner_conf)
+    full_score_test = full_score_val.copy()
 
     col = benchmark_column_names(thr_validation_calib, thr_test_recommended)
     configs = {
