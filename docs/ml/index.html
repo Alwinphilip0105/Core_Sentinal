@@ -609,28 +609,57 @@
     .summary-table tr:last-child td {
       border-bottom: none;
     }
-    /* Screen: metrics table on dark cards (summary-table was styled for light backgrounds) */
-    .page-ml .summary-table th {
+    /* Screen: main metrics table on dark cards only (not .tech-details light panel) */
+    .page-ml .card .summary-table th {
       color: rgba(232, 232, 232, 0.72);
       border-bottom-color: rgba(255, 255, 255, 0.14);
     }
-    .page-ml .summary-table td {
+    .page-ml .card .summary-table td {
       color: var(--text);
       border-bottom-color: rgba(255, 255, 255, 0.08);
     }
-    .page-ml .summary-table td.summary-plain {
+    .page-ml .card .summary-table td.summary-plain {
       color: rgba(232, 232, 232, 0.78);
       font-size: 12px;
       line-height: 1.45;
     }
-    .page-ml .summary-table td.metric-value {
+    .page-ml .card .summary-table td.metric-value {
       font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
       color: var(--text);
       font-weight: 500;
     }
-    .page-ml .summary-table .metric-name {
+    .page-ml .card .summary-table .metric-name {
       font-weight: 600;
       color: rgba(232, 232, 232, 0.95);
+    }
+
+    /* Technical Details: light inset — dark text (avoid light-on-light from inheriting .page-ml table rules) */
+    .page-ml .tech-details {
+      background: #e8edf4;
+      border-color: rgba(255, 255, 255, 0.14);
+    }
+    .page-ml .tech-details summary {
+      color: #0f172a;
+    }
+    .page-ml .tech-details .tech-details-body {
+      color: #1e293b;
+    }
+    .page-ml .tech-details .tech-details-intro {
+      color: #334155;
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+    .page-ml .tech-details .summary-table {
+      margin-top: 8px;
+    }
+    .page-ml .tech-details .summary-table th {
+      color: #475569;
+      border-bottom-color: #94a3b8;
+    }
+    .page-ml .tech-details .summary-table td {
+      color: #0f172a;
+      border-bottom-color: #cbd5e1;
+      font-weight: 500;
     }
     .status-ok   { color: #34d399; font-weight: 600; }
     .status-warn { color: #fbbf24; font-weight: 600; }
@@ -842,8 +871,7 @@
     <details class="tech-details">
       <summary>Technical Details</summary>
       <div class="tech-details-body" id="techDetailsBody">
-        <p style="color:#64748B;font-size:12px;
-                  margin-bottom:8px">
+        <p class="tech-details-intro">
           Raw metrics for ML engineers.
         </p>
         <table class="summary-table" id="techMetricsTable">
