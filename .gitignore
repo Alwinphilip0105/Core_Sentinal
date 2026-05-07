@@ -102,3 +102,6 @@ core-sentinel-guardrail/data/extra_pools/*
 !core-sentinel-guardrail/data/extra_pools/financial_balanced_p1.jsonl
 core-sentinel-guardrail/data/nemotron/
 core-sentinel-guardrail/data/PRODUCTION_DATA.md
+
+# Cursor IDE — local/agent state (plans, MCP cache under project, etc.). Do not commit.
+.cursor/
