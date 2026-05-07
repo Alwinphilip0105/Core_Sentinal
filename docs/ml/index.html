@@ -265,13 +265,13 @@
       vertical-align: middle;
       background: var(--legend-muted);
     }
-    .legend span.l-pr::before { background: var(--accent); }
-    .legend span.l-op::before { background: var(--danger); }
+    .legend span.l-pr::before { background: #3b82f6; }
+    .legend span.l-op::before { background: #f97316; }
     .legend span.l-target::before { background: var(--warn); }
     .legend span.l-random::before { background: var(--muted); }
 
     .legend-tau {
-      color: var(--accent);
+      color: #2563eb;
       font-size: var(--fs-label);
       font-weight: 600;
       letter-spacing: 0.04em;
@@ -514,18 +514,6 @@
       }
     }
 
-    .page-ml .pr-benchmark-card .pr-benchmark-figure {
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 10px;
-      padding: 8px;
-      background: #ffffff;
-      overflow: auto;
-    }
-    .page-ml .pr-benchmark-card h3 {
-      margin-bottom: 6px;
-    }
-
-    /* ── Tab navigation ─────────────────────────── */
     .tab-bar {
       display: flex;
       border-bottom: 2px solid #E2E8F0;
@@ -904,23 +892,29 @@
 
         <div style="flex:1;min-width:280px">
           <article class="card chart-card">
-            <h3>PR curve</h3>
+            <h3 style="font-size:16px;line-height:1.35;margin-bottom:2px">
+              Precision–Recall — interactive (same zoom as matplotlib report)
+            </h3>
+            <p id="prCurveTitleAuprc" class="sub" style="margin:0 0 8px;font-size:12px;line-height:1.4;color:var(--muted);min-height:1.2em"></p>
             <div class="chart-box" id="prChartCard">
               <svg class="chart-svg" id="prChart"></svg>
             </div>
             <div class="legend">
-              <span class="l-pr">PR</span>
-              <span class="l-op">90% P target</span>
-              <span style="color:#22c55e;font-size:11px" title="Test set at recommended score threshold">● test τ</span>
+              <span class="l-pr">ML classifier PR</span>
+              <span class="l-op">min precision 0.85</span>
+              <span style="color:#ef4444;font-size:11px" title="Validation calibration threshold on the PR sweep">● val-calib</span>
+              <span style="color:#22c55e;font-size:11px" title="Held-out test at recommended score threshold">● test-rec</span>
               <span class="legend-tau">● sim</span>
               <span style="color:#f59e0b;font-size:11px">◆ warn</span>
               <span style="color:#10b981;font-size:11px">■ block</span>
             </div>
             <p class="sub" style="margin-top:10px;font-size:11px;line-height:1.45;color:#94a3b8;max-width:62ch">
+              <strong style="color:#cbd5e1">Red dot:</strong>
+              Point on the PR curve at <strong>calibration.prob_threshold_risky</strong> (validation / sweep axis when exported).
               <strong style="color:#cbd5e1">Green dot:</strong>
-              Precision/recall on the <strong>held-out test split</strong> at the <strong>recommended score threshold</strong> (model records).
+              <strong>Holdout test</strong> at <strong>metrics.recommended_threshold</strong> (model records).
               <strong style="color:#cbd5e1">Blue dot:</strong>
-              Interactive sweep only — <strong>not</strong> “the best” point. As recall rises (moving right), precision often <strong>drops</strong>; that slope is the usual tradeoff. The far right is the <strong>most permissive</strong> end (often ~100% recall), not the operating point you would usually ship unless missing risky content is unacceptable.
+              Interactive sweep along the curve (slider position, not necessarily a shipped τ). As recall rises to the right, precision usually falls — that tradeoff is the PR slope.
             </p>
           </article>
         </div>
@@ -978,37 +972,6 @@
 
         </div>
       </div>
-
-      <article class="card pr-benchmark-card" style="margin-top:20px">
-        <h3>Benchmark PR curve (matplotlib)</h3>
-        <p class="sub" style="margin-bottom:12px;font-size:12px;line-height:1.45;color:var(--muted)">
-          Full evaluation plot matching the professor report: PR line with AUPRC in the title, orange
-          <strong>min precision 0.85</strong> target,
-          <span style="color:#f87171">red</span> = ML val-calib <code>t</code>,
-          <span style="color:#34d399">green</span> = ML test-rec <code>t</code>.
-          Produced by <code>core-sentinel-guardrail/professor_final_benchmark.py</code> as
-          <code>outputs/precision_recall_curve.png</code>; copied into
-          <code>docs/ml/assets/</code> when you run <code>publish_website_records.py</code>.
-        </p>
-        <div class="pr-benchmark-figure">
-          <img id="prBenchmarkPng"
-               src="assets/precision_recall_curve.png"
-               alt="Precision–Recall curve for the ML classifier with AUPRC, min precision target, val-calib and test-rec points"
-               width="1000"
-               height="700"
-               loading="lazy"
-               decoding="async"
-               style="max-width:100%;height:auto;display:block;border-radius:6px"
-               onerror="this.style.display='none';var el=document.getElementById('prBenchmarkPngMissing');if(el){el.style.display='block';}" />
-          <p id="prBenchmarkPngMissing" class="sub" style="display:none;margin:0;padding:12px;background:rgba(251,191,36,0.12);border-radius:8px;color:#fcd34d;border:1px solid rgba(251,191,36,0.35)">
-            <strong>Figure not found.</strong> From repo root run:
-            <code style="color:#e2e8f0">python core-sentinel-guardrail/professor_final_benchmark.py</code>
-            then
-            <code style="color:#e2e8f0">python core-sentinel-guardrail/publish_website_records.py</code>
-            to generate and copy <code style="color:#e2e8f0">precision_recall_curve.png</code> here.
-          </p>
-        </div>
-      </article>
     </div>
 
   </main>
@@ -1165,6 +1128,44 @@
       if (v === null || v === undefined) return false;
       if (typeof v === "string" && v.trim() === "") return false;
       return true;
+    }
+
+    /** Matplotlib-style vertical zoom (precision 0.85–1.0) to match professor PR plots. */
+    const PR_Y_VIEW_MIN = 0.85;
+    const PR_Y_VIEW_MAX = 1.0;
+    const PR_MIN_PREC_TARGET = 0.85;
+    function precisionToMapY(p, cy, ch) {
+      const pp = Number(p);
+      if (!Number.isFinite(pp)) return cy + ch * 0.5;
+      const clamped = Math.max(0, Math.min(1, pp));
+      const y = cy + ((PR_Y_VIEW_MAX - clamped) / (PR_Y_VIEW_MAX - PR_Y_VIEW_MIN)) * ch;
+      return Math.max(cy, Math.min(cy + ch, y));
+    }
+    function updatePrCurveTitle(summary) {
+      const el = document.getElementById("prCurveTitleAuprc");
+      if (!el) return;
+      if (!summary || typeof summary !== "object") {
+        el.textContent = "";
+        return;
+      }
+      const m = summary.metrics || {};
+      const ra = isPresentMetric(m.risky_auprc) ? Number(m.risky_auprc) : Number.NaN;
+      const au = Number.isFinite(ra)
+        ? ra
+        : (isPresentMetric(m.auc) ? Number(m.auc) : Number.NaN);
+      if (Number.isFinite(au)) {
+        el.textContent =
+          "AUPRC=" +
+          au.toFixed(4) +
+          " on held-out test · Y: precision " +
+          PR_Y_VIEW_MIN +
+          "–" +
+          PR_Y_VIEW_MAX +
+          " (same zoom as matplotlib report)";
+      } else {
+        el.textContent =
+          "Y-axis: precision " + PR_Y_VIEW_MIN + "–" + PR_Y_VIEW_MAX + " (zoomed)";
+      }
     }
 
     function isWebsiteRecordsSummary(summary) {
@@ -1639,6 +1640,7 @@
           mcc: null,
           auprc: null,
         });
+        updatePrCurveTitle(null);
         return;
       }
       if (summary.charts && typeof summary.charts === "object") {
@@ -1763,6 +1765,7 @@
         mcc: mcc,
         auprc: auprc,
       });
+      updatePrCurveTitle(summary);
 
       // ── Live category F1 from model_records ──────────
       (function () {
@@ -2270,15 +2273,15 @@
       svg.appendChild(g);
     }
 
-    /** Numeric tick labels 0.0–1.0 for precision–recall plots (both axes). */
+    /** Recall 0–1 (x); precision Y zoom PR_Y_VIEW_MIN–PR_Y_VIEW_MAX (matplotlib-style). */
     function addPrChartAxisValueLabels(svg, cx, cy, cw, ch) {
       const ns = "http://www.w3.org/2000/svg";
       const g = document.createElementNS(ns, "g");
       g.setAttribute("class", "pr-axis-ticks");
       const tickFill = readCssVar("--chart-tick", "rgba(180, 190, 200, 0.8)");
       const fs = "10";
-      const steps = [0, 0.2, 0.4, 0.6, 0.8, 1.0];
-      steps.forEach((v) => {
+      const xSteps = [0, 0.2, 0.4, 0.6, 0.8, 1.0];
+      xSteps.forEach((v) => {
         const tx = document.createElementNS(ns, "text");
         tx.setAttribute("x", cx + v * cw);
         tx.setAttribute("y", cy + ch + 14);
@@ -2288,15 +2291,16 @@
         tx.textContent = v.toFixed(1);
         g.appendChild(tx);
       });
-      steps.forEach((p) => {
-        const ly = cy + (1 - p) * ch;
+      const ySteps = [0.85, 0.88, 0.9, 0.92, 0.94, 0.96, 0.98, 1.0];
+      ySteps.forEach((p) => {
+        const ly = precisionToMapY(p, cy, ch);
         const ty = document.createElementNS(ns, "text");
         ty.setAttribute("x", cx - 6);
         ty.setAttribute("y", ly + 3);
         ty.setAttribute("text-anchor", "end");
         ty.setAttribute("fill", tickFill);
         ty.setAttribute("font-size", fs);
-        ty.textContent = p.toFixed(1);
+        ty.textContent = p >= 1 ? "1.00" : p.toFixed(2);
         g.appendChild(ty);
       });
       svg.appendChild(g);
@@ -2521,23 +2525,23 @@
       const h = svg.clientHeight || 300;
       svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
       svg.innerHTML = "";
-      const pad = { l: 58, r: 16, t: 16, b: 48 };
+      const pad = { l: 62, r: 16, t: 16, b: 48 };
       const cx = pad.l, cy = pad.t, cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
       addGrid(svg, cx, cy, cw, ch, 8, 6);
       drawAxes(svg, cx, cy, cw, ch, "Recall", "Precision");
       addPrChartAxisValueLabels(svg, cx, cy, cw, ch);
 
       const mapX = (r) => cx + r * cw;
-      const mapY = (p) => cy + (1 - p) * ch;
+      const mapY = (p) => precisionToMapY(p, cy, ch);
       window._prChartState = { svg, mapX, mapY, cx, cy, cw, ch };
 
       const ns = "http://www.w3.org/2000/svg";
       const targetLine = document.createElementNS(ns, "line");
       targetLine.setAttribute("x1", cx);
       targetLine.setAttribute("x2", cx + cw);
-      targetLine.setAttribute("y1", mapY(0.90));
-      targetLine.setAttribute("y2", mapY(0.90));
-      targetLine.setAttribute("stroke", "var(--warn)");
+      targetLine.setAttribute("y1", mapY(PR_MIN_PREC_TARGET));
+      targetLine.setAttribute("y2", mapY(PR_MIN_PREC_TARGET));
+      targetLine.setAttribute("stroke", "#f97316");
       targetLine.setAttribute("stroke-width", "1.5");
       targetLine.setAttribute("stroke-dasharray", "5 5");
       svg.appendChild(targetLine);
@@ -2550,22 +2554,13 @@
         const path = document.createElementNS(nsPath, "path");
         path.setAttribute("d", pathD);
         path.setAttribute("fill", "none");
-        path.setAttribute("stroke", "var(--accent)");
+        path.setAttribute("stroke", "#3b82f6");
         path.setAttribute("stroke-width", "2.5");
         path.classList.add("animate-path");
         svg.appendChild(path);
         const prBox = retrainSummary?.evaluation?.pr_curve_summary;
         const hcBox = prBox?.high_class_curve || prBox;
         const hop = hcBox?.holdout_threshold_point;
-        if (hop && Number.isFinite(Number(hop.recall)) && Number.isFinite(Number(hop.precision))) {
-          addHoverablePoint(
-            svg,
-            mapX(Math.max(0, Math.min(1, Number(hop.recall)))),
-            mapY(Math.max(0, Math.min(1, Number(hop.precision)))),
-            "#22c55e",
-            `Full test split · recommended threshold · P=${Number(hop.precision).toFixed(3)} R=${Number(hop.recall).toFixed(3)} · τ=${Number(hop.threshold).toFixed(2)} — metrics on the entire held-out test set at the threshold from model records / binary threshold tuning.`
-          );
-        }
         const rv = curve.recall;
         const pv = curve.precision;
         const th = curve.thresholds;
@@ -2602,6 +2597,37 @@
           }
         }
         window._prHasThresholdAxis = hasTauAxis;
+
+        const calibTauRaw = retrainSummary?.calibration?.prob_threshold_risky;
+        const calibTau = Number(calibTauRaw);
+        if (
+          hasTauAxis
+          && isPresentMetric(calibTauRaw)
+          && Number.isFinite(calibTau)
+          && window._prSweepPoints.length
+        ) {
+          const vPt = interpolateByScoreThreshold(calibTau, window._prSweepPoints);
+          if (vPt) {
+            addHoverablePoint(
+              svg,
+              mapX(vPt.recall),
+              mapY(vPt.prec),
+              "#ef4444",
+              `ML val-calib τ=${calibTau.toFixed(3)} → P=${vPt.prec.toFixed(3)} R=${vPt.recall.toFixed(3)} (calibration.prob_threshold_risky on PR sweep)`
+            );
+          }
+        }
+
+        if (hop && Number.isFinite(Number(hop.recall)) && Number.isFinite(Number(hop.precision))) {
+          addHoverablePoint(
+            svg,
+            mapX(Math.max(0, Math.min(1, Number(hop.recall)))),
+            mapY(Math.max(0, Math.min(1, Number(hop.precision)))),
+            "#22c55e",
+            `ML test-rec · holdout at recommended τ · P=${Number(hop.precision).toFixed(3)} R=${Number(hop.recall).toFixed(3)} · τ=${Number(hop.threshold).toFixed(3)}`
+          );
+        }
+
         drawPrPolicyMarkers(svg, mapX, mapY);
         if (
           Number.isFinite(Number(window._currentTau))
@@ -2621,7 +2647,7 @@
           svg,
           mapX(0.5),
           mapY(Math.max(0.1, Math.min(0.99, polAuprc))),
-          "var(--accent)",
+          "#3b82f6",
           `Policy AUPRC ${polAuprc.toFixed(3)}`
         );
         return;
@@ -2632,12 +2658,12 @@
         const path = document.createElementNS(ns, "path");
         path.setAttribute("d", prPath);
         path.setAttribute("fill", "none");
-        path.setAttribute("stroke", "var(--accent)");
+        path.setAttribute("stroke", "#3b82f6");
         path.setAttribute("stroke-width", "2.5");
         path.classList.add("animate-path");
         svg.appendChild(path);
         PR_POINTS.forEach((p) => {
-          addHoverablePoint(svg, mapX(p[0]), mapY(p[1]), "var(--accent)", `Demo point  P=${p[1].toFixed(3)}  R=${p[0].toFixed(3)}`);
+          addHoverablePoint(svg, mapX(p[0]), mapY(p[1]), "#3b82f6", `Demo point  P=${p[1].toFixed(3)}  R=${p[0].toFixed(3)}`);
         });
         window._prPolyline = PR_POINTS.map((d) => ({
           recall: d[0],
