@@ -9,4 +9,8 @@ Files
 Regenerate (repo root, Playwright + Chromium installed):
   python scripts/capture_ml_dashboard_screenshots.py
 
+Also refreshes README/marketing PNGs in docs/: hub-preview-top.png, index-preview-desktop-viewport.png,
+index-preview-mobile.png, demo-separated-tour-preview.png, admin-preview-redesign-demo.png (if admin exists),
+and copies 01-summary-tab.png → docs/ml-health-preview-final.png.
+
 The script serves docs/ on port 8765 if that port is free.
