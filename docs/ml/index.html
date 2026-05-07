@@ -255,26 +255,63 @@
       margin-top: 8px;
       font-size: var(--fs-body);
       color: var(--muted);
+      align-items: center;
+      line-height: 1.35;
     }
-    .legend span::before {
+    /* Line swatches (curve + horizontal target) */
+    .legend .pr-leg-line::before {
       content: "";
       display: inline-block;
-      width: 10px;
+      width: 14px;
       height: 2px;
+      margin-right: 6px;
+      vertical-align: middle;
+      border-radius: 1px;
+    }
+    .page-ml .legend .pr-leg-line.pr-leg-curve::before {
+      background: #3b82f6;
+      height: 2.5px;
+    }
+    .page-ml .legend .pr-leg-line.pr-leg-target::before {
+      background: transparent;
+      border: none;
+      border-bottom: 2px dashed #f97316;
+      width: 14px;
+      height: 0;
+      margin-bottom: 1px;
+    }
+    /* Dot swatches (match SVG markers) */
+    .legend .pr-leg-dot::before {
+      content: "";
+      display: inline-block;
+      width: 7px;
+      height: 7px;
       margin-right: 5px;
       vertical-align: middle;
-      background: var(--legend-muted);
+      border-radius: 50%;
+      box-sizing: border-box;
     }
-    .legend span.l-pr::before { background: #3b82f6; }
-    .legend span.l-op::before { background: #f97316; }
-    .legend span.l-target::before { background: var(--warn); }
-    .legend span.l-random::before { background: var(--muted); }
-
-    .legend-tau {
+    .page-ml .legend .pr-leg-dot.pr-leg-valcalib::before {
+      background: #ef4444;
+      border: 1px solid rgba(255, 255, 255, 0.45);
+    }
+    .page-ml .legend .pr-leg-dot.pr-leg-testrec::before {
+      background: #22c55e;
+      border: 1px solid rgba(255, 255, 255, 0.45);
+    }
+    .page-ml .legend .pr-leg-dot.pr-leg-sim {
       color: #2563eb;
       font-size: var(--fs-label);
       font-weight: 600;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.03em;
+    }
+    .page-ml .legend .pr-leg-dot.pr-leg-sim::before {
+      background: #2563eb;
+      border: 1px solid rgba(255, 255, 255, 0.55);
+    }
+    /* Policy markers use Unicode glyphs; no line swatch */
+    .legend .pr-leg-policy::before {
+      display: none;
     }
 
     .heatmap-svg {
@@ -511,6 +548,15 @@
       html body.page-ml td,
       html body.page-ml th {
         color: #222;
+      }
+      html body.page-ml .pr-curve-notes p {
+        color: #222 !important;
+      }
+      html body.page-ml .pr-curve-notes strong {
+        color: #111 !important;
+      }
+      html body.page-ml .pr-curve-notes code {
+        color: #333 !important;
       }
     }
 
@@ -893,29 +939,29 @@
         <div style="flex:1;min-width:280px">
           <article class="card chart-card">
             <h3 style="font-size:16px;line-height:1.35;margin-bottom:2px">
-              Precision–Recall — interactive (same zoom as matplotlib report)
+              Precision–Recall <span style="font-weight:500;color:var(--muted)">(interactive)</span>
             </h3>
             <p id="prCurveTitleAuprc" class="sub" style="margin:0 0 8px;font-size:12px;line-height:1.4;color:var(--muted);min-height:1.2em"></p>
             <div class="chart-box" id="prChartCard">
               <svg class="chart-svg" id="prChart"></svg>
             </div>
-            <div class="legend">
-              <span class="l-pr">ML classifier PR</span>
-              <span class="l-op">min precision 0.85</span>
-              <span style="color:#ef4444;font-size:11px" title="Validation calibration threshold on the PR sweep">● val-calib</span>
-              <span style="color:#22c55e;font-size:11px" title="Held-out test at recommended score threshold">● test-rec</span>
-              <span class="legend-tau">● sim</span>
-              <span style="color:#f59e0b;font-size:11px">◆ warn</span>
-              <span style="color:#10b981;font-size:11px">■ block</span>
+            <div class="legend pr-legend">
+              <span class="pr-leg-line pr-leg-curve">ML classifier (PR curve)</span>
+              <span class="pr-leg-line pr-leg-target">Min precision target (0.85)</span>
+              <span class="pr-leg-dot pr-leg-valcalib" title="Shown only when the published PR series includes per-point score thresholds">val-calib</span>
+              <span class="pr-leg-dot pr-leg-testrec" title="From holdout_threshold_point in model records PR chart">test-rec</span>
+              <span class="pr-leg-dot pr-leg-sim" title="Slider operating point on the curve">sim</span>
+              <span class="pr-leg-policy" style="color:#f59e0b;font-size:11px">◆ warn</span>
+              <span class="pr-leg-policy" style="color:#10b981;font-size:11px">■ block</span>
             </div>
-            <p class="sub" style="margin-top:10px;font-size:11px;line-height:1.45;color:#94a3b8;max-width:62ch">
-              <strong style="color:#cbd5e1">Red dot:</strong>
-              Point on the PR curve at <strong>calibration.prob_threshold_risky</strong> (validation / sweep axis when exported).
-              <strong style="color:#cbd5e1">Green dot:</strong>
-              <strong>Holdout test</strong> at <strong>metrics.recommended_threshold</strong> (model records).
-              <strong style="color:#cbd5e1">Blue dot:</strong>
-              Interactive sweep along the curve (slider position, not necessarily a shipped τ). As recall rises to the right, precision usually falls — that tradeoff is the PR slope.
-            </p>
+            <div class="sub pr-curve-notes" style="margin-top:12px;font-size:11px;line-height:1.55;color:#94a3b8;max-width:70ch">
+              <p style="margin:0 0 8px"><strong style="color:#cbd5e1">Curve (blue)</strong> · High-risk class precision–recall from published <code style="font-size:10px">recall_values</code> / <code style="font-size:10px">precision_values</code> (Y zoom 0.85–1.0 matches the static matplotlib-style report).</p>
+              <p style="margin:0 0 8px"><strong style="color:#cbd5e1">Orange dashed</strong> · Horizontal min-precision target at 0.85.</p>
+              <p style="margin:0 0 8px"><strong style="color:#f87171">val-calib (red)</strong> · Intersection of <code style="font-size:10px">calibration.prob_threshold_risky</code> with the PR sweep. Requires the export to include a <strong>threshold</strong> value per curve point (same length as P/R). If the sidebar readout mentions “No per-score τ in export,” this marker is skipped.</p>
+              <p style="margin:0 0 8px"><strong style="color:#34d399">test-rec (green)</strong> · <code style="font-size:10px">holdout_threshold_point</code> from the PR chart summary — precision/recall at the shipped recommended threshold (from <code style="font-size:10px">metrics.recommended_threshold</code> in <code style="font-size:10px">model_records</code>).</p>
+              <p style="margin:0 0 8px"><strong style="color:#60a5fa">sim (blue)</strong> · Slider probe on the curve: <strong>without</strong> a per-score axis, 0–100% is position along the polyline; <strong>with</strong> a score axis, the slider is interpreted as τ in 0.00–1.00 (see readout text).</p>
+              <p style="margin:0"><strong style="color:#cbd5e1">◆ warn / ■ block</strong> · Product <strong>risk-policy</strong> thresholds (local policy or defaults) mapped onto the curve — separate from calibration thresholds above.</p>
+            </div>
           </article>
         </div>
 
@@ -1157,14 +1203,14 @@
         el.textContent =
           "AUPRC=" +
           au.toFixed(4) +
-          " on held-out test · Y: precision " +
+          " on held-out test · Y-axis: precision " +
           PR_Y_VIEW_MIN +
           "–" +
-          PR_Y_VIEW_MAX +
-          " (same zoom as matplotlib report)";
+          "1.0" +
+          " (report-style zoom)";
       } else {
         el.textContent =
-          "Y-axis: precision " + PR_Y_VIEW_MIN + "–" + PR_Y_VIEW_MAX + " (zoomed)";
+          "Y-axis: precision " + PR_Y_VIEW_MIN + "–1.0 (zoomed to match static report)";
       }
     }
 
