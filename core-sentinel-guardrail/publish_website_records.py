@@ -160,7 +160,7 @@ def build_model_records() -> dict[str, Any]:
                 "precision": _to_float(rec.get("risky_precision")),
                 "recall": _to_float(rec.get("risky_recall")),
                 "threshold": _to_float(rec.get("threshold")),
-                "note": "binary holdout sweep at recommended threshold",
+                "note": "Test split: precision/recall at the recommended binary threshold (binary_threshold_check.json).",
             },
     }
     if dthr is not None and len(dthr) == len(dsp):
