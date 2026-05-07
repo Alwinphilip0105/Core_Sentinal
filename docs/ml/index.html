@@ -837,17 +837,14 @@
             <div class="legend">
               <span class="l-pr">PR</span>
               <span class="l-op">90% P target</span>
-              <span style="color:#ef4444;font-size:11px" title="First point where precision ≥ 0.85 on this curve">● ref</span>
-              <span style="color:#22c55e;font-size:11px" title="Metrics on test data at the recommended τ">● test</span>
+              <span style="color:#22c55e;font-size:11px" title="Test set at recommended score threshold">● test τ</span>
               <span class="legend-tau">● sim</span>
               <span style="color:#f59e0b;font-size:11px">◆ warn</span>
               <span style="color:#10b981;font-size:11px">■ block</span>
             </div>
             <p class="sub" style="margin-top:10px;font-size:11px;line-height:1.45;color:#94a3b8;max-width:56ch">
-              <strong style="color:#cbd5e1">Why two fixed dots?</strong>
-              Both use the <strong>test-set</strong> PR curve from <code>evaluate_test.py</code>.
-              <span style="color:#ef4444">●</span> <strong>Red</strong> = precision rule (≥85%): the first point where precision crosses 0.85 along that curve.
-              <span style="color:#22c55e">●</span> <strong>Green</strong> = that same test split, but at the <strong>recommended probability threshold</strong> (from <code>binary_threshold_check</code> / model records), not a different validation split.
+              <strong style="color:#cbd5e1">Green dot:</strong>
+              Precision/recall on the <strong>full held-out test split</strong> at the <strong>recommended probability threshold</strong> (from threshold tuning / model records). The blue dot is your interactive sweep along the curve.
             </p>
           </article>
         </div>
@@ -1225,16 +1222,10 @@
       const precision = asNumberArray(hc.precision_values);
       const thresholds = asNumberArray(hc.thresholds);
       if (!recall.length || !precision.length || recall.length !== precision.length) return null;
-      const op = hc.operating_point && typeof hc.operating_point === "object" ? hc.operating_point : {};
       return {
         recall,
         precision,
         thresholds,
-        operatingPoint: {
-          precision: Number(op.precision),
-          recall: Number(op.recall),
-          threshold: Number(op.threshold),
-        },
       };
     }
 
@@ -2423,19 +2414,6 @@
         path.setAttribute("stroke-width", "2.5");
         path.classList.add("animate-path");
         svg.appendChild(path);
-        const op = curve.operatingPoint || {};
-        if (Number.isFinite(op.recall) && Number.isFinite(op.precision)) {
-          const opTau = Number.isFinite(Number(op.threshold))
-            ? Number(op.threshold).toFixed(3)
-            : "—";
-          addHoverablePoint(
-            svg,
-            mapX(Math.max(0, Math.min(1, op.recall))),
-            mapY(Math.max(0, Math.min(1, op.precision))),
-            "var(--danger)",
-            `≥85% precision anchor · P=${op.precision.toFixed(3)} R=${op.recall.toFixed(3)} · τ=${opTau} — first point on this PR curve where precision reaches 0.85 (evaluation export).`
-          );
-        }
         const prBox = retrainSummary?.evaluation?.pr_curve_summary;
         const hcBox = prBox?.high_class_curve || prBox;
         const hop = hcBox?.holdout_threshold_point;
@@ -2445,7 +2423,7 @@
             mapX(Math.max(0, Math.min(1, Number(hop.recall)))),
             mapY(Math.max(0, Math.min(1, Number(hop.precision)))),
             "#22c55e",
-            `Test data · recommended threshold · P=${Number(hop.precision).toFixed(3)} R=${Number(hop.recall).toFixed(3)} · τ=${Number(hop.threshold).toFixed(2)} — held-out test split at the threshold picked by threshold tuning / model records.`
+            `Full test split · recommended threshold · P=${Number(hop.precision).toFixed(3)} R=${Number(hop.recall).toFixed(3)} · τ=${Number(hop.threshold).toFixed(2)} — metrics on the entire held-out test set at the threshold from model records / binary threshold tuning.`
           );
         }
         const rv = curve.recall;
