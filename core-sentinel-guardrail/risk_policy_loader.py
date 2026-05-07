@@ -38,6 +38,10 @@ DEFAULT_RISK_POLICY: dict[str, Any] = {
     "critical_secret": {
         "min_token_entropy_bits": 4.2,
     },
+    # 1–100 risk_score ceiling when paste is contact-only (email/phone/IP) and would otherwise score higher.
+    "contact_only_risk_cap": 70,
+    # P1-D: downgrades block→warn when ML-only NAME/LOCATION windows have no Regex/NER overlap
+    "gate_geo_name_ml_without_ner_regex": True,
     # Kept for 9-class models; merged from file
     "per_class_thresholds": {},
 }
@@ -178,6 +182,28 @@ def get_inference_3class_label_thresholds(policy: dict[str, Any]) -> tuple[float
     return th, tm
 
 
+def get_binary_two_thresholds(policy: dict[str, Any]) -> tuple[float, float]:
+    """
+    Returns (t_warn, t_block) from policy.
+    Zones: prob < t_warn -> safe; t_warn <= prob < t_block -> warn; prob >= t_block -> block.
+    Falls back from inference_binary_labels.prob_threshold_risky if two-threshold section absent.
+    """
+    two = policy.get("inference_binary_two_threshold") or {}
+    t_warn = two.get("prob_threshold_warn")
+    t_block = two.get("prob_threshold_block")
+    if t_warn is not None and t_block is not None:
+        return float(t_warn), float(t_block)
+    single = float(
+        (policy.get("inference_binary_labels") or {}).get("prob_threshold_risky", 0.5)
+    )
+    t_block = single
+    t_warn = max(0.05, float(single) - 0.20)
+    print(
+        f"[policy] two-threshold absent — derived: t_warn={t_warn:.3f}, t_block={t_block:.3f}"
+    )
+    return t_warn, t_block
+
+
 def get_strict_decision_rules(policy: dict[str, Any]) -> dict[str, float]:
     d = policy.get("strict_decision_rules") or {}
     base = DEFAULT_RISK_POLICY["strict_decision_rules"]
@@ -198,3 +224,18 @@ def get_pii_count_probability_threshold(policy: dict[str, Any]) -> float:
 def get_critical_secret_entropy_min(policy: dict[str, Any]) -> float:
     c = policy.get("critical_secret") or {}
     return float(c.get("min_token_entropy_bits", DEFAULT_RISK_POLICY["critical_secret"]["min_token_entropy_bits"]))
+
+
+def get_contact_only_risk_cap(policy: dict[str, Any]) -> int:
+    """
+    Max risk_score (1–100) for contact-only spans after capping elevated model scores.
+    Used in infer.score_clipboard_with_pii — must align with clipboard_ui_action / block thresholds.
+    """
+    v = policy.get("contact_only_risk_cap")
+    if v is None:
+        return int(DEFAULT_RISK_POLICY["contact_only_risk_cap"])
+    try:
+        n = int(float(v))
+    except (TypeError, ValueError):
+        return int(DEFAULT_RISK_POLICY["contact_only_risk_cap"])
+    return max(1, min(100, n))

@@ -62,11 +62,13 @@ class LayerInspectorPage(QtWidgets.QWidget):
         self.setWindowTitle(
             "Layer Inspector — Core Sentinel"
         )
-        self.resize(940, 660)
+        self.resize(940, 820)
         self.setMinimumSize(720, 500)
         self._result: dict = {}
         self._spans: list = []
         self._text: str = ""
+        self._active_span: dict | None = None
+        self._queued_fixes: list[dict] = []
         self._apply_qss()
         self._build_ui()
 
@@ -158,7 +160,10 @@ class LayerInspectorPage(QtWidgets.QWidget):
             self._build_analysis_section(), stretch=1
         )
 
-        # Section C — per-layer metric cards
+        # Section C — active learning / training corrections
+        root.addWidget(self._build_training_feedback_section())
+
+        # Section D — per-layer metric cards
         root.addWidget(self._build_cards_section())
 
     # ── Section A: pipeline diagram ──────────────────
@@ -426,7 +431,154 @@ class LayerInspectorPage(QtWidgets.QWidget):
 
         return panel
 
-    # ── Section C: layer metric cards ────────────────
+    # ── Section C: active learning (span + document corrections) ──
+    def _build_training_feedback_section(
+        self,
+    ) -> QtWidgets.QFrame:
+        frame = QtWidgets.QFrame()
+        frame.setObjectName("detailPanel")
+        lay = QtWidgets.QVBoxLayout(frame)
+        lay.setContentsMargins(14, 12, 14, 12)
+        lay.setSpacing(8)
+
+        title = QtWidgets.QLabel("Training feedback (active learning)")
+        title.setStyleSheet(
+            "font-size:14px;font-weight:600;"
+            f"color:{_C['text']};"
+        )
+        lay.addWidget(title)
+
+        hint = QtWidgets.QLabel(
+            "Correct document-level risk for the TinyBERT trainer. Optionally queue span fixes "
+            "after clicking a highlighted span — exports go to logs/ span_corrections_pending.jsonl "
+            "for periodic review → training merge (see FEEDBACK_TRAINING_LOOP.md)."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet(f"color:{_C['muted']};font-size:11px;")
+        lay.addWidget(hint)
+
+        self._train_predict_lbl = QtWidgets.QLabel("Predicted document risk: —")
+        self._train_predict_lbl.setStyleSheet(f"font-size:12px;color:{_C['text']};")
+        lay.addWidget(self._train_predict_lbl)
+
+        row1 = QtWidgets.QHBoxLayout()
+        row1.addWidget(QtWidgets.QLabel("Correct document risk:"))
+        self._train_risk_combo = QtWidgets.QComboBox()
+        for r in ("low", "med", "high"):
+            self._train_risk_combo.addItem(r)
+        row1.addWidget(self._train_risk_combo)
+        row1.addStretch(1)
+        lay.addLayout(row1)
+
+        row2 = QtWidgets.QHBoxLayout()
+        row2.addWidget(QtWidgets.QLabel("Correction for clicked span →"))
+        self._train_phi_combo = QtWidgets.QComboBox()
+        for lab in ("O", "NAME", "CONTACT", "LOCATION", "ID", "FINANCIAL", "HEALTH", "AUTH", "OTHER_PII"):
+            self._train_phi_combo.addItem(lab)
+        row2.addWidget(self._train_phi_combo)
+        q_btn = QtWidgets.QPushButton("Queue span fix")
+        q_btn.clicked.connect(self._queue_span_fix)
+        row2.addWidget(q_btn)
+        clr_btn = QtWidgets.QPushButton("Clear queue")
+        clr_btn.clicked.connect(self._clear_span_queue)
+        row2.addWidget(clr_btn)
+        row2.addStretch(1)
+        lay.addLayout(row2)
+
+        self._train_queue_list = QtWidgets.QListWidget()
+        self._train_queue_list.setMaximumHeight(72)
+        self._train_queue_list.setStyleSheet(
+            f"background:#0F172A;border:1px solid {_C['border']};border-radius:6px;color:{_C['text']};"
+        )
+        lay.addWidget(self._train_queue_list)
+
+        sub_btn = QtWidgets.QPushButton("Submit to training log (pending review)")
+        sub_btn.setObjectName("analyzeBtn")
+        sub_btn.clicked.connect(self._submit_training_feedback)
+        lay.addWidget(sub_btn)
+
+        return frame
+
+    def _risk_from_result(self, result: dict | None) -> str:
+        if not result:
+            return "low"
+        r = str(result.get("risk") or "low").strip().lower()
+        if r == "medium":
+            return "med"
+        return r if r in ("low", "med", "high") else "low"
+
+    def _refresh_training_feedback_from_result(self) -> None:
+        if not getattr(self, "_train_predict_lbl", None):
+            return
+        rr = self._risk_from_result(self._result if self._result else None)
+        self._train_predict_lbl.setText(f"Predicted document risk: {rr.upper()}")
+        idx_map = {"low": 0, "med": 1, "high": 2}
+        self._train_risk_combo.setCurrentIndex(idx_map.get(rr, 0))
+        self._queued_fixes = []
+        self._train_queue_list.clear()
+
+    def _queue_span_fix(self) -> None:
+        span = self._active_span
+        text = self._text.strip()
+        if not span or not text:
+            self._show_toast("Click a highlighted span first.")
+            return
+        try:
+            s = int(span.get("start", -1))
+            e = int(span.get("end", -1))
+        except (TypeError, ValueError):
+            self._show_toast("Invalid span offsets.")
+            return
+        if s < 0 or e <= s:
+            self._show_toast("Invalid span offsets.")
+            return
+        was = str(
+            span.get("class") or span.get("label") or ""
+        ).strip() or "?"
+        corr = self._train_phi_combo.currentText()
+        fix = {
+            "start": s,
+            "end": e,
+            "was_class": was,
+            "correct_class": corr,
+        }
+        self._queued_fixes.append(fix)
+        self._train_queue_list.addItem(f"[{s}:{e}] was={was!r} → {corr}")
+
+    def _clear_span_queue(self) -> None:
+        self._queued_fixes = []
+        self._train_queue_list.clear()
+
+    def _submit_training_feedback(self) -> None:
+        text = self._text.strip()
+        if len(text) < 8:
+            self._show_toast("Analyze or paste text first.")
+            return
+        try:
+            from span_feedback_store import record_pending_span_correction
+        except Exception as exc:
+            self._show_toast(f"Import error: {exc}")
+            return
+        pred = self._risk_from_result(self._result)
+        corrected = self._train_risk_combo.currentText().lower()
+        rs = self._result.get("risk_score")
+        decision = str(self._result.get("action") or self._result.get("decision") or "")
+        try:
+            rid = record_pending_span_correction(
+                text,
+                predicted_risk=pred,
+                corrected_risk=corrected,
+                span_fixes=list(self._queued_fixes),
+                risk_score=int(rs) if rs is not None else None,
+                decision=decision or None,
+            )
+        except Exception as exc:
+            self._show_toast(f"Write failed: {exc}")
+            return
+        self._clear_span_queue()
+        self._show_toast(f"Logged pending correction id={rid[:8]}…")
+
+    # ── Section D: layer metric cards ────────────────
     def _build_cards_section(
         self,
     ) -> QtWidgets.QWidget:
@@ -524,6 +676,7 @@ class LayerInspectorPage(QtWidgets.QWidget):
         )
         self._update_pipeline_boxes(result)
         self._update_layer_cards(result)
+        self._refresh_training_feedback_from_result()
 
         self._analyze_btn.setEnabled(True)
         self._analyze_btn.setText("Analyze")
@@ -552,6 +705,7 @@ class LayerInspectorPage(QtWidgets.QWidget):
         self._detail_hint.show()
 
     def _show_span_detail(self, span: dict) -> None:
+        self._active_span = span
         # span keys: class/label, match/text, source,
         #            score (optional), risk (optional)
         span_text = (
@@ -795,6 +949,7 @@ class LayerInspectorPage(QtWidgets.QWidget):
 
         self._update_pipeline_boxes(result)
         self._update_layer_cards(result)
+        self._refresh_training_feedback_from_result()
 
     # ── Toast (simple status bar message) ───────────
     def _show_toast(self, msg: str) -> None:

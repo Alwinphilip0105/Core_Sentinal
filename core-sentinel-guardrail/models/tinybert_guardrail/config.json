@@ -33,7 +33,7 @@
   "pre_trained": "",
   "structure": [],
   "tie_word_embeddings": true,
-  "transformers_version": "5.5.4",
+  "transformers_version": "5.3.0",
   "type_vocab_size": 2,
   "use_cache": false,
   "vocab_size": 30522

@@ -18,6 +18,8 @@ HASH_INDEX_PATH = _ROOT / "logs" / "hash_index.jsonl"
 FEEDBACK_FULLTEXT_PATH = _ROOT / "logs" / "feedback_fulltext.jsonl"
 # Merged from bubble feedback for data.py → train.py (see merge_feedback_to_training.py)
 USER_FEEDBACK_EXPORT_PATH = _ROOT / "data" / "user_feedback" / "export.jsonl"
+# Layer Inspector span corrections export (merge_span_corrections_to_training.py)
+USER_FEEDBACK_SPAN_EXPORT_PATH = _ROOT / "data" / "user_feedback" / "export_span_corrections.jsonl"
 
 
 def _sha256(text: str) -> str:
@@ -276,18 +278,10 @@ def export_feedback_to_training_jsonl(
     }
 
 
-def load_user_feedback_export_rows(
-    path: str | Path | None = None,
-) -> list[dict[str, str]]:
-    """
-    Load rows produced by export_feedback_to_training_jsonl for merging into data.py
-    (multi_real_synthetic). Returns [{"text", "risk"}, ...].
-    """
-    raw = os.environ.get("GUARDRAIL_USER_FEEDBACK_JSONL", "").strip()
-    p = Path(path) if path else (Path(raw) if raw else USER_FEEDBACK_EXPORT_PATH)
-    if not p.exists():
-        return []
+def _load_feedback_jsonl_file(p: Path) -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
+    if not p.is_file():
+        return out
     with open(p, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -301,6 +295,35 @@ def load_user_feedback_export_rows(
             risk = _normalize_feedback_risk(str(r.get("risk") or r.get("label") or ""))
             if text and risk:
                 out.append({"text": text, "risk": risk})
+    return out
+
+
+def load_user_feedback_export_rows(
+    path: str | Path | None = None,
+) -> list[dict[str, str]]:
+    """
+    Load rows for merging into data.py (multi_real_synthetic).
+
+    Concatenates, in order:
+      1) export.jsonl from bubble feedback (override with path or GUARDRAIL_USER_FEEDBACK_JSONL)
+      2) export_span_corrections.jsonl if present (Layer Inspector active-learning export)
+
+    Each row may include ephemeral key "_merge_source" ("bubble_export" | "span_export") for
+    downstream provenance — data.build strips it when assigning ``source``.
+    """
+    raw = os.environ.get("GUARDRAIL_USER_FEEDBACK_JSONL", "").strip()
+    primary = Path(path) if path else (Path(raw) if raw else USER_FEEDBACK_EXPORT_PATH)
+    bubble = _load_feedback_jsonl_file(primary)
+    for r in bubble:
+        r["_merge_source"] = "bubble_export"
+    span_path = Path(
+        os.environ.get("GUARDRAIL_SPAN_FEEDBACK_JSONL", "").strip() or USER_FEEDBACK_SPAN_EXPORT_PATH
+    )
+    span_rows = _load_feedback_jsonl_file(span_path)
+    for r in span_rows:
+        r["_merge_source"] = "span_export"
+    out: list[dict[str, str]] = list(bubble)
+    out.extend(span_rows)
     return out
 
 

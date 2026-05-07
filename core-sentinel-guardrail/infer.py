@@ -45,6 +45,7 @@ from risk_policy_loader import (
     cached_load_risk_policy,
     clear_risk_policy_cache,
     get_binary_two_thresholds,
+    get_contact_only_risk_cap,
     get_critical_secret_entropy_min,
     get_inference_3class_label_thresholds,
     get_pii_count_probability_threshold,
@@ -1638,6 +1639,102 @@ def _contact_only_cap_excluded_by_keywords(text: str) -> bool:
     )
 
 
+def _norm_span_detection_source(span: dict) -> str:
+    raw = str((span or {}).get("source", "")).strip().lower()
+    if raw in ("model_window", "ml"):
+        return "ml"
+    if raw in ("regex", "kb_rule"):
+        return "regex"
+    if raw == "critical_secret":
+        return "critical"
+    if raw == "ner":
+        return "ner"
+    return raw or ""
+
+
+def _intervals_overlap(a0: int, a1: int, b0: int, b1: int) -> bool:
+    return not (a1 <= b0 or a0 >= b1)
+
+
+_STRONG_HINT_SUBSTRINGS = (
+    "FINANCIAL",
+    "AUTH",
+    "PASSWORD",
+    "TOKEN",
+    "SECRET",
+    "KEY",
+    "JWT",
+    "BEARER",
+    "CREDIT",
+    "CARD",
+    "SSN",
+    "ROUTING",
+    "IBAN",
+    "SSH",
+    "PRIVATE KEY",
+)
+
+
+def _ml_span_hints_strong_risk(span: dict) -> bool:
+    cls = str((span or {}).get("class") or (span or {}).get("label") or "").upper()
+    return any(tok in cls for tok in _STRONG_HINT_SUBSTRINGS)
+
+
+def _ml_span_hints_geo_or_name(span: dict) -> bool:
+    cls = str((span or {}).get("class") or (span or {}).get("label") or "").upper()
+    tokens = cls.replace(",", " ").split()
+    for t in tokens:
+        if t in ("NAME", "PERSON", "LOCATION", "LOC", "GPE", "FAC", "ADDRESS", "ORG", "CITY"):
+            return True
+    return any(tok in cls for tok in ("NAME", "LOCATION", "GPE"))
+
+
+def _should_downgrade_geo_name_ml_uncorroborated(spans: list[dict]) -> bool:
+    """
+    True when overlapping model windows look like geography/name-only but no Regex/NER
+    span covers those character ranges (precision guard for ML FPs).
+
+    Ignores strong ML classes (financial/auth/token-like).
+    """
+    if not spans:
+        return False
+    ml_spans = [s for s in spans if isinstance(s, dict) and _norm_span_detection_source(s) == "ml"]
+    corroborators = [
+        s
+        for s in spans
+        if isinstance(s, dict) and _norm_span_detection_source(s) in ("regex", "ner")
+    ]
+    if not ml_spans:
+        return False
+    for ms in ml_spans:
+        if _ml_span_hints_strong_risk(ms):
+            return False
+    weak_ml = [ms for ms in ml_spans if _ml_span_hints_geo_or_name(ms)]
+    if not weak_ml:
+        return False
+
+    uncovered = []
+    for ms in weak_ml:
+        try:
+            s0, s1 = int(ms.get("start", -1)), int(ms.get("end", -2))
+        except (TypeError, ValueError):
+            continue
+        if s1 <= s0:
+            continue
+        overlaps = False
+        for cs in corroborators:
+            try:
+                c0, c1 = int(cs.get("start", -9)), int(cs.get("end", -9))
+            except (TypeError, ValueError):
+                continue
+            if _intervals_overlap(s0, s1, c0, c1):
+                overlaps = True
+                break
+        if not overlaps:
+            uncovered.append((s0, s1))
+    return bool(uncovered)
+
+
 def _scores_list_from_prob_vector(p_list: list[float]) -> list[dict]:
     """Build the same score dicts as _run_sliding_inference for _labels_from_scores."""
     n = _model_num_labels if _model_num_labels is not None else 3
@@ -2683,19 +2780,44 @@ def score_clipboard_with_pii(
     decision, block = _decision_and_block_from_ui_action(action)
     message = build_user_message(risk, decision, override_applied, triggers)
 
-    # Contact-only: never block on email/phone/IP-only pastes; cap score and warn when model score > 70.
+    # Contact-only: never block on email/phone/IP-only pastes; cap score and warn when score exceeds policy cap.
+    _contact_only_cap_score = get_contact_only_risk_cap(risk_policy)
     contact_only_capped = False
     if (
         _is_contact_only_pii(spans, critical_secret=critical_secret_detected)
-        and risk_score > 70
+        and risk_score > _contact_only_cap_score
         and not _contact_only_cap_excluded_by_keywords(ts)
     ):
-        risk_score = min(risk_score, 70)
+        risk_score = min(risk_score, _contact_only_cap_score)
         action = "warn"
         decision, block = _decision_and_block_from_ui_action("warn")
         message = build_user_message(risk, decision, override_applied, triggers)
         suggestions = suggest_remediation(text, triggers, risk_score)
         contact_only_capped = True
+
+    # P1-D / P0-style precision: ML-only NAME/LOCATION windows with no Regex/NER corroboration → softer action.
+    gc = (
+        risk_policy.get("gate_geo_name_ml_without_ner_regex")
+        if isinstance(risk_policy, dict)
+        else None
+    )
+    geo_gate = gc is True or (isinstance(gc, str) and gc.strip().lower() in ("1", "true", "yes"))
+    if (
+        geo_gate
+        and spans
+        and not critical_secret_detected
+        and not hipaa_critical_triggers
+        and not hard_block
+        and action == "block"
+        and _should_downgrade_geo_name_ml_uncorroborated(spans)
+    ):
+        risk_score = min(int(risk_score), 65)
+        if str(risk).lower() == "high":
+            risk = "med"
+        action = "warn"
+        decision, block = _decision_and_block_from_ui_action(action)
+        message = build_user_message(risk, decision, override_applied, triggers)
+        suggestions = suggest_remediation(text, triggers, risk_score)
 
     action = _finalize_action_for_risk_score(
         action,

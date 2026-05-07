@@ -22,13 +22,14 @@ _ROOT = Path(__file__).resolve().parent
 
 
 def _load_env_files() -> None:
+    """Later paths override earlier; override=True lets .env beat stale OS env."""
     try:
         from dotenv import load_dotenv
     except ImportError:
         return
     for path in (_ROOT.parent / ".env", _ROOT / ".env"):
         if path.is_file():
-            load_dotenv(path, override=False)
+            load_dotenv(path, override=True)
 
 
 _load_env_files()
@@ -151,7 +152,7 @@ def get_supabase_client():
             _logged_placeholder_url = True
             print(
                 "[sync] SUPABASE_URL is still a template (e.g. <your-project>.supabase.co). "
-                "Replace it with your project URL from Supabase → Settings → API, then restart. "
+                "Replace it with your project URL from Supabase Settings -> API, then restart. "
                 "Sync disabled until then.",
                 flush=True,
             )

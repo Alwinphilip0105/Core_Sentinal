@@ -80,6 +80,7 @@ DEFAULT_HOLDOUT_MIN_COUNTS = {"low": 20, "med": 20, "high": 20}
 DEFAULT_TRAIN_MIN_COUNTS = {"low": 600, "med": 1400, "high": 400}
 TRAIN_SYNTHETIC_HIGH_TOPUP_CAP = 600
 # Optional JSONL pools under data/extra_pools/ (see README.txt there). Not required for training.
+# Includes weak_category_examples.jsonl when present (tools/gen_weak_category_examples.py).
 EXTRA_POOL_MAX_PER_FILE = 8000
 # Max rows read from data/enron_real/enron_pii_prompts.jsonl (memory / build time).
 DEFAULT_ENRON_PII_PROMPTS_MAX_ROWS = 20000
@@ -365,9 +366,11 @@ def _normalize_for_leakage(text: str) -> str:
 def load_extra_pool_rows_for_training(existing_norms: set[str]) -> tuple[list[dict], int]:
     """
     Load optional curated JSONL files from data/extra_pools/ (or GUARDRAIL_EXTRA_POOL_DIR):
-      - high_extra.jsonl          -> risk high (extra real-like high-risk lines)
-      - hard_negative_low.jsonl   -> risk low (benign text that should not be scored as high)
-      - hard_negative_med.jsonl   -> risk med (boundary medium vs high)
+      - high_extra.jsonl                -> risk high (extra real-like high-risk lines)
+      - hard_negative_low.jsonl         -> risk low (benign text that should not be scored as high)
+      - hard_negative_med.jsonl         -> risk med (boundary medium vs high)
+      - weak_category_examples.jsonl    -> risk per line (JSON "risk": high|low|med); synthetic weak PII
+      - contextual_embedded_pii.jsonl   -> risk per line; narrative business/support/legal text with subtle PII
 
     Each line: {"text": "..."} (risk is implied by filename). Skips duplicates vs existing_norms
     and within files (same leakage-normalized fingerprint).
@@ -384,12 +387,14 @@ def load_extra_pool_rows_for_training(existing_norms: set[str]) -> tuple[list[di
         ("high_extra.jsonl", "high", "extra_pool_high"),
         ("hard_negative_low.jsonl", "low", "extra_pool_hard_low"),
         ("hard_negative_med.jsonl", "med", "extra_pool_hard_med"),
+        ("weak_category_examples.jsonl", None, "extra_pool_weak_cat"),
+        ("contextual_embedded_pii.jsonl", None, "extra_pool_contextual_pii"),
     ]
     out: list[dict] = []
     skipped = 0
     local_seen: set[str] = set(existing_norms)
 
-    for fname, risk, src in specs:
+    for fname, risk_fixed, src in specs:
         path = base / fname
         if not path.is_file():
             continue
@@ -419,16 +424,31 @@ def load_extra_pool_rows_for_training(existing_norms: set[str]) -> tuple[list[di
                     skipped += 1
                     continue
                 local_seen.add(norm)
-                out.append({
+                if risk_fixed is None:
+                    raw_risk = str(obj.get("risk", "low")).strip().lower()
+                    if raw_risk == "high":
+                        risk = "high"
+                    elif raw_risk in ("med", "medium"):
+                        risk = "med"
+                    else:
+                        risk = "low"
+                else:
+                    risk = risk_fixed
+                row = {
                     "text": text,
                     "risk": risk,
                     "is_sap": 0,
                     "sap_id": f"{src}-{n_from_file}",
                     "source": src,
-                })
+                }
+                lab = obj.get("label")
+                if lab is not None:
+                    row["label"] = lab
+                out.append(row)
                 n_from_file += 1
         if n_from_file:
-            print(f"[extra_pools] {fname}: loaded {n_from_file} rows (risk={risk})")
+            risk_tag = risk_fixed if risk_fixed is not None else "per-line (low/med/high)"
+            print(f"[extra_pools] {fname}: loaded {n_from_file} rows (risk={risk_tag})")
 
     return out, skipped
 
@@ -2460,17 +2480,23 @@ def build_and_save(
         except Exception as ex:
             print(f"[user_feedback] could not load export.jsonl: {ex}")
         for i, r in enumerate(uf_list):
+            r = dict(r)
+            merge_src = str(r.pop("_merge_source", "bubble_export") or "bubble_export")
+            row_source = "span_feedback" if merge_src == "span_export" else "user_feedback"
             real_labeled_rows.append(
                 {
                     "text": r["text"],
                     "risk": r["risk"],
                     "is_sap": 0,
                     "sap_id": f"ufb-{i}",
-                    "source": "user_feedback",
+                    "source": row_source,
                 }
             )
         if uf_list:
-            print(f"[user_feedback] merged {len(uf_list)} labeled rows from data/user_feedback/export.jsonl")
+            print(
+                "[user_feedback] merged "
+                f"{len(uf_list)} labeled rows (export.jsonl + export_span_corrections.jsonl when present)"
+            )
 
         _pool_norms = {_normalize_for_leakage(r["text"]) for r in real_labeled_rows}
         try:
@@ -2485,6 +2511,22 @@ def build_and_save(
                 f"[extra_pools] merged {len(extra_pool_rows)} curated rows "
                 f"(duplicate fingerprints skipped vs existing pool: {extra_pool_dups})"
             )
+
+        try:
+            if str(os.environ.get("GUARDRAIL_ENABLE_P1_DATASETS", "1")).strip().lower() not in (
+                "0",
+                "false",
+                "no",
+            ):
+                from datasets_p1 import merge_p1_optional_rows_into
+
+                p1_rows = merge_p1_optional_rows_into()
+                for r in p1_rows:
+                    real_labeled_rows.append(r)
+                if p1_rows:
+                    print(f"[p1] merged {len(p1_rows)} optional supplemental rows (see docs/P1_ROADMAP.md)")
+        except Exception as ex:
+            print(f"[p1] supplemental datasets skipped: {ex}")
 
         n_real_labeled = len(real_labeled_rows)
         n_real_unlabeled = sum(len(rows) for _, rows in source_lists) - n_real_labeled  # approx; pool has dedup/filter

@@ -13,6 +13,27 @@ End-to-end loop for **3-class** (`low` / `med` / `high`) TinyBERT training when 
 
 Export prefers **fulltext → preview**. Set env **`GUARDRAIL_FEEDBACK_NO_FULLTEXT=1`** when recording feedback to skip writing full text (e.g. shared machine); export then uses previews only.
 
+### 5. Layer Inspector (span + document corrections) — active learning
+
+- **Capture:** In **Layer Inspector**, set the correct **document risk** (`low` / `med` / `high`), optionally **click a highlighted span** and queue **PHI class** fixes (`O`, `NAME`, `CONTACT`, …), then **Submit to training log**.  
+  Appends one JSON line to `logs/span_corrections_pending.jsonl` (full text + predicted risk + `span_fixes` list).
+- **Review (weekly):**
+  ```bash
+  python tools/review_span_corrections.py stats
+  python tools/review_span_corrections.py list-pending
+  python tools/review_span_corrections.py approve 1   # 1-based line in the full pending file
+  ```
+  Approved rows append to `logs/span_corrections_approved.jsonl`.
+- **Export to training JSONL:**
+  ```bash
+  python tools/merge_span_corrections_to_training.py
+  ```
+  Writes `data/user_feedback/export_span_corrections.jsonl` (`{text,risk}` rows: full document + context snippets from span fixes).
+- **Build:** `python data.py multi_real_synthetic` merges **both** `export.jsonl` (bubble) and `export_span_corrections.jsonl` automatically.  
+  Rows are tagged with `source`: `user_feedback` vs `span_feedback`.
+
+Override span export path: **`GUARDRAIL_SPAN_FEEDBACK_JSONL`**.
+
 ## Steps
 
 ### A. Collect feedback on many machines

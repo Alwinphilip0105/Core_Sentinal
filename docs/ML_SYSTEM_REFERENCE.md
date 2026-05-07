@@ -182,6 +182,24 @@ F1 = \frac{2 \cdot \text{precision} \cdot \text{recall}}{\text{precision} + \tex
 
 **Why two different FPR values appear:** Validation calibration FPR (~0.16%) and holdout “FPR” (~52%) refer to **different datasets and definitions** (validation vs. larger holdout / different label mix). The UI separates “calibration FPR” vs “holdout FPR” for that reason.
 
+### 5.1 What to do when reviewers compare those two FPRs (professor confusion)
+
+They are **not two estimates of the same quantity**. Treat them as **two different experiments**:
+
+| Label you should use aloud | JSON / UI location | What it measures |
+|----------------------------|-------------------|------------------|
+| **Validation / calibration FPR** | `model_records.json` → `calibration.fpr` (and related threshold sweep on **val**) | False-alarm rate among **non-risky** labels when τ is chosen **on the validation split** to satisfy the calibration objective (small **n**, often easier distribution). |
+| **Holdout / test FPR** | `model_records.json` → `metrics.fpr_non_high_as_high` (from `binary_threshold_check.json`) | Same **formula** \(FP/(FP+TN)\) but on the **held-out test split** at the **recommended binary threshold** τ — often **harder / more imbalanced**, so the number can be much larger. |
+
+**Do / say this:**
+
+1. **Never** imply “calibration FPR is wrong because it doesn’t match holdout FPR.” They are **different splits and often different τ contexts**.
+2. **Always pair a number with its label:** say “**holdout test FPR at τ = 0.45**” vs “**validation FPR at the calibrated τ**,” not “the FPR.”
+3. **One slide / table:** show **both** columns side by side with full names; add a footnote: *same formula, different data and threshold selection step*.
+4. **If someone asks which is “the real” FPR:** for **deployment honesty**, prioritize **holdout / test** metrics for **generalization**; use **calibration** metrics for **how τ was chosen** during training (tuning), not as a second headline that must match.
+
+**Optional UI:** `docs/ml/index.html` already pulls **both** into the FPR logic (`fprHoldout` vs `fprCalibration`); when demoing, expand or caption which number is on screen.
+
 ---
 
 ## 6. PR / ROC summaries (committed excerpts)

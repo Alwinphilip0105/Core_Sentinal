@@ -95,6 +95,10 @@ core-sentinel-guardrail/_pipeline_*.txt
 core-sentinel-guardrail/check_training_data.py
 core-sentinel-guardrail/download_production_data.py
 core-sentinel-guardrail/data/additional/
-core-sentinel-guardrail/data/extra_pools/
+# Extra pools: tracked curated files only; generated/local pools remain untracked
+core-sentinel-guardrail/data/extra_pools/*
+!core-sentinel-guardrail/data/extra_pools/README.txt
+!core-sentinel-guardrail/data/extra_pools/contextual_embedded_pii.jsonl
+!core-sentinel-guardrail/data/extra_pools/financial_balanced_p1.jsonl
 core-sentinel-guardrail/data/nemotron/
 core-sentinel-guardrail/data/PRODUCTION_DATA.md

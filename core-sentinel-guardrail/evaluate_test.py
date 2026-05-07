@@ -5,6 +5,11 @@ Then PR-curve analysis (AUPRC, threshold at precision ≥0.85), confusion matrix
 and a safety_profile block (true high predicted as low/med vs benign flagged as high).
 
 Run from core-sentinel-guardrail/ (or set GUARDRAIL_ARROW_SAVE_DIR like data.py).
+
+Optional: set MERGE_PER_CATEGORY_TO_MODEL_RECORDS=1 to write sklearn per-class F1
+(from the test-split argmax report) into ../docs/data/model_records.json as
+metrics.per_category (labels must match your dashboard, e.g. PII categories).
+Or use tools/update_model_records_per_category.py with a saved report JSON.
 """
 
 from __future__ import annotations
@@ -34,6 +39,10 @@ from torch.utils.data import DataLoader
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments
 
 from data import ARROW_SAVE_DIR
+from model_records_per_category import (
+    merge_per_category_into_model_records,
+    per_category_f1_from_classification_report,
+)
 from train import LABEL_CONFIG_FILENAME, load_arrow_splits, make_compute_metrics
 
 # Saved fine-tuned weights (same as train.SAVE_DIR)
@@ -481,6 +490,22 @@ def main() -> None:
             zero_division=0,
         )
     )
+
+    report_dict = classification_report(
+        all_labels,
+        preds,
+        labels=present_labels,
+        target_names=present_names,
+        zero_division=0,
+        output_dict=True,
+    )
+    if os.environ.get("MERGE_PER_CATEGORY_TO_MODEL_RECORDS") == "1":
+        per_cat = per_category_f1_from_classification_report(report_dict)
+        if per_cat:
+            mr_out = merge_per_category_into_model_records(per_cat)
+            print(f"\n  metrics.per_category -> {mr_out} ({len(per_cat)} classes)")
+        else:
+            print("\n  MERGE_PER_CATEGORY_TO_MODEL_RECORDS=1 but no f1-score rows in report; skip.")
 
     preds_arr = np.asarray(preds, dtype=np.int64)
     safety = _safety_profile_argmax(all_labels_arr, preds_arr, label_names)
