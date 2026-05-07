@@ -3305,20 +3305,20 @@
               readout.textContent =
                 "At τ = " +
                 tau.toFixed(2) +
-                ": catches " +
+                ": recall " +
                 (pt.recall * 100).toFixed(1) +
-                "% of risky pastes · precision " +
+                "% of true-risky (TP/[TP+FN]) · precision " +
                 (pt.prec * 100).toFixed(1) +
                 "%";
             } else {
               readout.textContent =
                 "Sweep " +
                 (tau * 100).toFixed(0) +
-                "% along curve: catches " +
+                "% along curve → recall " +
                 (pt.recall * 100).toFixed(1) +
-                "% of risky · precision " +
+                "% · precision " +
                 (pt.prec * 100).toFixed(1) +
-                "% (export has no τ axis — re-run publish_website_records after evaluate_test)";
+                "% (slider = curve position, not τ; re-publish after evaluate_test for score-threshold mode)";
             }
             if (typeof window.renderDynamicPrTauMarker === "function") {
               window.renderDynamicPrTauMarker(tau, pt);
